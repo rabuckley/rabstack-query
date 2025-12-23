@@ -1,0 +1,74 @@
+@page "/"
+@inherits RabstackComponentBase
+@inject ITaskBoardApi Api
+
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        @if (_vm.TotalTaskCountQuery.IsFetching)
+        {
+            <span class="bg-fetch-indicator">refreshing...</span>
+        }
+        <span class="badge @(_vm.TotalTaskCountQuery.IsStale ? "badge-stale" : "badge-fresh")">
+            @(_vm.TotalTaskCountQuery.IsStale ? "Stale" : "Fresh")
+        </span>
+    </div>
+</div>
+
+@if (_vm.TotalTaskCountQuery.IsLoading)
+{
+    <p class="loading">Loading dashboard data...</p>
+}
+else if (_vm.TotalTaskCountQuery.IsError)
+{
+    <p class="error-msg">@_vm.TotalTaskCountQuery.Error?.Message</p>
+}
+else
+{
+    <div class="card-grid">
+        <div class="card">
+            <h3>Total Tasks</h3>
+            <div class="value">@_vm.TotalTaskCountQuery.Data</div>
+        </div>
+        <div class="card">
+            <h3>Completion Rate</h3>
+            <div class="value">@_vm.CompletionRateQuery.Data</div>
+        </div>
+        <div class="card">
+            <h3>Most Active Project</h3>
+            <div class="value">@(_vm.MostActiveProjectQuery.Data ?? "None")</div>
+        </div>
+    </div>
+}
+
+<div class="card" style="margin-bottom:1rem;">
+    <h3 style="margin-bottom:0.75rem;">Controls</h3>
+    <div class="form-row">
+        <label style="font-size:0.85rem;">
+            <input type="checkbox" @bind="_vm.RefetchInBackground" />
+            Poll every 5 s
+        </label>
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <button @onclick="RefreshAllAsync">Refresh All</button>
+        <button class="btn-outline" @onclick="PrefetchFirstProjectAsync">Prefetch Project 1</button>
+    </div>
+</div>
+
+@code {
+    private DashboardViewModel _vm = null!;
+
+    protected override void OnInitialized()
+    {
+        _vm = Track(new DashboardViewModel(Client, Api));
+        Observe(_vm.TotalTaskCountQuery);
+        Observe(_vm.CompletionRateQuery);
+        Observe(_vm.MostActiveProjectQuery);
+    }
+
+    private async Task RefreshAllAsync() =>
+        await _vm.InvalidateAllProjectsCommand.ExecuteAsync(null);
+
+    private async Task PrefetchFirstProjectAsync() =>
+        await _vm.PrefetchProjectCommand.ExecuteAsync(1);
+}

@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RabstackQuery.Example.Maui.Pages.TaskDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:RabstackQuery.Example.Maui.Converters"
+    xmlns:models="clr-namespace:RabstackQuery.Example.Shared.Models;assembly=RabstackQuery.Example.Shared"
+    Title="Task Detail">
+
+    <!-- Compiled bindings (x:DataType) omitted: TaskQuery is a generic
+         QueryViewModel<TaskItem, TaskItem> whose property paths trip up the MAUI
+         SourceGen XAML inflator at runtime. Runtime bindings are reliable. -->
+
+    <ContentPage.Resources>
+        <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="16">
+
+            <!-- Placeholder data banner -->
+            <Label
+                AutomationId="PlaceholderBanner"
+                Text="Showing cached preview..."
+                FontSize="Caption"
+                TextColor="{AppThemeBinding Light=#999999, Dark=#AAAAAA}"
+                IsVisible="{Binding TaskQuery.IsPlaceholderData}"
+                HorizontalOptions="Center" />
+
+            <!-- Loading indicator for initial load -->
+            <ActivityIndicator
+                IsRunning="{Binding TaskQuery.IsLoading}"
+                IsVisible="{Binding TaskQuery.IsLoading}"
+                HorizontalOptions="Center" />
+
+            <!-- Content section -->
+            <VerticalStackLayout
+                Spacing="12"
+                IsVisible="{Binding TaskQuery.IsSuccess}">
+
+                <!-- Title -->
+                <Label
+                    Text="Title"
+                    FontSize="Caption"
+                    TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                <Entry
+                    AutomationId="TaskTitle"
+                    Text="{Binding EditableTitle, Mode=TwoWay}"
+                    Placeholder="Task title" />
+
+                <!-- Description -->
+                <Label
+                    Text="Description"
+                    FontSize="Caption"
+                    TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                <Editor
+                    AutomationId="TaskDescription"
+                    Text="{Binding EditableDescription, Mode=TwoWay}"
+                    Placeholder="Task description"
+                    AutoSize="TextChanges"
+                    MinimumHeightRequest="80" />
+
+                <!-- Status picker -->
+                <Label
+                    Text="Status"
+                    FontSize="Caption"
+                    TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                <Picker
+                    x:Name="StatusPicker"
+                    AutomationId="StatusPicker"
+                    Title="Select Status"
+                    SelectedIndexChanged="OnStatusChanged">
+                    <Picker.ItemsSource>
+                        <x:Array Type="{x:Type x:String}">
+                            <x:String>Todo</x:String>
+                            <x:String>InProgress</x:String>
+                            <x:String>Review</x:String>
+                            <x:String>Done</x:String>
+                        </x:Array>
+                    </Picker.ItemsSource>
+                </Picker>
+
+                <!-- Save button -->
+                <Button
+                    AutomationId="SaveButton"
+                    Text="Save"
+                    Command="{Binding UpdateTaskCommand}"
+                    IsEnabled="{Binding UpdateTaskMutation.IsPending, Converter={StaticResource InvertedBoolConverter}}"
+                    Margin="0,8,0,0" />
+
+                <!-- Mutation feedback -->
+                <ActivityIndicator
+                    IsRunning="{Binding UpdateTaskMutation.IsPending}"
+                    IsVisible="{Binding UpdateTaskMutation.IsPending}"
+                    HorizontalOptions="Center" />
+
+                <Label
+                    Text="{Binding UpdateTaskMutation.Error.Message}"
+                    TextColor="Red"
+                    FontSize="Caption"
+                    IsVisible="{Binding UpdateTaskMutation.IsError}"
+                    HorizontalOptions="Center" />
+
+                <!-- Status mutation feedback -->
+                <ActivityIndicator
+                    IsRunning="{Binding UpdateStatusMutation.IsPending}"
+                    IsVisible="{Binding UpdateStatusMutation.IsPending}"
+                    HorizontalOptions="Center"
+                    HeightRequest="20"
+                    WidthRequest="20" />
+
+                <Label
+                    Text="{Binding UpdateStatusMutation.Error.Message}"
+                    TextColor="Red"
+                    FontSize="Caption"
+                    IsVisible="{Binding UpdateStatusMutation.IsError}"
+                    HorizontalOptions="Center" />
+
+            </VerticalStackLayout>
+
+            <!-- Divider -->
+            <BoxView
+                HeightRequest="1"
+                Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}"
+                Margin="0,8" />
+
+            <!-- Comments section -->
+            <VerticalStackLayout Spacing="12">
+                <Label
+                    Text="Comments"
+                    FontSize="Subtitle"
+                    FontAttributes="Bold" />
+
+                <!-- Comments loading -->
+                <ActivityIndicator
+                    IsRunning="{Binding CommentsQuery.IsLoading}"
+                    IsVisible="{Binding CommentsQuery.IsLoading}"
+                    HorizontalOptions="Center" />
+
+                <!-- Comments list -->
+                <CollectionView ItemsSource="{Binding CommentsQuery.Data.Pages}">
+                    <CollectionView.EmptyView>
+                        <Label
+                            Text="No comments yet"
+                            FontSize="Caption"
+                            TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                            HorizontalOptions="Center"
+                            Margin="0,8" />
+                    </CollectionView.EmptyView>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Each item is a PagedResult<Comment> (a page of comments).
+                                 We use a nested CollectionView to display individual comments. -->
+                            <CollectionView ItemsSource="{Binding Items}">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border
+                                            StrokeShape="RoundRectangle 8"
+                                            BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                                            Padding="12"
+                                            Margin="0,4">
+                                            <Border.Stroke>
+                                                <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                                            </Border.Stroke>
+                                            <VerticalStackLayout Spacing="4">
+                                                <Label
+                                                    Text="{Binding Author}"
+                                                    FontSize="Caption"
+                                                    FontAttributes="Bold" />
+                                                <Label
+                                                    Text="{Binding Body}"
+                                                    FontSize="Body" />
+                                            </VerticalStackLayout>
+                                        </Border>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <!-- Load older comments -->
+                <Button
+                    AutomationId="LoadOlderComments"
+                    Text="Load Older"
+                    Command="{Binding CommentsQuery.FetchNextPageCommand}"
+                    IsVisible="{Binding CommentsQuery.HasNextPage}"
+                    HorizontalOptions="Center" />
+
+                <ActivityIndicator
+                    IsRunning="{Binding CommentsQuery.IsFetchingNextPage}"
+                    IsVisible="{Binding CommentsQuery.IsFetchingNextPage}"
+                    HorizontalOptions="Center" />
+
+                <!-- Add comment -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Entry
+                        Grid.Column="0"
+                        AutomationId="NewComment"
+                        Text="{Binding NewCommentText}"
+                        Placeholder="Add a comment"
+                        ReturnCommand="{Binding AddCommentCommand}" />
+                    <Button
+                        Grid.Column="1"
+                        AutomationId="SendCommentButton"
+                        Text="Send"
+                        Command="{Binding AddCommentCommand}"
+                        IsEnabled="{Binding AddCommentMutation.IsPending, Converter={StaticResource InvertedBoolConverter}}" />
+                </Grid>
+
+                <ActivityIndicator
+                    IsRunning="{Binding AddCommentMutation.IsPending}"
+                    IsVisible="{Binding AddCommentMutation.IsPending}"
+                    HeightRequest="20"
+                    WidthRequest="20"
+                    HorizontalOptions="Center" />
+
+                <Label
+                    Text="{Binding AddCommentMutation.Error.Message}"
+                    TextColor="Red"
+                    FontSize="Caption"
+                    IsVisible="{Binding AddCommentMutation.IsError}"
+                    HorizontalOptions="Center" />
+
+            </VerticalStackLayout>
+
+            <!-- Error state -->
+            <VerticalStackLayout
+                IsVisible="{Binding TaskQuery.IsError}"
+                Spacing="8"
+                HorizontalOptions="Center">
+                <Label
+                    Text="{Binding TaskQuery.Error.Message}"
+                    TextColor="Red"
+                    FontSize="Body"
+                    HorizontalTextAlignment="Center" />
+                <Button
+                    Text="Retry"
+                    Command="{Binding TaskQuery.RefetchCommand}"
+                    HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

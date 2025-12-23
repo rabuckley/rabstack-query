@@ -1,0 +1,75 @@
+@page "/projects"
+@inherits RabstackComponentBase
+@inject ITaskBoardApi Api
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1>Projects</h1>
+    @if (_vm.ProjectsQuery.IsFetching && !_vm.ProjectsQuery.IsLoading)
+    {
+        <span class="bg-fetch-indicator">updating...</span>
+    }
+</div>
+
+@if (_vm.ProjectsQuery.IsLoading)
+{
+    <p class="loading">Loading projects...</p>
+}
+else if (_vm.ProjectsQuery.IsError)
+{
+    <p class="error-msg">@_vm.ProjectsQuery.Error?.Message</p>
+}
+
+<div class="card-grid">
+    @foreach (var project in _vm.ProjectsQuery.Items)
+    {
+        <div class="card project-card" style="border-left-color:@project.Color; cursor:pointer;"
+             @onclick="() => NavigateToProject(project.Id)">
+            <h3 style="text-transform:none; font-size:1rem; color:var(--text);">@project.Name</h3>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.5rem;">@project.Description</p>
+            <div style="font-size:0.8rem;">
+                @project.CompletedTaskCount / @project.TaskCount tasks complete
+            </div>
+            <div class="progress-bar">
+                <div class="progress-bar-fill"
+                     style="width:@(project.TaskCount > 0 ? project.CompletedTaskCount * 100 / project.TaskCount : 0)%">
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <h3 style="margin-bottom:0.5rem;">Create Project</h3>
+    <div class="form-row">
+        <input type="text" placeholder="Project name" @bind="_vm.NewProjectName" />
+    </div>
+    <div class="form-row">
+        <input type="text" placeholder="Description" @bind="_vm.NewProjectDescription" />
+        <button @onclick="CreateProjectAsync" disabled="@_vm.CreateProjectMutation.IsPending">
+            @(_vm.CreateProjectMutation.IsPending ? "Creating..." : "Create")
+        </button>
+    </div>
+    @if (_vm.CreateProjectMutation.IsError)
+    {
+        <p class="error-msg">@_vm.CreateProjectMutation.Error?.Message</p>
+    }
+</div>
+
+@code {
+    private ProjectListViewModel _vm = null!;
+
+    protected override void OnInitialized()
+    {
+        _vm = Track(new ProjectListViewModel(Client, Api));
+        Observe(_vm.ProjectsQuery);
+        Observe(_vm.ProjectsQuery.Items);
+        Observe(_vm.CreateProjectMutation);
+    }
+
+    private void NavigateToProject(int projectId) =>
+        Nav.NavigateTo($"projects/{projectId}");
+
+    private async Task CreateProjectAsync() =>
+        await _vm.CreateProjectCommand.ExecuteAsync(null);
+}

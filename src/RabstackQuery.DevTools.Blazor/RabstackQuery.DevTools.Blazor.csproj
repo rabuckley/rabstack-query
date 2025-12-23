@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>RabstackQuery.DevTools.Blazor</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../RabstackQuery/RabstackQuery.csproj" />
+        <ProjectReference Include="../RabstackQuery.DevTools/RabstackQuery.DevTools.csproj" />
+    </ItemGroup>
+</Project>

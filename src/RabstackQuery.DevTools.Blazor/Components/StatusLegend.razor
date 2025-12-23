@@ -1,0 +1,15 @@
+@* Color dot legend for query/mutation statuses *@
+
+<div class="rq-legend">
+    @foreach (var (label, colorHex) in Items)
+    {
+        <div class="rq-legend__item">
+            <span class="rq-legend__dot" style="background: @colorHex;"></span>
+            <span class="rq-legend__label">@label</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public required IReadOnlyList<(string Label, string ColorHex)> Items { get; set; }
+}

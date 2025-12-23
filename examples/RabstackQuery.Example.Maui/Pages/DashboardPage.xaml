@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RabstackQuery.Example.Maui.Pages.DashboardPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Dashboard">
+
+    <!-- Compiled bindings (x:DataType) omitted: the ViewModel properties are
+         generic QueryViewModel<TData, TQueryData> types, and the MAUI SourceGen
+         XAML inflator can produce incorrect code for multi-level binding paths
+         through open generic types. Runtime bindings are reliable here. -->
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <!-- Background fetching indicator -->
+            <ActivityIndicator
+                IsRunning="{Binding TotalTaskCountQuery.IsFetching}"
+                IsVisible="{Binding TotalTaskCountQuery.IsFetching}"
+                HeightRequest="20"
+                WidthRequest="20"
+                HorizontalOptions="End" />
+
+            <!-- Stat cards -->
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="12">
+
+                <!-- Total Tasks card -->
+                <Border
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    StrokeShape="RoundRectangle 12"
+                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                    Padding="16">
+                    <Border.Stroke>
+                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                    </Border.Stroke>
+                    <VerticalStackLayout Spacing="4">
+                        <Label
+                            AutomationId="TotalTaskCount"
+                            Text="{Binding TotalTaskCountQuery.Data, StringFormat='{0}'}"
+                            FontSize="Title"
+                            FontAttributes="Bold"
+                            HorizontalOptions="Center" />
+                        <Label
+                            Text="Total Tasks"
+                            FontSize="Caption"
+                            TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}"
+                            HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Completion Rate card -->
+                <Border
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    StrokeShape="RoundRectangle 12"
+                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                    Padding="16">
+                    <Border.Stroke>
+                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                    </Border.Stroke>
+                    <VerticalStackLayout Spacing="4">
+                        <Label
+                            AutomationId="CompletionRate"
+                            Text="{Binding CompletionRateQuery.Data}"
+                            FontSize="Title"
+                            FontAttributes="Bold"
+                            HorizontalOptions="Center" />
+                        <Label
+                            Text="Completion Rate"
+                            FontSize="Caption"
+                            TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}"
+                            HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Most Active Project card (spans full width) -->
+                <Border
+                    Grid.Row="1"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="2"
+                    StrokeShape="RoundRectangle 12"
+                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                    Padding="16">
+                    <Border.Stroke>
+                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                    </Border.Stroke>
+                    <VerticalStackLayout Spacing="4">
+                        <Label
+                            AutomationId="MostActiveProject"
+                            Text="{Binding MostActiveProjectQuery.Data, TargetNullValue='None'}"
+                            FontSize="Subtitle"
+                            FontAttributes="Bold"
+                            HorizontalOptions="Center"
+                            LineBreakMode="TailTruncation"
+                            MaxLines="1" />
+                        <Label
+                            Text="Most Active Project"
+                            FontSize="Caption"
+                            TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}"
+                            HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+
+            </Grid>
+
+            <!-- Staleness indicator -->
+            <Border
+                StrokeShape="RoundRectangle 8"
+                Stroke="Transparent"
+                Padding="12,8"
+                HorizontalOptions="Center">
+                <Border.Triggers>
+                    <DataTrigger
+                        TargetType="Border"
+                        Binding="{Binding TotalTaskCountQuery.IsStale}"
+                        Value="True">
+                        <Setter Property="BackgroundColor" Value="#FFA500" />
+                    </DataTrigger>
+                    <DataTrigger
+                        TargetType="Border"
+                        Binding="{Binding TotalTaskCountQuery.IsStale}"
+                        Value="False">
+                        <Setter Property="BackgroundColor" Value="#4CAF50" />
+                    </DataTrigger>
+                </Border.Triggers>
+                <Label AutomationId="StalenessIndicator" TextColor="White" FontSize="Caption" HorizontalOptions="Center">
+                    <Label.Triggers>
+                        <DataTrigger
+                            TargetType="Label"
+                            Binding="{Binding TotalTaskCountQuery.IsStale}"
+                            Value="True">
+                            <Setter Property="Text" Value="Stale" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="Label"
+                            Binding="{Binding TotalTaskCountQuery.IsStale}"
+                            Value="False">
+                            <Setter Property="Text" Value="Fresh" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+            </Border>
+
+            <!-- Controls section -->
+            <VerticalStackLayout Spacing="12">
+
+                <Label
+                    Text="Controls"
+                    FontSize="Subtitle"
+                    FontAttributes="Bold" />
+
+                <!-- Polling toggle -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label
+                        Text="Refresh in background"
+                        FontSize="Body"
+                        VerticalOptions="Center" />
+                    <Switch
+                        Grid.Column="1"
+                        AutomationId="RefetchToggle"
+                        IsToggled="{Binding RefetchInBackground}"
+                        VerticalOptions="Center" />
+                </Grid>
+
+                <Button
+                    AutomationId="RefreshAllButton"
+                    Text="Refresh All"
+                    Command="{Binding InvalidateAllProjectsCommand}" />
+
+                <Button
+                    AutomationId="PrefetchButton"
+                    Text="Prefetch Project #1"
+                    Command="{Binding PrefetchProjectCommand}"
+                    CommandParameter="{x:Int32 1}" />
+
+            </VerticalStackLayout>
+
+            <!-- Loading indicator -->
+            <ActivityIndicator
+                IsRunning="{Binding TotalTaskCountQuery.IsLoading}"
+                IsVisible="{Binding TotalTaskCountQuery.IsLoading}"
+                HorizontalOptions="Center" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

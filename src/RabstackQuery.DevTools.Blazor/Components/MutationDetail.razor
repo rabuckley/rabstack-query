@@ -1,0 +1,91 @@
+@* Display-only detail panel for a single mutation *@
+
+<div class="rq-detail">
+    <div class="rq-detail__header">
+        <span class="rq-detail__title">Mutation Detail</span>
+        <button class="rq-detail__close" @onclick="OnClose">✕</button>
+    </div>
+
+    <div class="rq-detail__body">
+        @* Identity *@
+        <div class="rq-card">
+            <div class="rq-field" style="margin-bottom: 8px;">
+                <span class="rq-field__label">Mutation ID</span>
+                <span class="rq-field__value">#@Item.MutationId</span>
+            </div>
+            <div class="rq-field">
+                <span class="rq-field__label">Mutation Key</span>
+                <span class="rq-field__value">@(Item.MutationKeyDisplay ?? "(none)")</span>
+            </div>
+        </div>
+
+        @* Status *@
+        <div class="rq-card">
+            <div class="rq-grid">
+                <div class="rq-field">
+                    <span class="rq-field__label">Status</span>
+                    <span class="rq-field__value" style="color: @Item.StatusColorHex;">@Item.StatusLabel</span>
+                </div>
+                <div class="rq-field">
+                    <span class="rq-field__label">Is Paused</span>
+                    <span class="rq-field__value">@(Item.IsPaused ? "Yes" : "No")</span>
+                </div>
+                <div class="rq-field">
+                    <span class="rq-field__label">Has Observers</span>
+                    <span class="rq-field__value">@(Item.HasObservers ? "Yes" : "No")</span>
+                </div>
+            </div>
+        </div>
+
+        @* Data *@
+        <div class="rq-card">
+            <div class="rq-field" style="margin-bottom: 8px;">
+                <span class="rq-field__label">Data</span>
+                <span class="rq-field__value rq-mono">@FormatDataDisplay(Item.DataDisplay)</span>
+            </div>
+            <div class="rq-field" style="margin-bottom: 8px;">
+                <span class="rq-field__label">Variables</span>
+                <span class="rq-field__value rq-mono">@FormatDataDisplay(Item.VariablesDisplay)</span>
+            </div>
+            <div class="rq-field" style="margin-bottom: 8px;">
+                <span class="rq-field__label">Submitted At</span>
+                <span class="rq-field__value">@FormatSubmittedAt(Item.SubmittedAt)</span>
+            </div>
+            <div class="rq-field">
+                <span class="rq-field__label">Failure Count</span>
+                <span class="rq-field__value">@Item.FailureCount</span>
+            </div>
+        </div>
+
+        @* Error *@
+        @if (Item.ErrorDisplay is not null)
+        {
+            <div class="rq-section rq-section--error">
+                <div class="rq-section__title">Error</div>
+                <div class="rq-section__value rq-mono">@Item.ErrorDisplay</div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public required MutationListItem Item { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static string FormatDataDisplay(string? display)
+    {
+        if (display is null) return "(null)";
+
+        if (display.StartsWith("System.", StringComparison.Ordinal) || display.Contains('`'))
+        {
+            return display + "\n\n(configure DevToolsOptions.DataFormatter for formatted output)";
+        }
+
+        return display;
+    }
+
+    private static string FormatSubmittedAt(long unixMs) =>
+        unixMs > 0
+            ? DateTimeOffset.FromUnixTimeMilliseconds(unixMs).ToString("O")
+            : "(not submitted)";
+}

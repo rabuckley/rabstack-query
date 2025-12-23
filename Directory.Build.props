@@ -1,0 +1,24 @@
+<Project>
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <WarningsAsErrors>nullable</WarningsAsErrors>
+        <LangVersion>preview</LangVersion>
+        <IsTrimmable>true</IsTrimmable>
+        <IsAotCompatible>true</IsAotCompatible>
+    </PropertyGroup>
+
+    <!-- Only library projects under src/ produce NuGet packages -->
+    <PropertyGroup Condition="!$(MSBuildProjectFullPath.Contains('src'))">
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="$(MSBuildProjectFullPath.Contains('src'))">
+        <Authors>Ryan Buckley</Authors>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/rabuckley/rabstack-query</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/rabuckley/rabstack-query</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageTags>blazor;maui;query;cache;tanstack;state-management</PackageTags>
+    </PropertyGroup>
+</Project>

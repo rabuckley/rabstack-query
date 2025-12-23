@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # Build library and test projects only — MAUI projects require
+      # platform-specific workloads not available on ubuntu.
+      - name: Build libraries
+        run: |
+          dotnet build src/RabstackQuery
+          dotnet build src/RabstackQuery.Blazor
+          dotnet build src/RabstackQuery.DevTools
+          dotnet build src/RabstackQuery.DevTools.Blazor
+          dotnet build src/RabstackQuery.Mvvm
+
+      - name: Test
+        run: |
+          dotnet test --project test/RabstackQuery.Tests
+          dotnet test --project test/RabstackQuery.Mvvm.Tests

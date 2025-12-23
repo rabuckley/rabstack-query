@@ -1,0 +1,28 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/RabstackQuery.Example.Blazor/RabstackQuery.Example.Blazor.csproj" />
+    <Project Path="examples/RabstackQuery.Example.Maui/RabstackQuery.Example.Maui.csproj" />
+    <Project Path="examples/RabstackQuery.Example.Shared/RabstackQuery.Example.Shared.csproj" />
+    <Project Path="examples/RabstackQuery.TrimAotValidation/RabstackQuery.TrimAotValidation.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/RabstackQuery/RabstackQuery.csproj" />
+    <Project Path="src/RabstackQuery.DevTools/RabstackQuery.DevTools.csproj" />
+    <Project Path="src/RabstackQuery.Mvvm/RabstackQuery.Mvvm.csproj" />
+    <Project Path="src/RabstackQuery.Blazor/RabstackQuery.Blazor.csproj" />
+    <Project Path="src/RabstackQuery.DevTools.Blazor/RabstackQuery.DevTools.Blazor.csproj" />
+    <Project Path="src/RabstackQuery.DevTools.Maui/RabstackQuery.DevTools.Maui.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/RabstackQuery.Mvvm.Tests/RabstackQuery.Mvvm.Tests.csproj" />
+    <Project Path="test/RabstackQuery.Tests/RabstackQuery.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,155 @@
+@page "/projects/{ProjectId:int}"
+@inherits RabstackComponentBase
+@inject ITaskBoardApi Api
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1>
+        @if (_vm.ProjectQuery?.Data is { } project)
+        {
+            @project.Name
+        }
+        else
+        {
+            <span>Project @ProjectId</span>
+        }
+    </h1>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        @if (_vm.TasksQuery.IsFetching && !_vm.TasksQuery.IsLoading)
+        {
+            <span class="bg-fetch-indicator">updating...</span>
+        }
+        @if (_vm.PendingMutationCount > 0)
+        {
+            <span class="badge badge-inprogress">@_vm.PendingMutationCount pending</span>
+        }
+        <button class="btn-sm btn-outline" @onclick="NavigateToProjects">Back</button>
+    </div>
+</div>
+
+@* Add task form *@
+<div class="form-row">
+    <input type="text" placeholder="New task title" @bind="_vm.NewTaskTitle" />
+    <button @onclick="AddTaskAsync" disabled="@_vm.AddTaskMutation.IsPending">
+        @(_vm.AddTaskMutation.IsPending ? "Adding..." : "Add Task")
+    </button>
+</div>
+
+@if (_vm.AddTaskMutation.IsError)
+{
+    <p class="error-msg">@_vm.AddTaskMutation.Error?.Message</p>
+}
+
+@if (_vm.TasksQuery.IsLoading)
+{
+    <p class="loading">Loading tasks...</p>
+}
+else if (_vm.TasksQuery.IsError)
+{
+    <p class="error-msg">@_vm.TasksQuery.Error?.Message</p>
+}
+else
+{
+    <div class="columns">
+        <div class="column">
+            <h3><span class="badge badge-todo">Todo</span> <span class="count">@_vm.TodoTasks.Count</span></h3>
+            @foreach (var task in _vm.TodoTasks)
+            {
+                <div class="task-card" @onclick="() => NavigateToTask(task.Id)">
+                    <div class="title">@task.Title</div>
+                    <div class="meta">
+                        <span class="badge badge-@task.Priority.ToString().ToLowerInvariant()">@task.Priority</span>
+                        @if (task.AssigneeName is not null) { <span>@task.AssigneeName</span> }
+                        @if (task.CommentCount > 0) { <span>@task.CommentCount comments</span> }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="column">
+            <h3><span class="badge badge-inprogress">In Progress</span> <span class="count">@_vm.InProgressTasks.Count</span></h3>
+            @foreach (var task in _vm.InProgressTasks)
+            {
+                <div class="task-card" @onclick="() => NavigateToTask(task.Id)">
+                    <div class="title">@task.Title</div>
+                    <div class="meta">
+                        <span class="badge badge-@task.Priority.ToString().ToLowerInvariant()">@task.Priority</span>
+                        @if (task.AssigneeName is not null) { <span>@task.AssigneeName</span> }
+                        @if (task.CommentCount > 0) { <span>@task.CommentCount comments</span> }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="column">
+            <h3><span class="badge badge-review">Review</span> <span class="count">@_vm.ReviewTasks.Count</span></h3>
+            @foreach (var task in _vm.ReviewTasks)
+            {
+                <div class="task-card" @onclick="() => NavigateToTask(task.Id)">
+                    <div class="title">@task.Title</div>
+                    <div class="meta">
+                        <span class="badge badge-@task.Priority.ToString().ToLowerInvariant()">@task.Priority</span>
+                        @if (task.AssigneeName is not null) { <span>@task.AssigneeName</span> }
+                        @if (task.CommentCount > 0) { <span>@task.CommentCount comments</span> }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="column">
+            <h3><span class="badge badge-done">Done</span> <span class="count">@_vm.DoneTasks.Count</span></h3>
+            @foreach (var task in _vm.DoneTasks)
+            {
+                <div class="task-card" @onclick="() => NavigateToTask(task.Id)">
+                    <div class="title">@task.Title</div>
+                    <div class="meta">
+                        <span class="badge badge-@task.Priority.ToString().ToLowerInvariant()">@task.Priority</span>
+                        @if (task.AssigneeName is not null) { <span>@task.AssigneeName</span> }
+                        @if (task.CommentCount > 0) { <span>@task.CommentCount comments</span> }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (_vm.TasksQuery.HasNextPage)
+    {
+        <div style="margin-top:1rem; text-align:center;">
+            <button class="btn-outline"
+                    @onclick="LoadMoreAsync"
+                    disabled="@_vm.TasksQuery.IsFetchingNextPage">
+                @(_vm.TasksQuery.IsFetchingNextPage ? "Loading..." : "Load More")
+            </button>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private TaskBoardViewModel _vm = null!;
+
+    protected override void OnInitialized()
+    {
+        _vm = Track(new TaskBoardViewModel(Client, Api, ProjectId));
+        Observe(_vm.TasksQuery);
+        Observe(_vm.AddTaskMutation);
+
+        if (_vm.ProjectQuery is not null)
+        {
+            Observe(_vm.ProjectQuery);
+        }
+    }
+
+    private void NavigateToProjects() =>
+        Nav.NavigateTo("projects");
+
+    private void NavigateToTask(int taskId) =>
+        Nav.NavigateTo($"projects/{ProjectId}/tasks/{taskId}");
+
+    private async Task AddTaskAsync() =>
+        await _vm.AddTaskCommand.ExecuteAsync(null);
+
+    private async Task LoadMoreAsync() =>
+        await _vm.TasksQuery.FetchNextPageCommand.ExecuteAsync(null);
+}

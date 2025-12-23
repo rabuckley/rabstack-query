@@ -1,0 +1,32 @@
+name: Publish NuGet Packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    # macOS can build all MAUI TFMs (android, ios, maccatalyst) plus
+    # standard net10.0 libraries. The Windows TFM is conditionally
+    # excluded on non-Windows by the DevTools.Maui csproj.
+    runs-on: macos-26
+    if: startsWith(github.event.release.tag_name, 'v')
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install MAUI workload
+        run: dotnet workload install maui
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack
+        run: dotnet pack RabstackQuery.slnx -c Release -p:Version=${{ steps.version.outputs.version }} -o ./nupkgs
+
+      - name: Push to NuGet
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

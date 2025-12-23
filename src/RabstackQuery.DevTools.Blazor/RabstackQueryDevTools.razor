@@ -1,0 +1,18 @@
+@* Root component: FAB toggle + panel container *@
+
+<div class="rq-devtools-root">
+    @if (_isOpen)
+    {
+        <DevToolsPanel Observer="_observer!" QueryClient="QueryClient" OnClose="ClosePanel" />
+    }
+
+    <button class="rq-fab @(_isOpen ? "rq-fab--open" : "")" @onclick="TogglePanel">
+        <span class="rq-fab__label">RQ</span>
+        @if (_observer is not null)
+        {
+            <span class="rq-fab__badge @(_errorCount > 0 ? "rq-fab__badge--error" : "")">
+                @(_observer.QueryCount > 99 ? "99+" : _observer.QueryCount)
+            </span>
+        }
+    </button>
+</div>

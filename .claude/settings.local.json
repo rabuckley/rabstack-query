@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet test:*)",
+      "Bash(git add:*)",
+      "Bash(grep:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(wc:*)",
+      "Bash(dotnet add:*)",
+      "Bash(ls:*)",
+      "Bash(dotnet sln:*)",
+      "mcp__microsoft-learn__microsoft_docs_search",
+      "mcp__microsoft-learn__microsoft_code_sample_search",
+      "mcp__microsoft-learn__microsoft_docs_fetch",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git status:*)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet publish:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

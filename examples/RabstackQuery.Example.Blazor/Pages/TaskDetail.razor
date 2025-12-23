@@ -1,0 +1,164 @@
+@page "/projects/{ProjectId:int}/tasks/{TaskId:int}"
+@inherits RabstackComponentBase
+@inject ITaskBoardApi Api
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1>Task Detail</h1>
+    <button class="btn-sm btn-outline" @onclick="NavigateToBoard">Back to Board</button>
+</div>
+
+@if (_vm.TaskQuery.IsPlaceholderData)
+{
+    <div class="placeholder-banner">Showing cached data while loading full details...</div>
+}
+
+@if (_vm.TaskQuery.IsLoading)
+{
+    <p class="loading">Loading task details...</p>
+}
+else if (_vm.TaskQuery.IsError)
+{
+    <p class="error-msg">@_vm.TaskQuery.Error?.Message</p>
+}
+else if (_vm.TaskQuery.Data is { } task)
+{
+    <div class="card" style="margin-bottom:1rem;">
+        <div style="margin-bottom:0.75rem;">
+            <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Title</label>
+            <input type="text" @bind="_vm.EditableTitle" style="width:100%;" />
+        </div>
+
+        <div style="margin-bottom:0.75rem;">
+            <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Description</label>
+            <textarea @bind="_vm.EditableDescription" style="width:100%;"></textarea>
+        </div>
+
+        <div style="display:flex; gap:1rem; align-items:center; margin-bottom:0.75rem;">
+            <div>
+                <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Status</label>
+                <select value="@task.Status" @onchange="OnStatusChangedAsync">
+                    @foreach (var status in Enum.GetValues<TaskItemStatus>())
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Priority</label>
+                <span class="badge badge-@task.Priority.ToString().ToLowerInvariant()">@task.Priority</span>
+            </div>
+            @if (task.AssigneeName is not null)
+            {
+                <div>
+                    <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Assignee</label>
+                    <span style="font-size:0.85rem;">@task.AssigneeName</span>
+                </div>
+            }
+        </div>
+
+        <div style="display:flex; gap:0.5rem;">
+            <button @onclick="SaveTaskAsync" disabled="@_vm.UpdateTaskMutation.IsPending">
+                @(_vm.UpdateTaskMutation.IsPending ? "Saving..." : "Save")
+            </button>
+            @if (_vm.UpdateStatusMutation.IsPending)
+            {
+                <span class="bg-fetch-indicator">updating status...</span>
+            }
+        </div>
+
+        @if (_vm.UpdateTaskMutation.IsError)
+        {
+            <p class="error-msg">@_vm.UpdateTaskMutation.Error?.Message</p>
+        }
+        @if (_vm.UpdateStatusMutation.IsError)
+        {
+            <p class="error-msg">Status update failed: @_vm.UpdateStatusMutation.Error?.Message</p>
+        }
+    </div>
+
+    @* Comments section *@
+    <div class="card">
+        <h3 style="margin-bottom:0.75rem; text-transform:none; font-size:1rem; color:var(--text);">Comments</h3>
+
+        <div class="form-row">
+            <input type="text" placeholder="Add a comment..." @bind="_vm.NewCommentText" />
+            <button class="btn-sm" @onclick="AddCommentAsync" disabled="@_vm.AddCommentMutation.IsPending">
+                @(_vm.AddCommentMutation.IsPending ? "Adding..." : "Add")
+            </button>
+        </div>
+        @if (_vm.AddCommentMutation.IsError)
+        {
+            <p class="error-msg">@_vm.AddCommentMutation.Error?.Message</p>
+        }
+
+        @if (_vm.CommentsQuery.IsLoading)
+        {
+            <p class="loading">Loading comments...</p>
+        }
+        else if (_vm.CommentsQuery.Data?.Pages is { } pages)
+        {
+            @foreach (var comment in pages.SelectMany(p => p.Items))
+            {
+                <div class="comment">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                        <span class="author">@comment.Author</span>
+                        <span class="time">@FormatTimestamp(comment.CreatedAt)</span>
+                    </div>
+                    <div class="body">@comment.Body</div>
+                </div>
+            }
+
+            @if (_vm.CommentsQuery.HasNextPage)
+            {
+                <div style="text-align:center; padding:0.5rem;">
+                    <button class="btn-sm btn-outline"
+                            @onclick="LoadOlderCommentsAsync"
+                            disabled="@_vm.CommentsQuery.IsFetchingNextPage">
+                        @(_vm.CommentsQuery.IsFetchingNextPage ? "Loading..." : "Load Older")
+                    </button>
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+    [Parameter] public int TaskId { get; set; }
+
+    private TaskDetailViewModel _vm = null!;
+
+    protected override void OnInitialized()
+    {
+        _vm = Track(new TaskDetailViewModel(Client, Api, ProjectId, TaskId));
+        Observe(_vm.TaskQuery);
+        Observe(_vm.UpdateTaskMutation);
+        Observe(_vm.UpdateStatusMutation);
+        Observe(_vm.CommentsQuery);
+        Observe(_vm.AddCommentMutation);
+    }
+
+    private void NavigateToBoard() =>
+        Nav.NavigateTo($"projects/{ProjectId}");
+
+    private async Task OnStatusChangedAsync(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<TaskItemStatus>(e.Value?.ToString(), out var newStatus))
+        {
+            await _vm.UpdateStatusMutation.MutateCommand.ExecuteAsync(newStatus);
+        }
+    }
+
+    private async Task SaveTaskAsync() =>
+        await _vm.UpdateTaskCommand.ExecuteAsync(null);
+
+    private async Task AddCommentAsync() =>
+        await _vm.AddCommentCommand.ExecuteAsync(null);
+
+    private async Task LoadOlderCommentsAsync() =>
+        await _vm.CommentsQuery.FetchNextPageCommand.ExecuteAsync(null);
+
+    private static string FormatTimestamp(long unixMs) =>
+        DateTimeOffset.FromUnixTimeMilliseconds(unixMs).LocalDateTime.ToString("g");
+}

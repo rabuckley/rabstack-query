@@ -1,0 +1,27 @@
+@using System.Text.Json
+@using RabstackQuery.DevTools
+@inherits LayoutComponentBase
+@inject QueryClient Client
+
+<div class="app-layout">
+    <aside class="sidebar">
+        <h2>RabStack Query</h2>
+        <nav>
+            <NavLink href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+            <NavLink href="projects">Projects</NavLink>
+            <NavLink href="settings">Settings</NavLink>
+        </nav>
+    </aside>
+    <main class="main-content">
+        @Body
+    </main>
+</div>
+
+<RabstackQueryDevTools QueryClient="Client" Options="_devToolsOptions" />
+
+@code {
+    private static readonly DevToolsOptions _devToolsOptions = new()
+    {
+        DataFormatter = data => JsonSerializer.Serialize(data, data?.GetType() ?? typeof(object), DevToolsJsonContext.Default),
+    };
+}

@@ -1,0 +1,77 @@
+@* Main panel: tabs, filter, list + inline detail *@
+
+<div class="rq-panel">
+    <div class="rq-panel__header">
+        <div class="rq-panel__tabs">
+            <button class="rq-tab @(_selectedTab == 0 ? "rq-tab--active" : "")" @onclick="() => SelectTab(0)">
+                Queries
+            </button>
+            <span class="rq-tab__count">(@_filteredQueryCount)</span>
+            <button class="rq-tab @(_selectedTab == 1 ? "rq-tab--active" : "")" @onclick="() => SelectTab(1)">
+                Mutations
+            </button>
+            <span class="rq-tab__count">(@_filteredMutationCount)</span>
+        </div>
+        <button class="rq-panel__close" @onclick="OnClose">✕</button>
+    </div>
+
+    @if (_selectedTab == 0)
+    {
+        <div class="rq-panel__toolbar">
+            <input class="rq-search" type="text" placeholder="Filter queries..."
+                   @bind="_searchText" @bind:event="oninput" @bind:after="ApplyFilters" />
+            <select class="rq-sort" @bind="_sortOption" @bind:after="ApplyFilters">
+                <option value="@SortOption.Hash">Hash</option>
+                <option value="@SortOption.LastUpdated">Last Updated</option>
+                <option value="@SortOption.Status">Status</option>
+                <option value="@SortOption.Observers">Observers</option>
+            </select>
+            <label class="rq-toggle">
+                <input type="checkbox" @bind="_hideDisabled" @bind:after="ApplyFilters" />
+                <span>Hide disabled</span>
+            </label>
+        </div>
+
+        <StatusLegend Items="DevToolsColorValues.QueryLegendItems" />
+
+        <div class="rq-panel__body">
+            <div class="rq-panel__list">
+                <QueryList Items="_filteredQueries"
+                           SelectedHash="@_selectedQueryHash"
+                           OnSelect="SelectQuery" />
+            </div>
+            @if (_selectedQueryItem is not null)
+            {
+                <div class="rq-panel__detail">
+                    <QueryDetail Item="_selectedQueryItem"
+                                 Observer="Observer"
+                                 QueryClient="QueryClient"
+                                 OnClose="ClearSelection" />
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="rq-panel__toolbar">
+            <input class="rq-search" type="text" placeholder="Filter mutations..."
+                   @bind="_searchText" @bind:event="oninput" @bind:after="ApplyFilters" />
+        </div>
+
+        <StatusLegend Items="DevToolsColorValues.MutationLegendItems" />
+
+        <div class="rq-panel__body">
+            <div class="rq-panel__list">
+                <MutationList Items="_filteredMutations"
+                              SelectedId="@_selectedMutationId"
+                              OnSelect="SelectMutation" />
+            </div>
+            @if (_selectedMutationItem is not null)
+            {
+                <div class="rq-panel__detail">
+                    <MutationDetail Item="_selectedMutationItem" OnClose="ClearSelection" />
+                </div>
+            }
+        </div>
+    }
+</div>

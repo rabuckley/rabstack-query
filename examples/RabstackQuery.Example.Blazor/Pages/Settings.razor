@@ -1,0 +1,83 @@
+@page "/settings"
+@inherits RabstackComponentBase
+@inject MockApiSettings ApiSettings
+@inject MockTaskBoardApi MockApi
+
+<div class="page-header">
+    <h1>Settings</h1>
+</div>
+
+<div class="card" style="margin-bottom:1rem;">
+    <h3 style="margin-bottom:0.75rem; text-transform:none; font-size:1rem; color:var(--text);">Mock API Behavior</h3>
+
+    <div class="setting-group">
+        <label>Error Rate: <span class="setting-value">@((_vm.ErrorRate * 100).ToString("0"))%</span></label>
+        <div style="display:flex; gap:0.5rem; margin-top:0.25rem;">
+            @foreach (var rate in new[] { 0.0, 0.1, 0.25, 0.5 })
+            {
+                <button class="btn-sm @(_vm.ErrorRate == rate ? "" : "btn-outline")"
+                        @onclick="() => _vm.ErrorRate = rate">
+                    @((rate * 100).ToString("0"))%
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="setting-group">
+        <label>Min Delay (ms): <span class="setting-value">@_vm.MinDelayMs</span></label>
+        <input type="range" min="0" max="2000" step="50" @bind="_vm.MinDelayMs" style="width:100%;" />
+    </div>
+
+    <div class="setting-group">
+        <label>Max Delay (ms): <span class="setting-value">@_vm.MaxDelayMs</span></label>
+        <input type="range" min="0" max="3000" step="50" @bind="_vm.MaxDelayMs" style="width:100%;" />
+    </div>
+
+    <div class="setting-group">
+        <label>
+            <input type="checkbox" @bind="_vm.IsOffline" />
+            Simulate Offline
+        </label>
+    </div>
+
+    <div class="setting-group">
+        <label>
+            <input type="checkbox" @bind="_vm.IsFocused" />
+            Window Focused
+        </label>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:1rem;">
+    <h3 style="margin-bottom:0.75rem; text-transform:none; font-size:1rem; color:var(--text);">Cache Stats</h3>
+
+    <div class="card-grid">
+        <div>
+            <span style="font-size:0.8rem; color:var(--text-muted);">Query Count</span>
+            <div style="font-size:1.25rem; font-weight:600;">@_vm.QueryCount</div>
+        </div>
+        <div>
+            <span style="font-size:0.8rem; color:var(--text-muted);">Mutation Count</span>
+            <div style="font-size:1.25rem; font-weight:600;">@_vm.MutationCount</div>
+        </div>
+    </div>
+    <button class="btn-sm btn-outline" @onclick="RefreshStats" style="margin-top:0.5rem;">Refresh Stats</button>
+</div>
+
+<button class="btn-danger" @onclick="ResetAllDataAsync">Reset All Data</button>
+
+@code {
+    private SettingsViewModel _vm = null!;
+
+    protected override void OnInitialized()
+    {
+        _vm = Track(new SettingsViewModel(ApiSettings, MockApi, Client));
+        _vm.RefreshStatsCommand.Execute(null);
+    }
+
+    private void RefreshStats() =>
+        _vm.RefreshStatsCommand.Execute(null);
+
+    private async Task ResetAllDataAsync() =>
+        await _vm.ResetAllDataCommand.ExecuteAsync(null);
+}

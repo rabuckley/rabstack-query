@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RabstackQuery.Example.Maui.Pages.TaskBoardPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:RabstackQuery.Example.Maui.Converters"
+    Title="{Binding ProjectQuery.Data.Name, TargetNullValue='Task Board'}">
+
+    <!-- Compiled bindings (x:DataType) omitted: TasksQuery is a generic
+         InfiniteQueryViewModel whose property paths trip up the MAUI
+         SourceGen XAML inflator. Runtime bindings are reliable here. -->
+
+    <ContentPage.Resources>
+        <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <!-- Background fetch indicator -->
+        <ActivityIndicator
+            Grid.Row="0"
+            IsRunning="{Binding TasksQuery.IsFetching}"
+            IsVisible="{Binding TasksQuery.IsFetching}"
+            HeightRequest="20"
+            WidthRequest="20"
+            HorizontalOptions="End"
+            Margin="0,4,16,0" />
+
+        <!-- Initial loading indicator -->
+        <ActivityIndicator
+            Grid.Row="1"
+            IsRunning="{Binding TasksQuery.IsLoading}"
+            IsVisible="{Binding TasksQuery.IsLoading}"
+            HorizontalOptions="Center"
+            VerticalOptions="Center" />
+
+        <!-- Error state -->
+        <VerticalStackLayout
+            Grid.Row="1"
+            IsVisible="{Binding TasksQuery.IsError}"
+            Spacing="8"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Label
+                Text="{Binding TasksQuery.Error.Message}"
+                TextColor="Red"
+                FontSize="Body"
+                HorizontalTextAlignment="Center" />
+            <Button
+                Text="Retry"
+                Command="{Binding TasksQuery.RefetchCommand}"
+                HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+        <!-- Tasks list grouped by status -->
+        <ScrollView
+            Grid.Row="1"
+            AutomationId="TaskBoardScroll"
+            IsVisible="{Binding TasksQuery.IsSuccess}">
+            <VerticalStackLayout Padding="16" Spacing="16">
+
+                <!-- Todo section -->
+                <VerticalStackLayout Spacing="8">
+                    <Label
+                        Text="To Do"
+                        FontSize="Subtitle"
+                        FontAttributes="Bold" />
+                    <CollectionView AutomationId="TodoTasks" ItemsSource="{Binding TodoTasks}">
+                        <CollectionView.EmptyView>
+                            <Label
+                                Text="No tasks"
+                                FontSize="Caption"
+                                TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                Margin="0,4" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    StrokeShape="RoundRectangle 8"
+                                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                                    Padding="12"
+                                    Margin="0,4">
+                                    <Border.Stroke>
+                                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                                    </Border.Stroke>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTaskTapped" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <!-- Priority indicator -->
+                                        <BoxView
+                                            Grid.Column="0"
+                                            WidthRequest="8"
+                                            HeightRequest="8"
+                                            CornerRadius="4"
+                                            VerticalOptions="Center">
+                                            <BoxView.Triggers>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Low">
+                                                    <Setter Property="Color" Value="#4CAF50" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Medium">
+                                                    <Setter Property="Color" Value="#2196F3" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="High">
+                                                    <Setter Property="Color" Value="#FF9800" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Urgent">
+                                                    <Setter Property="Color" Value="#F44336" />
+                                                </DataTrigger>
+                                            </BoxView.Triggers>
+                                        </BoxView>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                            <Label
+                                                Text="{Binding Title}"
+                                                FontSize="Body"
+                                                LineBreakMode="TailTruncation"
+                                                MaxLines="1" />
+                                            <Label
+                                                Text="{Binding AssigneeName, TargetNullValue='Unassigned'}"
+                                                FontSize="Caption"
+                                                TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                                        </VerticalStackLayout>
+                                        <Label
+                                            Grid.Column="2"
+                                            Text="{Binding Priority}"
+                                            FontSize="Caption"
+                                            TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- In Progress section -->
+                <VerticalStackLayout Spacing="8">
+                    <Label
+                        Text="In Progress"
+                        FontSize="Subtitle"
+                        FontAttributes="Bold" />
+                    <CollectionView AutomationId="InProgressTasks" ItemsSource="{Binding InProgressTasks}">
+                        <CollectionView.EmptyView>
+                            <Label
+                                Text="No tasks"
+                                FontSize="Caption"
+                                TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                Margin="0,4" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    StrokeShape="RoundRectangle 8"
+                                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                                    Padding="12"
+                                    Margin="0,4">
+                                    <Border.Stroke>
+                                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                                    </Border.Stroke>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTaskTapped" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <BoxView
+                                            Grid.Column="0"
+                                            WidthRequest="8"
+                                            HeightRequest="8"
+                                            CornerRadius="4"
+                                            VerticalOptions="Center">
+                                            <BoxView.Triggers>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Low">
+                                                    <Setter Property="Color" Value="#4CAF50" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Medium">
+                                                    <Setter Property="Color" Value="#2196F3" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="High">
+                                                    <Setter Property="Color" Value="#FF9800" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Urgent">
+                                                    <Setter Property="Color" Value="#F44336" />
+                                                </DataTrigger>
+                                            </BoxView.Triggers>
+                                        </BoxView>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                            <Label
+                                                Text="{Binding Title}"
+                                                FontSize="Body"
+                                                LineBreakMode="TailTruncation"
+                                                MaxLines="1" />
+                                            <Label
+                                                Text="{Binding AssigneeName, TargetNullValue='Unassigned'}"
+                                                FontSize="Caption"
+                                                TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                                        </VerticalStackLayout>
+                                        <Label
+                                            Grid.Column="2"
+                                            Text="{Binding Priority}"
+                                            FontSize="Caption"
+                                            TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Review section -->
+                <VerticalStackLayout Spacing="8">
+                    <Label
+                        Text="Review"
+                        FontSize="Subtitle"
+                        FontAttributes="Bold" />
+                    <CollectionView AutomationId="ReviewTasks" ItemsSource="{Binding ReviewTasks}">
+                        <CollectionView.EmptyView>
+                            <Label
+                                Text="No tasks"
+                                FontSize="Caption"
+                                TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                Margin="0,4" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    StrokeShape="RoundRectangle 8"
+                                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                                    Padding="12"
+                                    Margin="0,4">
+                                    <Border.Stroke>
+                                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                                    </Border.Stroke>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTaskTapped" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <BoxView
+                                            Grid.Column="0"
+                                            WidthRequest="8"
+                                            HeightRequest="8"
+                                            CornerRadius="4"
+                                            VerticalOptions="Center">
+                                            <BoxView.Triggers>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Low">
+                                                    <Setter Property="Color" Value="#4CAF50" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Medium">
+                                                    <Setter Property="Color" Value="#2196F3" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="High">
+                                                    <Setter Property="Color" Value="#FF9800" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Urgent">
+                                                    <Setter Property="Color" Value="#F44336" />
+                                                </DataTrigger>
+                                            </BoxView.Triggers>
+                                        </BoxView>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                            <Label
+                                                Text="{Binding Title}"
+                                                FontSize="Body"
+                                                LineBreakMode="TailTruncation"
+                                                MaxLines="1" />
+                                            <Label
+                                                Text="{Binding AssigneeName, TargetNullValue='Unassigned'}"
+                                                FontSize="Caption"
+                                                TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                                        </VerticalStackLayout>
+                                        <Label
+                                            Grid.Column="2"
+                                            Text="{Binding Priority}"
+                                            FontSize="Caption"
+                                            TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Done section -->
+                <VerticalStackLayout Spacing="8">
+                    <Label
+                        Text="Done"
+                        FontSize="Subtitle"
+                        FontAttributes="Bold" />
+                    <CollectionView AutomationId="DoneTasks" ItemsSource="{Binding DoneTasks}">
+                        <CollectionView.EmptyView>
+                            <Label
+                                Text="No tasks"
+                                FontSize="Caption"
+                                TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                Margin="0,4" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    StrokeShape="RoundRectangle 8"
+                                    BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                                    Padding="12"
+                                    Margin="0,4">
+                                    <Border.Stroke>
+                                        <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                                    </Border.Stroke>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTaskTapped" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <BoxView
+                                            Grid.Column="0"
+                                            WidthRequest="8"
+                                            HeightRequest="8"
+                                            CornerRadius="4"
+                                            VerticalOptions="Center">
+                                            <BoxView.Triggers>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Low">
+                                                    <Setter Property="Color" Value="#4CAF50" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Medium">
+                                                    <Setter Property="Color" Value="#2196F3" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="High">
+                                                    <Setter Property="Color" Value="#FF9800" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="BoxView" Binding="{Binding Priority}" Value="Urgent">
+                                                    <Setter Property="Color" Value="#F44336" />
+                                                </DataTrigger>
+                                            </BoxView.Triggers>
+                                        </BoxView>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                            <Label
+                                                Text="{Binding Title}"
+                                                FontSize="Body"
+                                                TextDecorations="Strikethrough"
+                                                LineBreakMode="TailTruncation"
+                                                MaxLines="1" />
+                                            <Label
+                                                Text="{Binding AssigneeName, TargetNullValue='Unassigned'}"
+                                                FontSize="Caption"
+                                                TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                                        </VerticalStackLayout>
+                                        <Label
+                                            Grid.Column="2"
+                                            Text="{Binding Priority}"
+                                            FontSize="Caption"
+                                            TextColor="{AppThemeBinding Light=#999999, Dark=#666666}"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Load more button -->
+                <Button
+                    AutomationId="LoadMoreButton"
+                    Text="Load More"
+                    Command="{Binding TasksQuery.FetchNextPageCommand}"
+                    IsVisible="{Binding TasksQuery.HasNextPage}"
+                    HorizontalOptions="Center"
+                    Margin="0,8" />
+
+                <ActivityIndicator
+                    IsRunning="{Binding TasksQuery.IsFetchingNextPage}"
+                    IsVisible="{Binding TasksQuery.IsFetchingNextPage}"
+                    HorizontalOptions="Center" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Add task section -->
+        <Border
+            Grid.Row="2"
+            StrokeShape="RoundRectangle 0"
+            BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#1A1A1A}"
+            Padding="16,12">
+            <Border.Stroke>
+                <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#333333}" />
+            </Border.Stroke>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Entry
+                    Grid.Column="0"
+                    AutomationId="NewTaskTitle"
+                    Text="{Binding NewTaskTitle}"
+                    Placeholder="New task title"
+                    ReturnCommand="{Binding AddTaskCommand}" />
+                <Button
+                    Grid.Column="1"
+                    AutomationId="AddTaskButton"
+                    Text="Add"
+                    Command="{Binding AddTaskCommand}"
+                    IsEnabled="{Binding AddTaskMutation.IsPending, Converter={StaticResource InvertedBoolConverter}}" />
+            </Grid>
+        </Border>
+
+        <!-- Mutation feedback -->
+        <VerticalStackLayout Grid.Row="3" Spacing="4" Margin="16,4">
+            <ActivityIndicator
+                IsRunning="{Binding AddTaskMutation.IsPending}"
+                IsVisible="{Binding AddTaskMutation.IsPending}"
+                HeightRequest="20"
+                WidthRequest="20"
+                HorizontalOptions="Center" />
+            <Label
+                Text="{Binding AddTaskMutation.Error.Message}"
+                TextColor="Red"
+                FontSize="Caption"
+                IsVisible="{Binding AddTaskMutation.IsError}"
+                HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>

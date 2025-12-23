@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RabstackQuery.Example.Maui.Pages.ProjectListPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:RabstackQuery.Example.Maui.Converters"
+    Title="Projects">
+
+    <!-- Compiled bindings (x:DataType) omitted: ProjectsQuery is a generic
+         QueryCollectionViewModel whose property paths trip up the MAUI
+         SourceGen XAML inflator. Runtime bindings are reliable here. -->
+
+    <ContentPage.Resources>
+        <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Background fetch indicator (visible when refreshing but not initial load) -->
+        <ActivityIndicator
+            Grid.Row="0"
+            IsRunning="{Binding ProjectsQuery.IsFetching}"
+            IsVisible="{Binding ProjectsQuery.IsFetching}"
+            HeightRequest="20"
+            WidthRequest="20"
+            HorizontalOptions="End"
+            Margin="0,4,16,0" />
+
+        <!-- Initial loading indicator -->
+        <ActivityIndicator
+            Grid.Row="1"
+            IsRunning="{Binding ProjectsQuery.IsLoading}"
+            IsVisible="{Binding ProjectsQuery.IsLoading}"
+            HorizontalOptions="Center"
+            VerticalOptions="Center" />
+
+        <!-- Error state -->
+        <VerticalStackLayout
+            Grid.Row="1"
+            IsVisible="{Binding ProjectsQuery.IsError}"
+            Spacing="8"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Label
+                Text="{Binding ProjectsQuery.Error.Message}"
+                TextColor="Red"
+                FontSize="Body"
+                HorizontalTextAlignment="Center" />
+            <Button
+                Text="Retry"
+                Command="{Binding ProjectsQuery.RefetchCommand}"
+                HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+        <!-- Project list with pull-to-refresh -->
+        <RefreshView
+            Grid.Row="1"
+            IsRefreshing="{Binding ProjectsQuery.IsFetching}"
+            Command="{Binding ProjectsQuery.RefetchCommand}"
+            IsVisible="{Binding ProjectsQuery.IsSuccess}">
+            <CollectionView AutomationId="ProjectList" ItemsSource="{Binding ProjectsQuery.Items}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border
+                            StrokeShape="RoundRectangle 12"
+                            BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                            Padding="16"
+                            Margin="16,8">
+                            <Border.Stroke>
+                                <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                            </Border.Stroke>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Tapped="OnProjectTapped"
+                                    CommandParameter="{Binding Id}" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="6,*" ColumnSpacing="12">
+
+                                <!-- Color accent bar -->
+                                <BoxView
+                                    Grid.Column="0"
+                                    Color="{Binding Color}"
+                                    CornerRadius="3"
+                                    WidthRequest="6"
+                                    VerticalOptions="Fill" />
+
+                                <VerticalStackLayout Grid.Column="1" Spacing="6">
+                                    <Label
+                                        Text="{Binding Name}"
+                                        FontSize="Subtitle"
+                                        FontAttributes="Bold"
+                                        LineBreakMode="TailTruncation"
+                                        MaxLines="1" />
+                                    <Label
+                                        Text="{Binding Description}"
+                                        FontSize="Caption"
+                                        TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}"
+                                        LineBreakMode="TailTruncation"
+                                        MaxLines="2" />
+
+                                    <!-- Progress bar -->
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <ProgressBar
+                                            Grid.Column="0"
+                                            Progress="{Binding CompletedTaskCount}"
+                                            VerticalOptions="Center" />
+                                        <Label
+                                            Grid.Column="1"
+                                            FontSize="Caption"
+                                            TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}">
+                                            <Label.Text>
+                                                <MultiBinding StringFormat="{}{0}/{1}">
+                                                    <Binding Path="CompletedTaskCount" />
+                                                    <Binding Path="TaskCount" />
+                                                </MultiBinding>
+                                            </Label.Text>
+                                        </Label>
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+
+        <!-- Create project section -->
+        <Border
+            Grid.Row="2"
+            StrokeShape="RoundRectangle 0"
+            BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#1A1A1A}"
+            Padding="16">
+            <Border.Stroke>
+                <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#333333}" />
+            </Border.Stroke>
+            <VerticalStackLayout Spacing="8">
+                <Label
+                    Text="New Project"
+                    FontSize="Caption"
+                    FontAttributes="Bold"
+                    TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}" />
+                <Entry
+                    AutomationId="NewProjectName"
+                    Text="{Binding NewProjectName}"
+                    Placeholder="Project name" />
+                <Entry
+                    AutomationId="NewProjectDescription"
+                    Text="{Binding NewProjectDescription}"
+                    Placeholder="Description" />
+                <Button
+                    AutomationId="CreateProjectButton"
+                    Text="Create Project"
+                    Command="{Binding CreateProjectCommand}"
+                    IsEnabled="{Binding CreateProjectMutation.IsPending, Converter={StaticResource InvertedBoolConverter}}" />
+                <ActivityIndicator
+                    IsRunning="{Binding CreateProjectMutation.IsPending}"
+                    IsVisible="{Binding CreateProjectMutation.IsPending}"
+                    HeightRequest="20"
+                    WidthRequest="20"
+                    HorizontalOptions="Center" />
+                <Label
+                    Text="{Binding CreateProjectMutation.Error.Message}"
+                    TextColor="Red"
+                    FontSize="Caption"
+                    IsVisible="{Binding CreateProjectMutation.IsError}"
+                    HorizontalOptions="Center" />
+            </VerticalStackLayout>
+        </Border>
+
+    </Grid>
+
+</ContentPage>

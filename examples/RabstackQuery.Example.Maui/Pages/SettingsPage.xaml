@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RabstackQuery.Example.Maui.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Settings">
+
+    <!-- Compiled bindings (x:DataType) omitted for consistency with other pages
+         in this app. The ViewModel uses CommunityToolkit.Mvvm source-generated
+         properties which work fine with runtime bindings. -->
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <!-- Error Rate -->
+            <VerticalStackLayout Spacing="8">
+                <Label
+                    Text="Mock API Settings"
+                    FontSize="Subtitle"
+                    FontAttributes="Bold" />
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label
+                        Text="Error Rate"
+                        FontSize="Body"
+                        VerticalOptions="Center" />
+                    <Label
+                        Grid.Column="1"
+                        AutomationId="ErrorRateValue"
+                        Text="{Binding ErrorRate, StringFormat='{0:P0}'}"
+                        FontSize="Body"
+                        VerticalOptions="Center" />
+                </Grid>
+                <Slider
+                    AutomationId="ErrorRateSlider"
+                    Minimum="0"
+                    Maximum="0.5"
+                    Value="{Binding ErrorRate}"
+                    MinimumTrackColor="{AppThemeBinding Light=#4F46E5, Dark=#818CF8}"
+                    MaximumTrackColor="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+            </VerticalStackLayout>
+
+            <!-- Network Delay -->
+            <VerticalStackLayout Spacing="8">
+                <Label
+                    Text="Network Delay"
+                    FontSize="Body"
+                    FontAttributes="Bold" />
+
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <Label
+                        Grid.Column="0"
+                        Text="Min"
+                        FontSize="Caption"
+                        VerticalOptions="Center" />
+                    <Slider
+                        Grid.Column="1"
+                        AutomationId="MinDelaySlider"
+                        Minimum="0"
+                        Maximum="2000"
+                        Value="{Binding MinDelayMs}"
+                        MinimumTrackColor="{AppThemeBinding Light=#4F46E5, Dark=#818CF8}"
+                        MaximumTrackColor="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                    <Label
+                        Grid.Column="2"
+                        Text="{Binding MinDelayMs, StringFormat='{0}ms'}"
+                        FontSize="Caption"
+                        VerticalOptions="Center"
+                        WidthRequest="60" />
+                </Grid>
+
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <Label
+                        Grid.Column="0"
+                        Text="Max"
+                        FontSize="Caption"
+                        VerticalOptions="Center" />
+                    <Slider
+                        Grid.Column="1"
+                        AutomationId="MaxDelaySlider"
+                        Minimum="0"
+                        Maximum="5000"
+                        Value="{Binding MaxDelayMs}"
+                        MinimumTrackColor="{AppThemeBinding Light=#4F46E5, Dark=#818CF8}"
+                        MaximumTrackColor="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                    <Label
+                        Grid.Column="2"
+                        Text="{Binding MaxDelayMs, StringFormat='{0}ms'}"
+                        FontSize="Caption"
+                        VerticalOptions="Center"
+                        WidthRequest="60" />
+                </Grid>
+            </VerticalStackLayout>
+
+            <!-- Toggles -->
+            <VerticalStackLayout Spacing="12">
+                <Label
+                    Text="Simulation"
+                    FontSize="Subtitle"
+                    FontAttributes="Bold" />
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label
+                        Text="Simulate Offline"
+                        FontSize="Body"
+                        VerticalOptions="Center" />
+                    <Switch
+                        Grid.Column="1"
+                        AutomationId="OfflineToggle"
+                        IsToggled="{Binding IsOffline}"
+                        VerticalOptions="Center" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label
+                        Text="App Focused"
+                        FontSize="Body"
+                        VerticalOptions="Center" />
+                    <Switch
+                        Grid.Column="1"
+                        AutomationId="FocusedToggle"
+                        IsToggled="{Binding IsFocused}"
+                        VerticalOptions="Center" />
+                </Grid>
+            </VerticalStackLayout>
+
+            <!-- Cache Stats -->
+            <VerticalStackLayout Spacing="12">
+                <Label
+                    Text="Cache Stats"
+                    FontSize="Subtitle"
+                    FontAttributes="Bold" />
+
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto" ColumnSpacing="12">
+                    <Border
+                        Grid.Column="0"
+                        StrokeShape="RoundRectangle 12"
+                        BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                        Padding="16">
+                        <Border.Stroke>
+                            <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                        </Border.Stroke>
+                        <VerticalStackLayout Spacing="4">
+                            <Label
+                                AutomationId="QueryCount"
+                                Text="{Binding QueryCount}"
+                                FontSize="Title"
+                                FontAttributes="Bold"
+                                HorizontalOptions="Center" />
+                            <Label
+                                Text="Queries"
+                                FontSize="Caption"
+                                TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}"
+                                HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border
+                        Grid.Column="1"
+                        StrokeShape="RoundRectangle 12"
+                        BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#1E1E1E}"
+                        Padding="16">
+                        <Border.Stroke>
+                            <SolidColorBrush Color="{AppThemeBinding Light=#E0E0E0, Dark=#444444}" />
+                        </Border.Stroke>
+                        <VerticalStackLayout Spacing="4">
+                            <Label
+                                AutomationId="MutationCount"
+                                Text="{Binding MutationCount}"
+                                FontSize="Title"
+                                FontAttributes="Bold"
+                                HorizontalOptions="Center" />
+                            <Label
+                                Text="Mutations"
+                                FontSize="Caption"
+                                TextColor="{AppThemeBinding Light=#666666, Dark=#AAAAAA}"
+                                HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <Button
+                    AutomationId="RefreshStatsButton"
+                    Text="Refresh Stats"
+                    Command="{Binding RefreshStatsCommand}" />
+            </VerticalStackLayout>
+
+            <!-- Reset -->
+            <Button
+                AutomationId="ResetDataButton"
+                Text="Reset All Data"
+                Command="{Binding ResetAllDataCommand}"
+                BackgroundColor="{AppThemeBinding Light=#DC2626, Dark=#EF4444}"
+                TextColor="White" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

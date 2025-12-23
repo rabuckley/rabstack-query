@@ -1,0 +1,25 @@
+.rq-legend {
+    display: flex;
+    gap: 12px;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--rq-border);
+    flex-shrink: 0;
+}
+
+.rq-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rq-legend__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.rq-legend__label {
+    font-size: 11px;
+    color: var(--rq-text-secondary);
+}
