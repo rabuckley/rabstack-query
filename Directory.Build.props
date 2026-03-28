@@ -20,5 +20,10 @@
         <RepositoryUrl>https://github.com/rabuckley/rabstack-query</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageTags>blazor;maui;query;cache;tanstack;state-management</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
+
+    <ItemGroup Condition="$(MSBuildProjectFullPath.Contains('src'))">
+        <None Include="README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 </Project>
