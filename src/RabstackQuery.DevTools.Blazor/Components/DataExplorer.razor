@@ -1,0 +1,51 @@
+@* Recursive JSON tree viewer for inspecting query/mutation data.
+   Accepts a serialized string (root level) or a pre-parsed JsonElement (recursive children). *@
+
+@if (_element is not null)
+{
+    @if (_isExpandable)
+    {
+        <div class="explorer-node">
+            <div class="explorer-toggle" role="button" tabindex="0"
+                 @onclick="Toggle" @onclick:stopPropagation="true"
+                 @onkeydown="OnKeyDown" @onkeydown:stopPropagation="true">
+                <span class="explorer-arrow @(_expanded ? "explorer-arrow--expanded" : "")">&#x25B6;</span>
+                <span class="explorer-key">@Label</span>
+                <span class="explorer-type">@_typeInfo</span>
+            </div>
+            @if (_expanded)
+            {
+                <div class="explorer-children">
+                    @foreach (var (key, value) in _children)
+                    {
+                        <DataExplorer @key="key" Label="@key" Element="@value" DefaultExpanded="false" Depth="@(Depth + 1)" />
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="explorer-leaf">
+            <span class="explorer-key">@Label</span>
+            <span class="explorer-colon">: </span>
+            <span class="explorer-value @_valueCssClass">@_displayValue</span>
+        </div>
+    }
+}
+else if (Data is { Length: > 0 })
+{
+    <div class="explorer-leaf">
+        <span class="explorer-key">@Label</span>
+        <span class="explorer-colon">: </span>
+        <pre class="explorer-pre">@Data</pre>
+    </div>
+}
+else
+{
+    <div class="explorer-leaf">
+        <span class="explorer-key">@Label</span>
+        <span class="explorer-colon">: </span>
+        <span class="explorer-value explorer-value--null">undefined</span>
+    </div>
+}

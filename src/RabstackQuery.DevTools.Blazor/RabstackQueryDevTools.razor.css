@@ -1,73 +1,132 @@
-.rq-devtools-root {
+/* ── Default (dark) theme ──────────────────────────────── */
+
+.rq-devtools {
     --rq-bg-primary: #1e1e2e;
     --rq-bg-secondary: #2a2a3e;
+    --rq-bg-tertiary: #363652;
     --rq-bg-hover: #333350;
-    --rq-text-primary: #e0e0e0;
-    --rq-text-secondary: #9CA3AF;
-    --rq-border: #444466;
+    --rq-text-primary: #e4e4e7;
+    --rq-text-secondary: #a1a1aa;
+    --rq-text-muted: #71717a;
+    --rq-border: #3f3f46;
     --rq-fresh: #22C55E;
     --rq-fetching: #3B82F6;
     --rq-paused: #A855F7;
     --rq-stale: #EAB308;
     --rq-inactive: #6B7280;
     --rq-error: #EF4444;
-    --rq-font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Menlo', monospace;
-    --rq-panel-height: 40vh;
+    --rq-font-mono: 'Menlo', 'Monaco', 'Cascadia Code', 'Fira Code', monospace;
+    --rq-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --rq-panel-height: 500px;
+    --rq-explorer-string: #22d3ee;
+    --rq-explorer-number: #a78bfa;
+    --rq-explorer-boolean: #fb923c;
+    --rq-shadow: rgba(0, 0, 0, 0.3);
 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--rq-font-sans);
     font-size: 13px;
     color: var(--rq-text-primary);
+    line-height: 1.4;
 }
+
+/* ── Light theme ──────────────────────────────────────── */
+
+.rq-devtools[data-theme="light"] {
+    --rq-bg-primary: #f9fafb;
+    --rq-bg-secondary: #f2f4f7;
+    --rq-bg-tertiary: #eaecf0;
+    --rq-bg-hover: #eaecf0;
+    --rq-text-primary: #344054;
+    --rq-text-secondary: #475467;
+    --rq-text-muted: #667085;
+    --rq-border: #d0d5dd;
+    --rq-explorer-string: #0e7490;
+    --rq-explorer-number: #6938EF;
+    --rq-explorer-boolean: #c2410c;
+    --rq-shadow: rgba(0, 0, 0, 0.1);
+}
+
+/* ── System theme: follow OS preference ───────────────── */
+
+@media (prefers-color-scheme: light) {
+    .rq-devtools[data-theme="system"] {
+        --rq-bg-primary: #f9fafb;
+        --rq-bg-secondary: #f2f4f7;
+        --rq-bg-tertiary: #eaecf0;
+        --rq-bg-hover: #eaecf0;
+        --rq-text-primary: #344054;
+        --rq-text-secondary: #475467;
+        --rq-text-muted: #667085;
+        --rq-border: #d0d5dd;
+        --rq-explorer-string: #0e7490;
+        --rq-explorer-number: #6938EF;
+        --rq-explorer-boolean: #c2410c;
+        --rq-shadow: rgba(0, 0, 0, 0.1);
+    }
+}
+
+/* ── Floating Action Button ───────────────────────────── */
 
 .rq-fab {
     position: fixed;
     bottom: 16px;
     right: 16px;
-    z-index: 99999;
-    width: 48px;
-    height: 48px;
+    z-index: 100000;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background: rgba(51, 51, 51, 0.85);
-    border: none;
+    background: rgba(30, 30, 46, 0.92);
+    border: 1px solid var(--rq-border);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    transition: transform 0.15s ease, background 0.15s ease;
+    box-shadow:
+        0 0 12px rgba(59, 130, 246, 0.15),
+        0 4px 12px var(--rq-shadow);
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+    padding: 0;
 }
 
 .rq-fab:hover {
-    transform: scale(1.08);
-    background: rgba(80, 80, 80, 0.9);
+    transform: scale(1.1);
+    box-shadow:
+        0 0 20px rgba(59, 130, 246, 0.25),
+        0 4px 16px var(--rq-shadow);
 }
 
-.rq-fab--open {
-    background: rgba(80, 80, 80, 0.9);
+.rq-fab--hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(16px);
 }
 
-.rq-fab__label {
+.rq-fab__logo {
     color: white;
-    font-weight: 700;
-    font-size: 14px;
+    font-weight: 800;
+    font-size: 13px;
     user-select: none;
+    letter-spacing: -0.5px;
+    font-family: var(--rq-font-sans);
 }
 
 .rq-fab__badge {
     position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 20px;
-    height: 20px;
-    border-radius: 10px;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
     background: var(--rq-fetching);
     color: white;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0 4px;
+    box-shadow: 0 1px 4px var(--rq-shadow);
+    font-family: var(--rq-font-sans);
 }
 
 .rq-fab__badge--error {

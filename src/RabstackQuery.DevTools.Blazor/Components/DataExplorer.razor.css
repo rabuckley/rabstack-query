@@ -1,0 +1,107 @@
+.explorer-node {
+    font-family: var(--rq-font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.explorer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--rq-text-primary, #e4e4e7);
+    cursor: pointer;
+    padding: 1px 4px;
+    font-family: inherit;
+    font-size: inherit;
+    width: 100%;
+    text-align: left;
+    border-radius: 3px;
+    outline: none;
+}
+
+.explorer-toggle:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.explorer-toggle:focus-visible {
+    outline: 1px solid var(--rq-fetching, #3B82F6);
+    outline-offset: -1px;
+}
+
+.explorer-arrow {
+    display: inline-block;
+    transition: transform 0.15s ease;
+    font-size: 8px;
+    width: 14px;
+    text-align: center;
+    color: var(--rq-text-muted, #71717a);
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.explorer-arrow--expanded {
+    transform: rotate(90deg);
+}
+
+.explorer-key {
+    color: var(--rq-text-secondary, #a1a1aa);
+}
+
+.explorer-type {
+    color: var(--rq-text-muted, #71717a);
+    font-style: italic;
+    margin-left: 4px;
+}
+
+.explorer-children {
+    padding-left: 16px;
+    border-left: 2px solid var(--rq-border, #3f3f46);
+    margin-left: 6px;
+}
+
+.explorer-leaf {
+    display: flex;
+    align-items: baseline;
+    padding: 1px 4px 1px 24px;
+    font-family: var(--rq-font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.explorer-colon {
+    color: var(--rq-text-muted, #71717a);
+    margin: 0 2px;
+    flex-shrink: 0;
+}
+
+.explorer-value {
+    word-break: break-all;
+}
+
+.explorer-value--string {
+    color: var(--rq-explorer-string, #22d3ee);
+}
+
+.explorer-value--number {
+    color: var(--rq-explorer-number, #a78bfa);
+}
+
+.explorer-value--boolean {
+    color: var(--rq-explorer-boolean, #fb923c);
+}
+
+.explorer-value--null {
+    color: var(--rq-text-muted, #71717a);
+    font-style: italic;
+}
+
+.explorer-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--rq-text-primary, #e4e4e7);
+    font-family: inherit;
+    font-size: inherit;
+}

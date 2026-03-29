@@ -1,3 +1,5 @@
+@* Mutation list rows — status icon on left, mutation label in monospace (matches TanStack layout) *@
+
 @if (Items.Count == 0)
 {
     <div class="rq-empty">No mutations in the cache</div>
@@ -6,24 +8,11 @@ else
 {
     @foreach (var item in Items)
     {
-        <div class="rq-row @(item.MutationId == SelectedId ? "rq-row--selected" : "")"
-             @onclick="() => OnSelect.InvokeAsync(item)">
-            <div class="rq-row__bar" style="background: @item.StatusColorHex;"></div>
-            <div class="rq-row__content">
-                <div class="rq-row__key">Mutation #@item.MutationId</div>
-                <div class="rq-row__meta">
-                    <span style="color: @item.StatusColorHex;">@item.StatusLabel</span>
-                    @if (item.MutationKeyDisplay is not null)
-                    {
-                        <span class="rq-row__hash">@item.MutationKeyDisplay</span>
-                    }
-                </div>
-            </div>
-            @if (item.HasObservers)
-            {
-                <div class="rq-row__observers">observed</div>
-            }
-        </div>
+        <button class="rq-row @(item.MutationId == SelectedId ? "rq-row--selected" : "")"
+                @onclick="() => OnSelect.InvokeAsync(item)">
+            <span class="rq-row__icon" style="color: @item.StatusColorHex;">@StatusIcon(item)</span>
+            <code class="rq-row__hash">@MutationLabel(item)</code>
+        </button>
     }
 }
 
@@ -31,4 +20,25 @@ else
     [Parameter] public required List<MutationListItem> Items { get; set; }
     [Parameter] public int? SelectedId { get; set; }
     [Parameter] public EventCallback<MutationListItem> OnSelect { get; set; }
+
+    private static string StatusIcon(MutationListItem item) => item switch
+    {
+        { IsPaused: true } => "\u23F8",   // ⏸
+        { Status: MutationStatus.Success } => "\u2713", // ✓
+        { Status: MutationStatus.Error } => "\u2715",   // ✕
+        { Status: MutationStatus.Pending } => "\u25CC",  // ◌
+        _ => "\u25CB",                                    // ○
+    };
+
+    private static string MutationLabel(MutationListItem item)
+    {
+        var timestamp = item.SubmittedAt > 0
+            ? DateTimeOffset.FromUnixTimeMilliseconds(item.SubmittedAt).ToLocalTime().ToString("T")
+            : "";
+
+        if (item.MutationKeyDisplay is not null)
+            return timestamp is { Length: > 0 } ? $"{item.MutationKeyDisplay} - {timestamp}" : item.MutationKeyDisplay;
+
+        return timestamp is { Length: > 0 } ? timestamp : $"Mutation #{item.MutationId}";
+    }
 }

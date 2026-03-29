@@ -1,14 +1,19 @@
-@* Root component: FAB toggle + panel container *@
+@* Root DevTools component: floating action button + panel.
+   FAB hides when panel is open, matching TanStack behavior.
+   Theme preference is applied via data-theme attribute and resolved in CSS. *@
 
-<div class="rq-devtools-root">
+<div class="rq-devtools" data-theme="@_theme">
     @if (_isOpen)
     {
-        <DevToolsPanel Observer="_observer!" QueryClient="QueryClient" OnClose="ClosePanel" />
+        <DevToolsPanel Observer="_observer!" QueryClient="QueryClient" OnClose="ClosePanel"
+                       Theme="@_theme" OnThemeChanged="SetTheme" />
     }
 
-    <button class="rq-fab @(_isOpen ? "rq-fab--open" : "")" @onclick="TogglePanel">
-        <span class="rq-fab__label">RQ</span>
-        @if (_observer is not null)
+    <button class="rq-fab @(_isOpen ? "rq-fab--hidden" : "")"
+            @onclick="TogglePanel"
+            title="Open RabStack Query DevTools">
+        <span class="rq-fab__logo">RQ</span>
+        @if (_observer is not null && _observer.QueryCount > 0)
         {
             <span class="rq-fab__badge @(_errorCount > 0 ? "rq-fab__badge--error" : "")">
                 @(_observer.QueryCount > 99 ? "99+" : _observer.QueryCount)

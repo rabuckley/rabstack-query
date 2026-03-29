@@ -1,66 +1,80 @@
 .rq-row {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    gap: 10px;
+    gap: 8px;
+    padding: 6px 12px;
     cursor: pointer;
-    border-bottom: 1px solid var(--rq-border);
+    border-bottom: 1px solid var(--rq-border, #3f3f46);
     transition: background 0.1s;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    width: 100%;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    outline: none;
 }
 
 .rq-row:hover {
-    background: var(--rq-bg-hover);
+    background: var(--rq-bg-hover, #333350);
+}
+
+.rq-row:focus-visible {
+    outline: 1px solid var(--rq-fetching, #3B82F6);
+    outline-offset: -1px;
 }
 
 .rq-row--selected {
-    background: var(--rq-bg-secondary);
+    background: var(--rq-bg-secondary, #2a2a3e);
 }
 
-.rq-row__bar {
-    width: 4px;
-    align-self: stretch;
-    border-radius: 2px;
+.rq-row__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 4px;
+    border-radius: 4px;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
     flex-shrink: 0;
+    font-family: var(--rq-font-mono);
 }
 
-.rq-row__content {
+.rq-row__hash {
     flex: 1;
     min-width: 0;
-}
-
-.rq-row__key {
     font-family: var(--rq-font-mono);
-    font-weight: 600;
-    font-size: 13px;
+    font-size: 12px;
+    color: var(--rq-text-primary, #e4e4e7);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.rq-row__meta {
-    display: flex;
-    gap: 8px;
-    font-size: 11px;
-    margin-top: 2px;
-}
-
-.rq-row__hash {
-    color: var(--rq-text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.rq-row__observers {
-    color: var(--rq-text-secondary);
-    font-size: 11px;
+.rq-row__tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
     flex-shrink: 0;
+    line-height: 16px;
+}
+
+.rq-row__tag--disabled {
+    background: var(--rq-inactive, #6B7280);
+    color: white;
 }
 
 .rq-empty {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    color: var(--rq-text-secondary);
+    padding: 24px;
+    color: var(--rq-text-muted, #71717a);
     font-size: 13px;
 }

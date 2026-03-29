@@ -1,76 +1,75 @@
-@* Detail panel for a single query with action buttons *@
+@* Query detail panel — sticky section headers, status badge, actions with colored dots,
+   and DataExplorer tree view (matches TanStack Query DevTools layout) *@
 
 <div class="rq-detail">
-    <div class="rq-detail__header">
-        <span class="rq-detail__title">Query Detail</span>
-        <button class="rq-detail__close" @onclick="OnClose">✕</button>
-    </div>
-
     <div class="rq-detail__body">
-        @* Identity *@
-        <div class="rq-section">
-            <div class="rq-section__title">Query Key</div>
-            <div class="rq-section__value rq-mono">@Item.QueryKeyDisplay</div>
-        </div>
+        @* ── Query Details ─────────────────────────────── *@
+        <div class="rq-detail__section">
+            <div class="rq-detail__section-header">Query Details</div>
+            <div class="rq-detail__section-body">
+                <pre class="rq-detail__key">@Item.QueryKeyDisplay</pre>
 
-        <div class="rq-section">
-            <div class="rq-section__title">Query Hash</div>
-            <div class="rq-section__value rq-mono">@Item.QueryHash</div>
-        </div>
+                <div class="rq-detail__meta">
+                    <span class="rq-detail__status-badge"
+                          style="border-color: @Item.StatusColorHex; color: @Item.StatusColorHex;">
+                        @Item.StatusLabel
+                    </span>
+                </div>
 
-        @* Status grid *@
-        <div class="rq-card">
-            <div class="rq-grid">
-                <div class="rq-field">
-                    <span class="rq-field__label">Status</span>
-                    <span class="rq-field__value" style="color: @Item.StatusColorHex; font-weight: 600;">@Item.StatusLabel</span>
+                <div class="rq-detail__info">
+                    <span class="rq-detail__info-label">Observers:</span>
+                    <span>@Item.ObserverCount</span>
                 </div>
-                <div class="rq-field">
-                    <span class="rq-field__label">Fetch Status</span>
-                    <span class="rq-field__value">@Item.FetchStatus</span>
-                </div>
-                <div class="rq-field">
-                    <span class="rq-field__label">Observers</span>
-                    <span class="rq-field__value">@Item.ObserverCount</span>
-                </div>
-                <div class="rq-field">
-                    <span class="rq-field__label">Last Updated</span>
-                    <span class="rq-field__value">@FormatRelativeTime(Item.DataUpdatedAt)</span>
-                </div>
-                <div class="rq-field">
-                    <span class="rq-field__label">Invalidated</span>
-                    <span class="rq-field__value">@(Item.IsInvalidated ? "Yes" : "No")</span>
-                </div>
-                <div class="rq-field">
-                    <span class="rq-field__label">Failure Count</span>
-                    <span class="rq-field__value">@Item.FetchFailureCount</span>
+
+                <div class="rq-detail__info">
+                    <span class="rq-detail__info-label">Last Updated:</span>
+                    <span>@FormatRelativeTime(Item.DataUpdatedAt)</span>
                 </div>
             </div>
         </div>
 
-        @* Data *@
-        <div class="rq-section">
-            <div class="rq-section__title">Data</div>
-            <div class="rq-section__value rq-mono rq-section__value--scrollable">@FormatDataDisplay(Item.DataDisplay)</div>
+        @* ── Actions ───────────────────────────────────── *@
+        <div class="rq-detail__section">
+            <div class="rq-detail__section-header">Actions</div>
+            <div class="rq-detail__section-body">
+                <div class="rq-detail__actions">
+                    <button class="rq-action" disabled="@_isRefetching" @onclick="HandleRefetch">
+                        <span class="rq-action__dot" style="background: @DevToolsColorValues.Fetching;"></span>
+                        @(_isRefetching ? "Refetching\u2026" : "Refetch")
+                    </button>
+                    <button class="rq-action" @onclick="HandleInvalidate">
+                        <span class="rq-action__dot" style="background: @DevToolsColorValues.Stale;"></span>
+                        Invalidate
+                    </button>
+                    <button class="rq-action" @onclick="HandleReset">
+                        <span class="rq-action__dot" style="background: @DevToolsColorValues.Inactive;"></span>
+                        Reset
+                    </button>
+                    <button class="rq-action rq-action--danger" @onclick="HandleRemove">
+                        <span class="rq-action__dot" style="background: @DevToolsColorValues.Error;"></span>
+                        Remove
+                    </button>
+                </div>
+            </div>
         </div>
 
-        @* Error *@
+        @* ── Data Explorer ─────────────────────────────── *@
+        <div class="rq-detail__section">
+            <div class="rq-detail__section-header">Data Explorer</div>
+            <div class="rq-detail__section-body">
+                <DataExplorer Data="@Item.DataDisplay" Label="Data" DefaultExpanded="true" />
+            </div>
+        </div>
+
+        @* ── Error ─────────────────────────────────────── *@
         @if (Item.ErrorDisplay is not null)
         {
-            <div class="rq-section rq-section--error">
-                <div class="rq-section__title">Error</div>
-                <div class="rq-section__value rq-mono rq-section__value--scrollable">@Item.ErrorDisplay</div>
+            <div class="rq-detail__section rq-detail__section--error">
+                <div class="rq-detail__section-header">Error</div>
+                <div class="rq-detail__section-body">
+                    <pre class="rq-detail__error">@Item.ErrorDisplay</pre>
+                </div>
             </div>
         }
-
-        @* Actions *@
-        <div class="rq-actions">
-            <button class="rq-action-btn" disabled="@_isRefetching" @onclick="HandleRefetch">
-                @(_isRefetching ? "Refetching..." : "Refetch")
-            </button>
-            <button class="rq-action-btn" @onclick="HandleInvalidate">Invalidate</button>
-            <button class="rq-action-btn" @onclick="HandleReset">Reset</button>
-            <button class="rq-action-btn rq-action-btn--danger" @onclick="HandleRemove">Remove</button>
-        </div>
     </div>
 </div>

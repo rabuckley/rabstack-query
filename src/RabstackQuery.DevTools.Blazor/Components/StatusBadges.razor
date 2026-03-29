@@ -1,0 +1,22 @@
+@* Status count badges — colored pills with dot, label, and count (matches TanStack header badges) *@
+
+<div class="status-badges">
+    @foreach (var badge in Items)
+    {
+        <span class="status-badge" title="@badge.Label: @badge.Count">
+            <span class="status-badge__dot" style="background-color: @badge.Color;"></span>
+            <span class="status-badge__label">@badge.Label</span>
+            <span class="status-badge__count @(badge.Count > 0 ? "status-badge__count--active" : "")"
+                  style="@(badge.Count > 0 ? $"background-color: {badge.Color}20; color: {badge.Color};" : "")">
+                @badge.Count
+            </span>
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter] public required IReadOnlyList<StatusBadgeItem> Items { get; set; }
+
+    /// <summary>A single status badge with label, color, and count.</summary>
+    public record StatusBadgeItem(string Label, string Color, int Count);
+}

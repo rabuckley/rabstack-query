@@ -1,3 +1,5 @@
+@* Query list rows — colored observer count badge on left, query key in monospace (matches TanStack layout) *@
+
 @if (Items.Count == 0)
 {
     <div class="rq-empty">No queries in the cache</div>
@@ -6,18 +8,17 @@ else
 {
     @foreach (var item in Items)
     {
-        <div class="rq-row @(item.QueryHash == SelectedHash ? "rq-row--selected" : "")"
-             @onclick="() => OnSelect.InvokeAsync(item)">
-            <div class="rq-row__bar" style="background: @item.StatusColorHex;"></div>
-            <div class="rq-row__content">
-                <div class="rq-row__key">@item.QueryKeyDisplay</div>
-                <div class="rq-row__meta">
-                    <span style="color: @item.StatusColorHex;">@item.StatusLabel</span>
-                    <span class="rq-row__hash">@item.QueryHash</span>
-                </div>
-            </div>
-            <div class="rq-row__observers">@item.ObserverCount obs</div>
-        </div>
+        <button class="rq-row @(item.QueryHash == SelectedHash ? "rq-row--selected" : "")"
+                @onclick="() => OnSelect.InvokeAsync(item)">
+            <span class="rq-row__badge" style="background-color: @item.StatusColorHex;">
+                @item.ObserverCount
+            </span>
+            <code class="rq-row__hash">@item.QueryKeyDisplay</code>
+            @if (item.IsDisabled)
+            {
+                <span class="rq-row__tag rq-row__tag--disabled">disabled</span>
+            }
+        </button>
     }
 }
 

@@ -20,19 +20,15 @@ public partial class QueryDetail : ComponentBase
 
         _isRefetching = true;
         try { await query.Fetch(); }
-        catch { /* Query errors are expected and tracked in query state */ }
+        catch { /* Query errors are tracked in query state, not surfaced here */ }
         finally { _isRefetching = false; }
     }
 
-    private void HandleInvalidate()
-    {
+    private void HandleInvalidate() =>
         Observer.FindQueryByHash(Item.QueryHash)?.Invalidate();
-    }
 
-    private void HandleReset()
-    {
+    private void HandleReset() =>
         Observer.FindQueryByHash(Item.QueryHash)?.Reset();
-    }
 
     private async Task HandleRemove()
     {
@@ -57,15 +53,5 @@ public partial class QueryDetail : ComponentBase
             < 86400 => $"{(int)elapsed.TotalHours}h ago",
             _ => $"{(int)elapsed.TotalDays}d ago",
         };
-    }
-
-    private static string FormatDataDisplay(string display)
-    {
-        if (display.StartsWith("System.", StringComparison.Ordinal) || display.Contains('`'))
-        {
-            return display + "\n\n(configure DevToolsOptions.DataFormatter for formatted output)";
-        }
-
-        return display;
     }
 }

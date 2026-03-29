@@ -1,77 +1,158 @@
-@* Main panel: tabs, filter, list + inline detail *@
+@* Main panel — TanStack-style two-row header (brand + tabs + badges, then toolbar),
+   and a split body with list on left and detail on right. *@
 
 <div class="rq-panel">
-    <div class="rq-panel__header">
-        <div class="rq-panel__tabs">
-            <button class="rq-tab @(_selectedTab == 0 ? "rq-tab--active" : "")" @onclick="() => SelectTab(0)">
-                Queries
-            </button>
-            <span class="rq-tab__count">(@_filteredQueryCount)</span>
-            <button class="rq-tab @(_selectedTab == 1 ? "rq-tab--active" : "")" @onclick="() => SelectTab(1)">
-                Mutations
-            </button>
-            <span class="rq-tab__count">(@_filteredMutationCount)</span>
+    @* ── Header row 1: branding, tabs, status badges ────── *@
+    <div class="rq-header">
+        <div class="rq-header__left">
+            <span class="rq-brand">
+                <span class="rq-brand__name">RABSTACK</span>
+                <span class="rq-brand__product">Query</span>
+            </span>
+            <div class="rq-tabs">
+                <button class="rq-tab @(_selectedTab == 0 ? "rq-tab--active" : "")"
+                        @onclick="() => SelectTab(0)">Queries</button>
+                <button class="rq-tab @(_selectedTab == 1 ? "rq-tab--active" : "")"
+                        @onclick="() => SelectTab(1)">Mutations</button>
+            </div>
         </div>
-        <button class="rq-panel__close" @onclick="OnClose">✕</button>
+        <div class="rq-header__right">
+            <StatusBadges Items="@(_selectedTab == 0 ? _queryBadges : _mutationBadges)" />
+        </div>
     </div>
 
-    @if (_selectedTab == 0)
-    {
-        <div class="rq-panel__toolbar">
-            <input class="rq-search" type="text" placeholder="Filter queries..."
-                   @bind="_searchText" @bind:event="oninput" @bind:after="ApplyFilters" />
-            <select class="rq-sort" @bind="_sortOption" @bind:after="ApplyFilters">
-                <option value="@SortOption.Hash">Hash</option>
-                <option value="@SortOption.LastUpdated">Last Updated</option>
-                <option value="@SortOption.Status">Status</option>
-                <option value="@SortOption.Observers">Observers</option>
+    @* ── Header row 2: filter, sort, actions ────────────── *@
+    <div class="rq-toolbar">
+        <input class="rq-toolbar__search" type="text"
+               placeholder="@(_selectedTab == 0 ? "Filter" : "Filter")"
+               @bind="_searchText" @bind:event="oninput" @bind:after="ApplyFilters" />
+
+        @if (_selectedTab == 0)
+        {
+            <select class="rq-toolbar__sort" @bind="_sortOption" @bind:after="OnSortChanged">
+                <option value="@SortOption.Status">Sort: Status</option>
+                <option value="@SortOption.Hash">Sort: Hash</option>
+                <option value="@SortOption.LastUpdated">Sort: Last Updated</option>
+                <option value="@SortOption.Observers">Sort: Observers</option>
             </select>
-            <label class="rq-toggle">
-                <input type="checkbox" @bind="_hideDisabled" @bind:after="ApplyFilters" />
-                <span>Hide disabled</span>
+
+            <button class="rq-toolbar__sort-dir" @onclick="ToggleSortDirection"
+                    title="Toggle sort direction">
+                @(_sortAscending ? "Asc \u2191" : "Desc \u2193")
+            </button>
+        }
+
+        <div class="rq-toolbar__spacer"></div>
+
+        @if (_selectedTab == 0 && _anyDisabledQueries)
+        {
+            <label class="rq-toolbar__toggle" title="Hide queries with no observers">
+                <input type="checkbox" @bind="_hideDisabled" @bind:after="OnHideDisabledChanged" />
+                Hide disabled
             </label>
-        </div>
+        }
 
-        <StatusLegend Items="DevToolsColorValues.QueryLegendItems" />
+        <button class="rq-toolbar__btn" @onclick="ClearCache"
+                title="@(_selectedTab == 0 ? "Clear query cache" : "Clear mutation cache")">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+        </button>
 
-        <div class="rq-panel__body">
-            <div class="rq-panel__list">
-                <QueryList Items="_filteredQueries"
-                           SelectedHash="@_selectedQueryHash"
-                           OnSelect="SelectQuery" />
-            </div>
-            @if (_selectedQueryItem is not null)
+        <button class="rq-toolbar__btn @(_isOffline ? "rq-toolbar__btn--warn" : "")"
+                @onclick="ToggleOnline"
+                title="@(_isOffline ? "Resume online" : "Mock offline behavior")">
+            @if (_isOffline)
             {
-                <div class="rq-panel__detail">
-                    <QueryDetail Item="_selectedQueryItem"
-                                 Observer="Observer"
-                                 QueryClient="QueryClient"
-                                 OnClose="ClearSelection" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+                    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+                    <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+                    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                    <line x1="12" y1="20" x2="12.01" y2="20" />
+                </svg>
+            }
+            else
+            {
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                    <line x1="12" y1="20" x2="12.01" y2="20" />
+                </svg>
+            }
+        </button>
+
+        <div class="rq-settings" @onclick:stopPropagation="true">
+            <button class="rq-toolbar__btn" @onclick="ToggleSettings" title="Settings">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                </svg>
+            </button>
+            @if (_settingsOpen)
+            {
+                <div class="rq-settings__backdrop" @onclick="CloseSettings"></div>
+                <div class="rq-settings__menu">
+                    <div class="rq-settings__header">Theme</div>
+                    <button class="rq-settings__item @(Theme == "light" ? "rq-settings__item--active" : "")"
+                            @onclick='() => SelectTheme("light")'>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                        </svg>
+                        Light
+                    </button>
+                    <button class="rq-settings__item @(Theme == "dark" ? "rq-settings__item--active" : "")"
+                            @onclick='() => SelectTheme("dark")'>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                        </svg>
+                        Dark
+                    </button>
+                    <button class="rq-settings__item @(Theme == "system" ? "rq-settings__item--active" : "")"
+                            @onclick='() => SelectTheme("system")'>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                        System
+                    </button>
                 </div>
             }
         </div>
-    }
-    else
-    {
-        <div class="rq-panel__toolbar">
-            <input class="rq-search" type="text" placeholder="Filter mutations..."
-                   @bind="_searchText" @bind:event="oninput" @bind:after="ApplyFilters" />
-        </div>
 
-        <StatusLegend Items="DevToolsColorValues.MutationLegendItems" />
+        <button class="rq-toolbar__close" @onclick="OnClose" title="Close devtools">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+            </svg>
+        </button>
+    </div>
 
-        <div class="rq-panel__body">
-            <div class="rq-panel__list">
-                <MutationList Items="_filteredMutations"
-                              SelectedId="@_selectedMutationId"
-                              OnSelect="SelectMutation" />
-            </div>
-            @if (_selectedMutationItem is not null)
+    @* ── Body: list + detail ────────────────────────────── *@
+    <div class="rq-body">
+        <div class="rq-body__list @(_hasSelection ? "rq-body__list--split" : "")">
+            @if (_selectedTab == 0)
             {
-                <div class="rq-panel__detail">
-                    <MutationDetail Item="_selectedMutationItem" OnClose="ClearSelection" />
-                </div>
+                <QueryList Items="_filteredQueries" SelectedHash="@_selectedQueryHash" OnSelect="SelectQuery" />
+            }
+            else
+            {
+                <MutationList Items="_filteredMutations" SelectedId="@_selectedMutationId" OnSelect="SelectMutation" />
             }
         </div>
-    }
+        @if (_selectedTab == 0 && _selectedQueryItem is not null)
+        {
+            <div class="rq-body__detail">
+                <QueryDetail Item="_selectedQueryItem" Observer="Observer" QueryClient="QueryClient" OnClose="ClearSelection" />
+            </div>
+        }
+        else if (_selectedTab == 1 && _selectedMutationItem is not null)
+        {
+            <div class="rq-body__detail">
+                <MutationDetail Item="_selectedMutationItem" OnClose="ClearSelection" />
+            </div>
+        }
+    </div>
 </div>
