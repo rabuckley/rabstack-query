@@ -359,18 +359,26 @@ public sealed class Query<TData> : Query
     {
         _logger.QueryCancelled(QueryHash, options?.Revert ?? false);
         var retryer = _retryer;
-
-        // Capture _preFetchState BEFORE cancelling the retryer.
-        // retryer.Cancel() can run FetchCore's finally block inline on
-        // the calling thread, which nulls _preFetchState. Reading after
-        // Cancel would then see null and skip the revert.
         var preFetchState = _preFetchState;
-        retryer?.Cancel();
 
+        // Dispatch state revert BEFORE cancelling the retryer.
+        //
+        // C# divergence: In TanStack, retryer.cancel() rejects the promise
+        // (discarding the query function's return value) and fires onCancel
+        // which reverts state — all synchronously. In C#, StreamedQuery
+        // catches OperationCanceledException and returns partial data as a
+        // success, so the Retryer resolves and FetchCore dispatches
+        // SuccessState. Because retryer.Cancel() can trigger inline async
+        // continuations (no SynchronizationContext in many C# hosts), the
+        // entire FetchCore success path can execute during this Cancel()
+        // call. Dispatching the revert first ensures the success overwrites
+        // the revert (correct ordering), not the reverse.
         if (options?.Revert is true && preFetchState is not null)
         {
             Dispatch(new SetStateAction<TData> { State = preFetchState, Options = null });
         }
+
+        retryer?.Cancel();
 
         return Task.CompletedTask;
     }
