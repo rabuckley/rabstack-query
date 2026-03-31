@@ -42,7 +42,7 @@ public sealed class QueryOptions<TData>
     public NetworkMode? NetworkMode { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.Meta"/>
-    public QueryMeta? Meta { get; init; }
+    public Meta? Meta { get; init; }
 
     /// <summary>
     /// Custom query key hasher for cache identity. When <c>null</c> (default),
@@ -69,7 +69,7 @@ public sealed class QueryOptions<TData>
         QueryKey = QueryKey,
         QueryFn = QueryFn,
         StaleTime = StaleTime ?? TimeSpan.Zero,
-        CacheTime = GcTime ?? TimeSpan.FromMinutes(5),
+        GcTime = GcTime ?? TimeSpan.FromMinutes(5),
         NetworkMode = NetworkMode,
         Retry = Retry,
         RetryDelay = RetryDelay,
@@ -84,7 +84,7 @@ public sealed class QueryOptions<TData>
         QueryFn = QueryFn,
         Select = select,
         StaleTime = StaleTime ?? TimeSpan.Zero,
-        CacheTime = GcTime ?? TimeSpan.FromMinutes(5),
+        GcTime = GcTime ?? TimeSpan.FromMinutes(5),
         NetworkMode = NetworkMode,
         Retry = Retry,
         RetryDelay = RetryDelay,

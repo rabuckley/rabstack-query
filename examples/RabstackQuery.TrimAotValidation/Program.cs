@@ -42,7 +42,7 @@ Console.WriteLine($"Cache hit result: {cachedResult}");
 
 // ── Invalidation (exercises invalidation metric) ─────────────────────
 
-await client.InvalidateQueries(new InvalidateQueryFilters { QueryKey = ["validation"] });
+await client.InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = ["validation"] });
 
 Console.WriteLine("Queries invalidated");
 
@@ -108,7 +108,7 @@ var diProvider = diServices.BuildServiceProvider();
 QueryClient diClient = diProvider.GetRequiredService<QueryClient>();
 
 Console.WriteLine($"DI client created: true");
-Console.WriteLine($"DI defaults applied: {diClient.GetDefaultOptions() is { Retry: 2 }}");
+Console.WriteLine($"DI defaults applied: {diClient.DefaultOptions is { Retry: 2 }}");
 
 diClient.Dispose();
 diProvider.Dispose();

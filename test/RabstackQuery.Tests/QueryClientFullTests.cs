@@ -1,8 +1,8 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
-/// Tests for QueryClient orchestration: SetQueryData, GetQueryData, InvalidateQueries,
-/// RefetchQueries, and CancelQueriesAsync.
+/// Tests for QueryClient orchestration: SetQueryData, GetQueryData, InvalidateQueriesAsync,
+/// RefetchQueriesAsync, and CancelQueriesAsync.
 /// </summary>
 public sealed class QueryClientFullTests
 {
@@ -67,7 +67,7 @@ public sealed class QueryClientFullTests
 
         // Assert
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.NotNull(query);
         Assert.Equal(QueryStatus.Succeeded, query!.State!.Status);
         Assert.Equal(FetchStatus.Idle, query.State.FetchStatus);
@@ -96,7 +96,7 @@ public sealed class QueryClientFullTests
         client.SetQueryData(["todos"], "first");
 
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         var initialCount = query!.State!.DataUpdateCount;
 
         // Act
@@ -115,7 +115,7 @@ public sealed class QueryClientFullTests
 
         // Assert
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.Null(query!.State!.Error);
         Assert.False(query.State.IsInvalidated);
     }
@@ -167,10 +167,10 @@ public sealed class QueryClientFullTests
 
     #endregion
 
-    #region InvalidateQueries
+    #region InvalidateQueriesAsync
 
     [Fact]
-    public async Task InvalidateQueries_Should_Set_IsInvalidated_On_Matching_Query()
+    public async Task InvalidateQueriesAsync_Should_Set_IsInvalidated_On_Matching_Query()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -178,28 +178,28 @@ public sealed class QueryClientFullTests
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
 
         // Act
-        await client.InvalidateQueries(["todos"]);
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.True(query!.State!.IsInvalidated);
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Not_Crash_When_No_Matching_Query()
+    public async Task InvalidateQueriesAsync_Should_Not_Crash_When_No_Matching_Query()
     {
         // Arrange
         var client = CreateQueryClient();
 
         // Act
-        var exception = await Record.ExceptionAsync(() => client.InvalidateQueries(["nonexistent"]));
+        var exception = await Record.ExceptionAsync(() => client.InvalidateQueriesAsync(["nonexistent"]));
 
         // Assert
         Assert.Null(exception);
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Trigger_Refetch_On_Active_Observers()
+    public async Task InvalidateQueriesAsync_Should_Trigger_Refetch_On_Active_Observers()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -224,7 +224,7 @@ public sealed class QueryClientFullTests
         var initialFetchCount = fetchCount;
 
         // Act
-        await client.InvalidateQueries(["todos"]);
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert
         Assert.True(fetchCount > initialFetchCount, "Invalidation should trigger refetch");
@@ -233,7 +233,7 @@ public sealed class QueryClientFullTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Not_Refetch_When_No_Observers()
+    public async Task InvalidateQueriesAsync_Should_Not_Refetch_When_No_Observers()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -241,20 +241,20 @@ public sealed class QueryClientFullTests
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
 
         // Act
-        await client.InvalidateQueries(["todos"]);
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert — the query should be invalidated but not refetching
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.True(query!.State!.IsInvalidated);
         Assert.Equal(FetchStatus.Idle, query.State.FetchStatus);
     }
 
     #endregion
 
-    #region RefetchQueries
+    #region RefetchQueriesAsync
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_Matching_Query()
+    public async Task RefetchQueriesAsync_Should_Refetch_Matching_Query()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -262,7 +262,7 @@ public sealed class QueryClientFullTests
 
         // Build the query and set its function
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var options = new QueryConfiguration<string>
         {
             QueryKey = ["todos"],
@@ -270,7 +270,7 @@ public sealed class QueryClientFullTests
             GcTime = QueryTimeDefaults.GcTime,
             Retry = 0,
         };
-        var query = cache.Build<string, string>(client, options);
+        var query = cache.GetOrCreate<string, string>(client, options);
         query.SetQueryFn(async _ =>
         {
             fetchCount++;
@@ -281,7 +281,7 @@ public sealed class QueryClientFullTests
         Assert.Equal(1, fetchCount);
 
         // Act
-        await client.RefetchQueries(["todos"]);
+        await client.RefetchQueriesAsync(["todos"]);
 
         // Assert
         Assert.Equal(2, fetchCount);
@@ -289,14 +289,14 @@ public sealed class QueryClientFullTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Do_Nothing_When_No_Matching_Query()
+    public async Task RefetchQueriesAsync_Should_Do_Nothing_When_No_Matching_Query()
     {
         // Arrange
         var client = CreateQueryClient();
 
         // Act — should not throw
         var exception = await Record.ExceptionAsync(() =>
-            client.RefetchQueries(["nonexistent"]));
+            client.RefetchQueriesAsync(["nonexistent"]));
 
         // Assert
         Assert.Null(exception);
@@ -316,8 +316,8 @@ public sealed class QueryClientFullTests
         var fetchStarted = new TaskCompletionSource();
 
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["active-fetch"]);
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["active-fetch"], GcTime = QueryTimeDefaults.GcTime, Retry = 0 });
         query.SetQueryFn(async _ =>
         {
@@ -355,7 +355,7 @@ public sealed class QueryClientFullTests
 
         // Assert — no query should have been created
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["nonexistent"]);
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.Null(query);
     }
 
@@ -489,15 +489,15 @@ public sealed class QueryClientFullTests
         await mutationObserver.MutateAsync("input");
 
         // Verify data exists
-        Assert.NotEmpty(client.GetQueryCache().FindAll());
-        Assert.NotEmpty(client.GetMutationCache().FindAll());
+        Assert.NotEmpty(client.QueryCache.FindAll());
+        Assert.NotEmpty(client.MutationCache.FindAll());
 
         // Act
         client.Clear();
 
         // Assert
-        Assert.Empty(client.GetQueryCache().FindAll());
-        Assert.Empty(client.GetMutationCache().FindAll());
+        Assert.Empty(client.QueryCache.FindAll());
+        Assert.Empty(client.MutationCache.FindAll());
         Assert.Null(client.GetQueryData<string>(["todos"]));
         Assert.Null(client.GetQueryData<string>(["users"]));
     }
@@ -579,7 +579,7 @@ public sealed class QueryClientFullTests
         var result = await resultTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — verify the query was stored under the custom hash
-        var query = client.GetQueryCache().Get<string>("custom-observer-hash");
+        var query = client.QueryCache.Get<string>("custom-observer-hash");
         Assert.NotNull(query);
         Assert.Equal("observer-data", result.Data);
 

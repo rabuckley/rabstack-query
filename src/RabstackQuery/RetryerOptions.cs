@@ -2,6 +2,10 @@ using Microsoft.Extensions.Logging;
 
 namespace RabstackQuery;
 
+/// <summary>
+/// Configuration for a <see cref="Retryer{TData}"/>, specifying the function to
+/// execute, retry limits, delay strategy, and network/focus awareness callbacks.
+/// </summary>
 public sealed class RetryerOptions<TData>
 {
     /// <summary>

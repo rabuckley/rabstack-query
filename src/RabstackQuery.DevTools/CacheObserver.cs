@@ -41,10 +41,10 @@ public sealed class CacheObserver : IDisposable
         _debounceTimer = queryClient.TimeProvider.CreateTimer(
             OnDebounceExpired, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
-        var queryCache = queryClient.GetQueryCache();
+        var queryCache = queryClient.QueryCache;
         _cacheSubscription = queryCache.Subscribe(OnCacheEvent);
 
-        var mutationCache = queryClient.GetMutationCache();
+        var mutationCache = queryClient.MutationCache;
         _mutationCacheSubscription = mutationCache.Subscribe(OnMutationCacheEvent);
 
         // Initial snapshot so the FAB badge shows the correct count immediately.
@@ -65,8 +65,37 @@ public sealed class CacheObserver : IDisposable
     /// reference on the snapshot record.
     /// </summary>
     public Query? FindQueryByHash(string queryHash) =>
-        _queryClient.GetQueryCache().GetAll()
+        _queryClient.QueryCache.GetAll()
             .FirstOrDefault(q => q.QueryHash == queryHash);
+
+    /// <summary>
+    /// Forces the selected query into an artificial loading state.
+    /// Mirrors TanStack devtools' "Trigger Loading" button.
+    /// </summary>
+    public void TriggerLoading(string queryHash)
+    {
+        FindQueryByHash(queryHash)?.Accept(new TriggerLoadingOperation());
+    }
+
+    /// <summary>
+    /// Forces the selected query into an artificial error state.
+    /// Mirrors TanStack devtools' "Trigger Error" button.
+    /// </summary>
+    public void TriggerError(string queryHash, Exception error)
+    {
+        FindQueryByHash(queryHash)?.Accept(new TriggerErrorOperation(error));
+    }
+
+    /// <summary>
+    /// Restores a query from an artificial loading/error state back to its
+    /// pre-trigger state, then re-fetches with the original query function.
+    /// </summary>
+    public async Task Restore(string queryHash)
+    {
+        var query = FindQueryByHash(queryHash);
+        if (query is not null)
+            await query.Accept(new RestoreOperation());
+    }
 
     private void OnCacheEvent(QueryCacheNotifyEvent _)
     {
@@ -85,8 +114,8 @@ public sealed class CacheObserver : IDisposable
 
     private void RebuildSnapshots()
     {
-        var queryCache = _queryClient.GetQueryCache();
-        var mutationCache = _queryClient.GetMutationCache();
+        var queryCache = _queryClient.QueryCache;
+        var mutationCache = _queryClient.MutationCache;
 
         // Queries — Dehydrate() is internal, accessible via InternalsVisibleTo.
         var queries = new List<QueryListItem>();
@@ -110,6 +139,7 @@ public sealed class CacheObserver : IDisposable
                 IsInvalidated = dehydrated.State.IsInvalidated,
                 FetchFailureCount = dehydrated.State.FetchFailureCount,
                 ErrorDisplay = dehydrated.State.Error?.ToString(),
+                IsDevToolsTriggered = dehydrated.State.FetchMeta?.PreviousState is not null,
             });
         }
 

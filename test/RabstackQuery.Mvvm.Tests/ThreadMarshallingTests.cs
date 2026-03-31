@@ -142,11 +142,11 @@ public sealed class ThreadMarshallingTests
         syncContext.Reset();
 
         // Act — trigger a notification from a thread pool thread.
-        // InvalidateQueries dispatches InvalidateAction synchronously on the
+        // InvalidateQueriesAsync dispatches InvalidateAction synchronously on the
         // calling thread (thread pool). The observer fires OnResultChanged on
         // that same thread pool thread. The observer also triggers a
         // fire-and-forget refetch whose async chain runs on the thread pool.
-        await Task.Run(() => client.InvalidateQueries(["qvm-marshal"]), TestContext.Current.CancellationToken);
+        await Task.Run(() => client.InvalidateQueriesAsync(["qvm-marshal"]), TestContext.Current.CancellationToken);
         await WaitForAsync(() => vm.Data == $"data-2");
 
         // Assert — OnResultChanged should have used the CAPTURED SyncContext
@@ -218,7 +218,7 @@ public sealed class ThreadMarshallingTests
         syncContext.Reset();
 
         // Act
-        await Task.Run(() => client.InvalidateQueries(["cvm-marshal"]), TestContext.Current.CancellationToken);
+        await Task.Run(() => client.InvalidateQueriesAsync(["cvm-marshal"]), TestContext.Current.CancellationToken);
         await WaitForAsync(() => vm.Items.Count > 0 && vm.Items[0] == "item-2");
 
         // Assert
@@ -267,7 +267,7 @@ public sealed class ThreadMarshallingTests
         syncContext.Reset();
 
         // Act — trigger from background thread
-        await Task.Run(() => client.InvalidateQueries(["post-delivery-test"]), TestContext.Current.CancellationToken);
+        await Task.Run(() => client.InvalidateQueriesAsync(["post-delivery-test"]), TestContext.Current.CancellationToken);
         await WaitForAsync(() => vm.Data == "data-2");
 
         // Assert — PropertyChanged events fired AND they went through Post.
@@ -327,7 +327,7 @@ public sealed class ThreadMarshallingTests
         // Act — trigger a notification from a background thread.
         // If bug #1 is fixed, OnResultChanged will Post to DeferredSyncContext,
         // queuing the update callback.
-        await Task.Run(() => client.InvalidateQueries(["ghost-qvm"]), TestContext.Current.CancellationToken);
+        await Task.Run(() => client.InvalidateQueriesAsync(["ghost-qvm"]), TestContext.Current.CancellationToken);
 
         // Give the fire-and-forget refetch time to complete on the thread pool
         await Task.Delay(200, TestContext.Current.CancellationToken);
@@ -390,7 +390,7 @@ public sealed class ThreadMarshallingTests
     // The constructor does:
     //
     //     _subscription = _observer.Subscribe(OnResultChanged);  // fires OnResultChanged synchronously
-    //     UpdateFromResult(_observer.GetCurrentResult());         // redundant call, creates race window
+    //     UpdateFromResult(_observer.CurrentResult);         // redundant call, creates race window
     //
     // Subscribe() triggers OnSubscribe() → RefetchAsync() fire-and-forget.
     // The synchronous portion of RefetchAsync dispatches FetchAction, which

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for cache hydration and dehydration. Ports test cases from TanStack's
@@ -23,7 +23,12 @@ public sealed class HydrationTests
         var client = CreateQueryClient();
         client.SetQueryData(["string"], "hello");
         client.SetQueryData(["number"], 42);
-        client.SetQueryData(["list"], new List<int> { 1, 2, 3 });
+
+        client.SetQueryData(["list"],
+            new List<int>
+            {
+                1, 2, 3
+            });
 
         // Act — dehydrate and hydrate into a new client
         var dehydrated = client.Dehydrate();
@@ -31,7 +36,7 @@ public sealed class HydrationTests
         client2.Hydrate(dehydrated);
 
         // Assert — data is discoverable via FindAll
-        var queries = client2.GetQueryCache().GetAll().ToList();
+        var queries = client2.QueryCache.GetAll().ToList();
         Assert.Equal(3, queries.Count);
 
         // Verify data round-tripped via placeholder state
@@ -44,7 +49,15 @@ public sealed class HydrationTests
     {
         // Arrange
         var client = CreateQueryClient();
-        QueryKey complexKey = ["users", new { Page = 1, Filter = "active" }];
+
+        QueryKey complexKey =
+        [
+            "users", new
+            {
+                Page = 1, Filter = "active"
+            }
+        ];
+
         client.SetQueryData(complexKey, "page1");
 
         // Act
@@ -53,7 +66,7 @@ public sealed class HydrationTests
         client2.Hydrate(dehydrated);
 
         // Assert
-        var queries = client2.GetQueryCache().GetAll().ToList();
+        var queries = client2.QueryCache.GetAll().ToList();
         Assert.Single(queries);
 
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(complexKey);
@@ -107,16 +120,17 @@ public sealed class HydrationTests
         // Create a pending query (no data, no fetch)
         var pendingOptions = new QueryConfiguration<string>
         {
-            QueryKey = ["pending"],
-            GcTime = QueryTimeDefaults.GcTime,
+            QueryKey = ["pending"], GcTime = QueryTimeDefaults.GcTime,
         };
-        client.GetQueryCache().Build<string, string>(client, pendingOptions);
+
+        client.QueryCache.GetOrCreate<string, string>(client, pendingOptions);
 
         // Act
         var dehydrated = client.Dehydrate();
 
         // Assert — only the succeeded query is included
         Assert.Single(dehydrated.Queries);
+
         Assert.Equal(
             DefaultQueryKeyHasher.Instance.HashQueryKey(["success"]),
             dehydrated.Queries[0].QueryHash);
@@ -132,6 +146,7 @@ public sealed class HydrationTests
 
         // Act — only dehydrate queries whose hash starts with the hash for ["a"]
         var hashA = DefaultQueryKeyHasher.Instance.HashQueryKey(["a"]);
+
         var dehydrated = client.Dehydrate(new DehydrateOptions
         {
             ShouldDehydrateQuery = query => query.QueryHash == hashA,
@@ -194,7 +209,7 @@ public sealed class HydrationTests
 
         // Get the query and check its FetchStatus is Idle
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["key"]);
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.NotNull(query);
         Assert.Equal(FetchStatus.Idle, query.CurrentFetchStatus);
 
@@ -225,7 +240,7 @@ public sealed class HydrationTests
 
         // Assert
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["key"]);
-        var query = client2.GetQueryCache().GetByHash(queryHash);
+        var query = client2.QueryCache.GetByHash(queryHash);
         Assert.NotNull(query);
         Assert.Equal(FetchStatus.Idle, query.CurrentFetchStatus);
     }
@@ -242,14 +257,19 @@ public sealed class HydrationTests
 
         // Act — hydrate with custom GcTime via HydrateOptions
         var client2 = CreateQueryClient();
-        client2.Hydrate(dehydrated, new HydrateOptions
-        {
-            Queries = new HydrateQueryDefaults { GcTime = TimeSpan.FromMinutes(10) }
-        });
+
+        client2.Hydrate(dehydrated,
+            new HydrateOptions
+            {
+                Queries = new HydrateQueryDefaults
+                {
+                    GcTime = TimeSpan.FromMinutes(10)
+                }
+            });
 
         // Assert — query exists in cache (specific GcTime cannot be inspected
         // externally, but the query being created is the key assertion)
-        var queries = client2.GetQueryCache().GetAll().ToList();
+        var queries = client2.QueryCache.GetAll().ToList();
         Assert.Single(queries);
     }
 
@@ -263,13 +283,18 @@ public sealed class HydrationTests
 
         // Act — hydrate with custom retry via HydrateOptions
         var client2 = CreateQueryClient();
-        client2.Hydrate(dehydrated, new HydrateOptions
-        {
-            Queries = new HydrateQueryDefaults { Retry = 5 }
-        });
+
+        client2.Hydrate(dehydrated,
+            new HydrateOptions
+            {
+                Queries = new HydrateQueryDefaults
+                {
+                    Retry = 5
+                }
+            });
 
         // Assert — query was created
-        var queries = client2.GetQueryCache().GetAll().ToList();
+        var queries = client2.QueryCache.GetAll().ToList();
         Assert.Single(queries);
     }
 
@@ -283,13 +308,14 @@ public sealed class HydrationTests
 
         // Only dehydrate query "a" via default options
         var hashA = DefaultQueryKeyHasher.Instance.HashQueryKey(["a"]);
-        client.SetDefaultOptions(new QueryClientDefaultOptions
+
+        client.DefaultOptions = new QueryClientDefaultOptions
         {
             Dehydrate = new DehydrateOptions
             {
                 ShouldDehydrateQuery = q => q.QueryHash == hashA,
             }
-        });
+        };
 
         // Act
         var dehydrated = client.Dehydrate();
@@ -306,7 +332,7 @@ public sealed class HydrationTests
         var client = CreateQueryClient();
         client.Hydrate(null);
 
-        Assert.Empty(client.GetQueryCache().GetAll());
+        Assert.Empty(client.QueryCache.GetAll());
     }
 
     [Fact]
@@ -314,15 +340,15 @@ public sealed class HydrationTests
     {
         // Act
         var client = CreateQueryClient();
+
         client.Hydrate(new DehydratedState
         {
-            Queries = [],
-            Mutations = [],
+            Queries = [], Mutations = [],
         });
 
         // Assert
-        Assert.Empty(client.GetQueryCache().GetAll());
-        Assert.Empty(client.GetMutationCache().GetAll());
+        Assert.Empty(client.QueryCache.GetAll());
+        Assert.Empty(client.MutationCache.GetAll());
     }
 
     // ── Metadata ──────────────────────────────────────────────────────
@@ -333,17 +359,14 @@ public sealed class HydrationTests
         // Arrange
         var client = CreateQueryClient();
 
-        var meta = new QueryMeta(new Dictionary<string, object?>
+        var meta = new Meta(new Dictionary<string, object?>
         {
-            ["source"] = "server",
-            ["version"] = 42,
+            ["source"] = "server", ["version"] = 42,
         });
 
         var options = new QueryConfiguration<string>
         {
-            QueryKey = ["meta-test"],
-            GcTime = QueryTimeDefaults.GcTime,
-            Meta = meta,
+            QueryKey = ["meta-test"], GcTime = QueryTimeDefaults.GcTime, Meta = meta,
         };
 
         var state = new QueryState<string>
@@ -355,7 +378,7 @@ public sealed class HydrationTests
             FetchStatus = FetchStatus.Idle,
         };
 
-        client.GetQueryCache().Build<string, string>(client, options, state);
+        client.QueryCache.GetOrCreate<string, string>(client, options, state);
 
         // Act
         var dehydrated = client.Dehydrate();
@@ -370,7 +393,7 @@ public sealed class HydrationTests
 
         // Hydrated placeholder also has the meta
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["meta-test"]);
-        var hydratedQuery = client2.GetQueryCache().GetByHash(queryHash);
+        var hydratedQuery = client2.QueryCache.GetByHash(queryHash);
         Assert.NotNull(hydratedQuery);
         Assert.NotNull(hydratedQuery.Meta);
         Assert.Equal("server", hydratedQuery.Meta["source"]);
@@ -382,24 +405,22 @@ public sealed class HydrationTests
         // Arrange — create a paused mutation with meta
         var client = CreateQueryClient();
 
-        var meta = new MutationMeta(new Dictionary<string, object?>
+        var meta = new Meta(new Dictionary<string, object?>
         {
             ["intent"] = "update-profile",
         });
 
         var mutationOptions = new MutationOptions<object, Exception, object, object?>
         {
-            MutationKey = ["profile"],
-            Meta = meta,
+            MutationKey = ["profile"], Meta = meta,
         };
 
         var mutationState = new MutationState<object, object, object?>
         {
-            IsPaused = true,
-            Status = MutationStatus.Pending,
+            IsPaused = true, Status = MutationStatus.Pending,
         };
 
-        client.GetMutationCache().Build(client, mutationOptions, mutationState);
+        client.MutationCache.GetOrCreate(client, mutationOptions, mutationState);
 
         // Act
         var dehydrated = client.Dehydrate();
@@ -421,16 +442,22 @@ public sealed class HydrationTests
         // Create a paused mutation
         var pausedState = new MutationState<object, object, object?>
         {
-            IsPaused = true,
-            Status = MutationStatus.Pending,
+            IsPaused = true, Status = MutationStatus.Pending,
         };
-        client.GetMutationCache().Build(client,
-            new MutationOptions<object, Exception, object, object?> { MutationKey = ["paused"] },
+
+        client.MutationCache.GetOrCreate(client,
+            new MutationOptions<object, Exception, object, object?>
+            {
+                MutationKey = ["paused"]
+            },
             pausedState);
 
         // Create a completed mutation (not paused)
-        client.GetMutationCache().Build(client,
-            new MutationOptions<object, Exception, object, object?> { MutationKey = ["done"] });
+        client.MutationCache.GetOrCreate(client,
+            new MutationOptions<object, Exception, object, object?>
+            {
+                MutationKey = ["done"]
+            });
 
         // Act
         var dehydrated = client.Dehydrate();
@@ -446,10 +473,17 @@ public sealed class HydrationTests
         var client = CreateQueryClient();
 
         // Create two mutations — neither paused
-        client.GetMutationCache().Build(client,
-            new MutationOptions<object, Exception, object, object?> { MutationKey = ["a"] });
-        client.GetMutationCache().Build(client,
-            new MutationOptions<object, Exception, object, object?> { MutationKey = ["b"] });
+        client.MutationCache.GetOrCreate(client,
+            new MutationOptions<object, Exception, object, object?>
+            {
+                MutationKey = ["a"]
+            });
+
+        client.MutationCache.GetOrCreate(client,
+            new MutationOptions<object, Exception, object, object?>
+            {
+                MutationKey = ["b"]
+            });
 
         // Act — dehydrate all mutations regardless of paused status
         var dehydrated = client.Dehydrate(new DehydrateOptions
@@ -468,8 +502,11 @@ public sealed class HydrationTests
         var client = CreateQueryClient();
 
         // Create a non-paused mutation
-        client.GetMutationCache().Build(client,
-            new MutationOptions<object, Exception, object, object?> { MutationKey = ["active"] });
+        client.MutationCache.GetOrCreate(client,
+            new MutationOptions<object, Exception, object, object?>
+            {
+                MutationKey = ["active"]
+            });
 
         // Act
         var dehydrated = client.Dehydrate();
@@ -487,15 +524,13 @@ public sealed class HydrationTests
 
         var mutationState = new MutationState<object, object, object?>
         {
-            IsPaused = true,
-            Status = MutationStatus.Pending,
+            IsPaused = true, Status = MutationStatus.Pending,
         };
 
-        client.GetMutationCache().Build(client,
+        client.MutationCache.GetOrCreate(client,
             new MutationOptions<object, Exception, object, object?>
             {
-                MutationKey = ["order"],
-                Scope = scope,
+                MutationKey = ["order"], Scope = scope,
             },
             mutationState);
 
@@ -515,29 +550,35 @@ public sealed class HydrationTests
     {
         // Arrange
         var client1 = CreateQueryClient();
+
         var mutationState = new MutationState<object, object, object?>
         {
-            IsPaused = true,
-            Status = MutationStatus.Pending,
+            IsPaused = true, Status = MutationStatus.Pending,
         };
-        client1.GetMutationCache().Build(client1,
-            new MutationOptions<object, Exception, object, object?> { MutationKey = ["test"] },
+
+        client1.MutationCache.GetOrCreate(client1,
+            new MutationOptions<object, Exception, object, object?>
+            {
+                MutationKey = ["test"]
+            },
             mutationState);
 
         var dehydrated = client1.Dehydrate();
 
         // Act
         var client2 = CreateQueryClient();
-        client2.Hydrate(dehydrated, new HydrateOptions
-        {
-            Mutations = new HydrateMutationDefaults
+
+        client2.Hydrate(dehydrated,
+            new HydrateOptions
             {
-                GcTime = TimeSpan.FromMinutes(20),
-            }
-        });
+                Mutations = new HydrateMutationDefaults
+                {
+                    GcTime = TimeSpan.FromMinutes(20),
+                }
+            });
 
         // Assert — mutation was created
-        var mutations = client2.GetMutationCache().GetAll().ToList();
+        var mutations = client2.MutationCache.GetAll().ToList();
         Assert.Single(mutations);
     }
 
@@ -556,17 +597,17 @@ public sealed class HydrationTests
 
         // Before upgrade: query exists as placeholder
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["items"]);
-        var placeholder = client2.GetQueryCache().GetByHash(queryHash);
+        var placeholder = client2.QueryCache.GetByHash(queryHash);
         Assert.NotNull(placeholder);
         Assert.True(placeholder.IsHydratedPlaceholder);
 
         // Act — Build triggers upgrade from Query<object> to Query<string>
         var options = new QueryConfiguration<string>
         {
-            QueryKey = ["items"],
-            GcTime = QueryTimeDefaults.GcTime,
+            QueryKey = ["items"], GcTime = QueryTimeDefaults.GcTime,
         };
-        var typedQuery = client2.GetQueryCache().Build<string, string>(client2, options);
+
+        var typedQuery = client2.QueryCache.GetOrCreate<string, string>(client2, options);
 
         // Assert
         Assert.False(typedQuery.IsHydratedPlaceholder);
@@ -587,8 +628,8 @@ public sealed class HydrationTests
         client2.Hydrate(dehydrated);
 
         // Act
-        var all = client2.GetQueryCache().GetAll().ToList();
-        var findAll = client2.GetQueryCache().FindAll().ToList();
+        var all = client2.QueryCache.GetAll().ToList();
+        var findAll = client2.QueryCache.FindAll().ToList();
 
         // Assert — hydrated placeholders are visible
         Assert.Equal(2, all.Count);
@@ -609,13 +650,13 @@ public sealed class HydrationTests
 
         // Verify placeholder exists
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["gc-test"]);
-        Assert.NotNull(client2.GetQueryCache().GetByHash(queryHash));
+        Assert.NotNull(client2.QueryCache.GetByHash(queryHash));
 
         // Act — advance past GC time (default 5 minutes)
         time.Advance(TimeSpan.FromMinutes(6));
 
         // Assert — placeholder should be garbage collected
-        Assert.Null(client2.GetQueryCache().GetByHash(queryHash));
+        Assert.Null(client2.QueryCache.GetByHash(queryHash));
     }
 
     [Fact]
@@ -659,7 +700,7 @@ public sealed class HydrationTests
 
         // Verify it's no longer a placeholder
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["upgrade"]);
-        var query = client2.GetQueryCache().GetByHash(queryHash);
+        var query = client2.QueryCache.GetByHash(queryHash);
         Assert.NotNull(query);
         Assert.False(query.IsHydratedPlaceholder);
     }
@@ -698,14 +739,16 @@ public sealed class HydrationTests
 
         // Act
         var client2 = CreateQueryClient();
-        client2.Hydrate(dehydrated, new HydrateOptions
-        {
-            DeserializeData = data => data is string s && DateTimeOffset.TryParse(s, out var dto) ? dto : data,
-        });
+
+        client2.Hydrate(dehydrated,
+            new HydrateOptions
+            {
+                DeserializeData = data => data is string s && DateTimeOffset.TryParse(s, out var dto) ? dto : data,
+            });
 
         // Assert — upgrade the placeholder and verify data was deserialized
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["date"]);
-        var deserialized = client2.GetQueryCache().TryGetHydratedData<DateTimeOffset>(queryHash);
+        var deserialized = client2.QueryCache.TryGetHydratedData<DateTimeOffset>(queryHash);
         Assert.Equal(new DateTimeOffset(2026, 3, 13, 0, 0, 0, TimeSpan.Zero), deserialized);
     }
 
@@ -729,10 +772,11 @@ public sealed class HydrationTests
         client2.SetQueryData(["key"], 0);
 
         // Act
-        client2.Hydrate(dehydrated, new HydrateOptions
-        {
-            DeserializeData = data => data is string s && int.TryParse(s, out var n) ? n : data,
-        });
+        client2.Hydrate(dehydrated,
+            new HydrateOptions
+            {
+                DeserializeData = data => data is string s && int.TryParse(s, out var n) ? n : data,
+            });
 
         // Assert — data was deserialized and applied to the existing Query<int>
         Assert.Equal(100, client2.GetQueryData<int>(["key"]));
@@ -743,12 +787,13 @@ public sealed class HydrationTests
     {
         // Arrange — create a query with no data (pending)
         var client = CreateQueryClient();
+
         var options = new QueryConfiguration<string>
         {
-            QueryKey = ["pending"],
-            GcTime = QueryTimeDefaults.GcTime,
+            QueryKey = ["pending"], GcTime = QueryTimeDefaults.GcTime,
         };
-        client.GetQueryCache().Build<string, string>(client, options);
+
+        client.QueryCache.GetOrCreate<string, string>(client, options);
 
         var callCount = 0;
 
@@ -756,7 +801,11 @@ public sealed class HydrationTests
         var dehydrated = client.Dehydrate(new DehydrateOptions
         {
             ShouldDehydrateQuery = _ => true,
-            SerializeData = data => { callCount++; return data; },
+            SerializeData = data =>
+            {
+                callCount++;
+                return data;
+            },
         });
 
         // Assert — transform was never called because data was null
@@ -790,6 +839,7 @@ public sealed class HydrationTests
     {
         // Arrange — create a query in error state
         var client = CreateQueryClient();
+
         var state = new QueryState<string>
         {
             Error = new InvalidOperationException("secret connection string leaked"),
@@ -798,8 +848,12 @@ public sealed class HydrationTests
             Status = QueryStatus.Errored,
             FetchStatus = FetchStatus.Idle,
         };
-        client.GetQueryCache().Build<string, string>(client,
-            new QueryConfiguration<string> { QueryKey = ["errored"], GcTime = QueryTimeDefaults.GcTime },
+
+        client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["errored"], GcTime = QueryTimeDefaults.GcTime
+            },
             state);
 
         // Act — default ShouldRedactErrors is _ => true
@@ -812,7 +866,7 @@ public sealed class HydrationTests
         var dq = Assert.Single(dehydrated.Queries);
         Assert.NotNull(dq.State.Error);
         Assert.Equal("redacted", dq.State.Error.Message);
-        Assert.IsType<Exception>(dq.State.Error);
+        Assert.IsType<RedactedException>(dq.State.Error);
     }
 
     [Fact]
@@ -821,6 +875,7 @@ public sealed class HydrationTests
         // Arrange
         var client = CreateQueryClient();
         var originalError = new InvalidOperationException("keep me");
+
         var state = new QueryState<string>
         {
             Error = originalError,
@@ -829,15 +884,18 @@ public sealed class HydrationTests
             Status = QueryStatus.Errored,
             FetchStatus = FetchStatus.Idle,
         };
-        client.GetQueryCache().Build<string, string>(client,
-            new QueryConfiguration<string> { QueryKey = ["errored"], GcTime = QueryTimeDefaults.GcTime },
+
+        client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["errored"], GcTime = QueryTimeDefaults.GcTime
+            },
             state);
 
         // Act — disable redaction
         var dehydrated = client.Dehydrate(new DehydrateOptions
         {
-            ShouldDehydrateQuery = _ => true,
-            ShouldRedactErrors = _ => false,
+            ShouldDehydrateQuery = _ => true, ShouldRedactErrors = _ => false,
         });
 
         // Assert — original error preserved
@@ -852,8 +910,12 @@ public sealed class HydrationTests
         var client = CreateQueryClient();
 
         var sensitiveError = new InvalidOperationException("SQL connection: server=prod;password=s3cret");
-        client.GetQueryCache().Build<string, string>(client,
-            new QueryConfiguration<string> { QueryKey = ["sensitive"], GcTime = QueryTimeDefaults.GcTime },
+
+        client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["sensitive"], GcTime = QueryTimeDefaults.GcTime
+            },
             new QueryState<string>
             {
                 Error = sensitiveError,
@@ -864,8 +926,12 @@ public sealed class HydrationTests
             });
 
         var safeError = new ArgumentException("Invalid page number");
-        client.GetQueryCache().Build<string, string>(client,
-            new QueryConfiguration<string> { QueryKey = ["safe"], GcTime = QueryTimeDefaults.GcTime },
+
+        client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["safe"], GcTime = QueryTimeDefaults.GcTime
+            },
             new QueryState<string>
             {
                 Error = safeError,
@@ -878,8 +944,7 @@ public sealed class HydrationTests
         // Act — only redact InvalidOperationException
         var dehydrated = client.Dehydrate(new DehydrateOptions
         {
-            ShouldDehydrateQuery = _ => true,
-            ShouldRedactErrors = ex => ex is InvalidOperationException,
+            ShouldDehydrateQuery = _ => true, ShouldRedactErrors = ex => ex is InvalidOperationException,
         });
 
         // Assert
@@ -901,6 +966,7 @@ public sealed class HydrationTests
         // Arrange — query with both Error and FetchFailureReason
         var client = CreateQueryClient();
         var failureReason = new InvalidOperationException("connection string exposed");
+
         var state = new QueryState<string>
         {
             Data = "stale-data",
@@ -914,8 +980,12 @@ public sealed class HydrationTests
             Status = QueryStatus.Errored,
             FetchStatus = FetchStatus.Idle,
         };
-        client.GetQueryCache().Build<string, string>(client,
-            new QueryConfiguration<string> { QueryKey = ["failing"], GcTime = QueryTimeDefaults.GcTime },
+
+        client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["failing"], GcTime = QueryTimeDefaults.GcTime
+            },
             state);
 
         // Act
@@ -941,8 +1011,12 @@ public sealed class HydrationTests
         client.SetQueryData(["ok"], "data");
 
         var originalError = new InvalidOperationException("keep me");
-        client.GetQueryCache().Build<string, string>(client,
-            new QueryConfiguration<string> { QueryKey = ["err"], GcTime = QueryTimeDefaults.GcTime },
+
+        client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["err"], GcTime = QueryTimeDefaults.GcTime
+            },
             new QueryState<string>
             {
                 Error = originalError,
@@ -953,13 +1027,13 @@ public sealed class HydrationTests
             });
 
         // Client default: don't redact errors
-        client.SetDefaultOptions(new QueryClientDefaultOptions
+        client.DefaultOptions = new QueryClientDefaultOptions
         {
             Dehydrate = new DehydrateOptions
             {
                 ShouldRedactErrors = _ => false,
             },
-        });
+        };
 
         // Act — parameter overrides ShouldDehydrateQuery but inherits ShouldRedactErrors
         var dehydrated = client.Dehydrate(new DehydrateOptions
@@ -988,18 +1062,20 @@ public sealed class HydrationTests
 
         // Act — client2 has DeserializeData in client defaults
         var client2 = CreateQueryClient();
-        client2.SetDefaultOptions(new QueryClientDefaultOptions
+
+        client2.DefaultOptions = new QueryClientDefaultOptions
         {
             Hydrate = new HydrateOptions
             {
                 DeserializeData = data => data is string s && int.TryParse(s, out var n) ? n : data,
             },
-        });
+        };
+
         client2.Hydrate(dehydrated);
 
         // Assert — placeholder data was deserialized back to int
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["key"]);
-        Assert.Equal(42, client2.GetQueryCache().TryGetHydratedData<int>(queryHash));
+        Assert.Equal(42, client2.QueryCache.TryGetHydratedData<int>(queryHash));
     }
 
     // ── Helper ────────────────────────────────────────────────────────

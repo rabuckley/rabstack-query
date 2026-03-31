@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Integration tests for <see cref="NetworkMode"/> enforcement via
@@ -31,7 +31,7 @@ public sealed class NetworkModeTests : IDisposable
         int retry = 0,
         Func<int, Exception, TimeSpan>? retryDelay = null)
     {
-        var cache = _client.GetQueryCache();
+        var cache = _client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
         var options = new QueryConfiguration<TData>
         {
@@ -42,7 +42,7 @@ public sealed class NetworkModeTests : IDisposable
             RetryDelay = retryDelay,
             NetworkMode = networkMode
         };
-        return cache.Build<TData, TData>(_client, options);
+        return cache.GetOrCreate<TData, TData>(_client, options);
     }
 
     /// <summary>
@@ -53,7 +53,7 @@ public sealed class NetworkModeTests : IDisposable
     /// </summary>
     private IDisposable SubscribePauseListener(TaskCompletionSource paused)
     {
-        var cache = _client.GetQueryCache();
+        var cache = _client.QueryCache;
         return cache.Subscribe(@event =>
         {
             if (@event is QueryCacheQueryUpdatedEvent { Action: PauseAction })
@@ -391,7 +391,7 @@ public sealed class NetworkModeTests : IDisposable
 
         // Assert
         Assert.Equal("HELLO", data);
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsSuccess);
         Assert.False(result.IsPaused);
     }
@@ -427,7 +427,7 @@ public sealed class NetworkModeTests : IDisposable
         var mutateTask = observer.MutateAsync("hello");
 
         await pausedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(observer.GetCurrentResult().IsPaused);
+        Assert.True(observer.CurrentResult.IsPaused);
 
         // Act — go online to resume
         _onlineManager.SetOnline(true);
@@ -437,7 +437,7 @@ public sealed class NetworkModeTests : IDisposable
 
         // Assert — mutation completed
         Assert.Equal("HELLO", data);
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.True(finalResult.IsSuccess);
         Assert.False(finalResult.IsPaused);
     }
@@ -542,7 +542,7 @@ public sealed class NetworkModeTests : IDisposable
         // Per CLAUDE.md: "If Task.Delay is the only option, keep it generous and document why."
         await Task.Delay(250);
         Assert.False(executed);
-        Assert.True(observer.GetCurrentResult().IsPaused);
+        Assert.True(observer.CurrentResult.IsPaused);
 
         // Clean up — go online to let mutation complete
         _onlineManager.SetOnline(true);
@@ -579,7 +579,7 @@ public sealed class NetworkModeTests : IDisposable
         Assert.True(result.IsPending);
 
         // Also verify via GetCurrentResult
-        var current = observer.GetCurrentResult();
+        var current = observer.CurrentResult;
         Assert.True(current.IsPaused);
 
         // Clean up
@@ -615,7 +615,7 @@ public sealed class NetworkModeTests : IDisposable
         _onlineManager.SetOnline(true);
         await mutateTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.True(observer.GetCurrentResult().IsSuccess);
+        Assert.True(observer.CurrentResult.IsSuccess);
 
         // Act — fire another online event after completion. This calls
         // Continue() on a mutation whose retryer is already disposed/nulled.
@@ -624,7 +624,7 @@ public sealed class NetworkModeTests : IDisposable
         _onlineManager.SetOnline(true);
 
         // Assert — still success, no errors thrown
-        Assert.True(observer.GetCurrentResult().IsSuccess);
+        Assert.True(observer.CurrentResult.IsSuccess);
     }
 
     [Fact(Timeout = 10_000)]
@@ -685,7 +685,7 @@ public sealed class NetworkModeTests : IDisposable
 
         // Wait for obs2 to become scope-paused deterministically
         await scopePaused.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(obs2.GetCurrentResult().IsPaused);
+        Assert.True(obs2.CurrentResult.IsPaused);
 
         // Go offline BEFORE releasing the scope gate — when the scope gate
         // opens, the second mutation's retryer will see it can't start
@@ -699,7 +699,7 @@ public sealed class NetworkModeTests : IDisposable
         // Wait for the second pause (network-pause) after the scope gate opens.
         // The retryer sees it's offline and pauses again.
         await networkPaused.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(obs2.GetCurrentResult().IsPaused);
+        Assert.True(obs2.CurrentResult.IsPaused);
 
         // Go online — second mutation's network-pause ends and it executes
         _onlineManager.SetOnline(true);
@@ -708,7 +708,7 @@ public sealed class NetworkModeTests : IDisposable
         await task2.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — both completed successfully
-        var result2 = obs2.GetCurrentResult();
+        var result2 = obs2.CurrentResult;
         Assert.True(result2.IsSuccess);
         Assert.Equal("second-done", result2.Data);
     }
@@ -738,7 +738,7 @@ public sealed class NetworkModeTests : IDisposable
 
         // Wait for the mutation to enter paused state
         await pausedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(observer.GetCurrentResult().IsPaused);
+        Assert.True(observer.CurrentResult.IsPaused);
 
         // Act — cancel the mutation while it's paused
         cts.Cancel();
@@ -749,7 +749,7 @@ public sealed class NetworkModeTests : IDisposable
             () => mutateTask.WaitAsync(TimeSpan.FromSeconds(5)));
 
         // The observer result should NOT show IsError — cancellation is not an error
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.False(finalResult.IsError);
 
         // Clean up — go online so no lingering paused mutation remains

@@ -1,6 +1,10 @@
 namespace RabstackQuery;
 
-public sealed class QueryState<TData>
+/// <summary>
+/// The internal mutable state of a <see cref="Query{TData}"/>, tracking data,
+/// error, fetch status, update counts, and invalidation.
+/// </summary>
+public sealed record QueryState<TData>
 {
     public TData? Data { get; init; }
 

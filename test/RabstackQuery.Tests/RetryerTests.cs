@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Dedicated unit tests for <see cref="Retryer{TData}"/> pause, continue,

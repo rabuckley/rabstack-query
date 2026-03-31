@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace RabstackQuery;
 
-public sealed class QueryStore : IQueryStore
+internal sealed class QueryStore : IQueryStore
 {
     private readonly ConcurrentDictionary<string, Query> _cache = new();
 

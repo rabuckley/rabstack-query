@@ -1,13 +1,16 @@
 namespace RabstackQuery;
 
+/// <summary>
+/// Batches and flushes observer notifications so that multiple state changes
+/// within a single logical operation produce one consolidated notification pass.
+/// </summary>
 public sealed class NotifyManager : INotifyManager
 {
-    public static readonly INotifyManager Instance = new NotifyManager();
     private readonly Lock _lock = new();
     private Queue<Action> _queue = new();
     private int _transactions;
 
-    private NotifyManager()
+    internal NotifyManager()
     {
     }
 

@@ -3,57 +3,64 @@ namespace RabstackQuery;
 /// <summary>
 /// Configuration options for a mutation.
 /// </summary>
-public class MutationOptions<TData, TError, TVariables, TOnMutateResult>
+public record MutationOptions<TData, TError, TVariables, TOnMutateResult>
     where TError : Exception
 {
     /// <summary>
     /// The mutation function to execute.
     /// </summary>
-    public Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>>? MutationFn { get; set; }
+    /// <remarks>
+    /// The parameter order (<c>TVariables, MutationFunctionContext, CancellationToken</c>)
+    /// mirrors TanStack's mutation function signature rather than the .NET convention of
+    /// placing <see cref="CancellationToken"/> last. This keeps the most frequently used
+    /// parameter (<c>TVariables</c>) first and groups the two framework-provided parameters
+    /// together, matching the mental model from the TypeScript source.
+    /// </remarks>
+    public Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>>? MutationFn { get; init; }
 
     /// <summary>
     /// Optional mutation key for identifying this mutation.
     /// </summary>
-    public QueryKey? MutationKey { get; set; }
+    public QueryKey? MutationKey { get; init; }
 
     /// <summary>
     /// Optional metadata for this mutation.
     /// </summary>
-    public MutationMeta? Meta { get; set; }
+    public Meta? Meta { get; init; }
 
     /// <summary>
     /// Optional scope for mutation isolation and coordination. Mutations sharing
     /// the same <see cref="MutationScope.Id"/> run sequentially within that scope.
     /// </summary>
-    public MutationScope? Scope { get; set; }
+    public MutationScope? Scope { get; init; }
 
     /// <summary>
     /// Defines how this mutation behaves in relation to network connectivity.
     /// Default is Online.
     /// </summary>
-    public NetworkMode NetworkMode { get; set; } = NetworkMode.Online;
+    public NetworkMode NetworkMode { get; init; } = NetworkMode.Online;
 
     /// <summary>
     /// Called before the mutation function is fired.
     /// Return value is stored as context and passed to all subsequent callbacks.
     /// Useful for optimistic updates.
     /// </summary>
-    public Func<TVariables, MutationFunctionContext, Task<TOnMutateResult>>? OnMutate { get; set; }
+    public Func<TVariables, MutationFunctionContext, Task<TOnMutateResult>>? OnMutate { get; init; }
 
     /// <summary>
     /// Called after the mutation succeeds.
     /// </summary>
-    public Func<TData, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnSuccess { get; set; }
+    public Func<TData, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnSuccess { get; init; }
 
     /// <summary>
     /// Called after the mutation fails.
     /// </summary>
-    public Func<TError, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnError { get; set; }
+    public Func<TError, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnError { get; init; }
 
     /// <summary>
     /// Called after the mutation completes (success or error).
     /// </summary>
-    public Func<TData?, TError?, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnSettled { get; set; }
+    public Func<TData?, TError?, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnSettled { get; init; }
 
     /// <summary>
     /// Number of retry attempts. 0 means no retries. Null means "not explicitly set" —
@@ -61,28 +68,28 @@ public class MutationOptions<TData, TError, TVariables, TOnMutateResult>
     /// <see cref="QueryClient.DefaultMutationOptions{TData,TError,TVariables,TOnMutateResult}"/>.
     /// The final fallback is 0 for mutations.
     /// </summary>
-    public int? Retry { get; set; }
+    public int? Retry { get; init; }
 
     /// <summary>
     /// Custom retry delay function. Receives failure count and exception.
     /// Returns delay as a <see cref="TimeSpan"/>. If null, uses default exponential backoff.
     /// </summary>
-    public Func<int, Exception, TimeSpan>? RetryDelay { get; set; }
+    public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <summary>
     /// Duration before inactive mutations are garbage collected.
     /// Default is 5 minutes.
     /// </summary>
-    public TimeSpan GcTime { get; set; } = QueryTimeDefaults.GcTime;
+    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
 
     /// <summary>
     /// Set to true after <see cref="QueryClient.DefaultMutationOptions{TData,TError,TVariables,TOnMutateResult}"/>
     /// has merged key-prefix and global defaults into these options. Prevents
     /// double-merging when both <see cref="MutationObserver{TData,TError,TVariables,TOnMutateResult}"/>
-    /// and <see cref="MutationCache.Build{TData,TError,TVariables,TOnMutateResult}"/>
+    /// and <see cref="MutationCache.GetOrCreate{TData,TError,TVariables,TOnMutateResult}"/>
     /// apply defaults.
     /// </summary>
-    public bool Defaulted { get; set; }
+    public bool Defaulted { get; init; }
 }
 
 /// <summary>
@@ -90,23 +97,5 @@ public class MutationOptions<TData, TError, TVariables, TOnMutateResult>
 /// TOnMutateResult to <c>object?</c> for the common case where typed errors and
 /// optimistic update context are not needed.
 /// </summary>
-public class MutationOptions<TData, TVariables>
+public record MutationOptions<TData, TVariables>
     : MutationOptions<TData, Exception, TVariables, object?>;
-
-/// <summary>
-/// Static factory for creating <see cref="MutationOptions{TData, TVariables}"/>
-/// with type inference from the mutation function delegate.
-/// </summary>
-public static class MutationOptions
-{
-    /// <summary>
-    /// Creates a <see cref="MutationOptions{TData, TVariables}"/> with the mutation
-    /// function set, inferring <typeparamref name="TData"/> and <typeparamref name="TVariables"/>
-    /// from the delegate signature.
-    /// </summary>
-    public static MutationOptions<TData, TVariables> Create<TData, TVariables>(
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
-    {
-        return new MutationOptions<TData, TVariables> { MutationFn = mutationFn };
-    }
-}

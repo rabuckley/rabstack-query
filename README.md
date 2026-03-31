@@ -4,256 +4,16 @@ A powerful, type-safe data synchronization library for .NET, inspired by [TanSta
 
 ## Features
 
-### Core Features
-- **Declarative Data Fetching** - Define queries with simple functions, automatic execution and caching
-- **Automatic Caching** - Intelligent caching with configurable stale time and cache time
-- **Background Refetching** - Automatic refetch on window focus, network reconnection, and custom intervals
-- **Retry Logic** - Exponential backoff retry with configurable attempts (1s, 2s, 4s, 8s, max 30s)
-- **Stale-While-Revalidate** - Serve cached data immediately while refetching in background
-- **Optimistic Updates** - Update UI immediately before server confirmation with automatic rollback
-- **Mutation Support** - Full lifecycle hooks (onMutate, onSuccess, onError, onSettled)
-- **Query Invalidation** - Granular cache invalidation and refetch triggering
-- **Type Safety** - Full generic type support with nullable reference types
-
-### MVVM Features
-- **QueryViewModel<TData>** - INotifyPropertyChanged wrapper for reactive UI bindings
-- **MutationViewModel<TData, TVariables>** - IAsyncRelayCommand support with cancellation
-- **QueryCollectionViewModel<TItem>** - ObservableCollection wrapper for list queries
-- **UI Thread Marshaling** - Automatic SynchronizationContext handling for cross-thread updates
-- **CommunityToolkit.Mvvm Integration** - Source generators for minimal boilerplate
-
-## Architecture
-
-### Core Design Principles
-
-RabStack Query follows a **reactive observer pattern** inspired by functional programming and Redux-like state management:
-
-```
-┌─────────────┐
-│ QueryClient │ - Entry point, orchestrates cache and observers
-└──────┬──────┘
-       │
-       ├─────► QueryCache ────┐
-       │                      │
-       │                      ▼
-       │               ┌──────────┐
-       │               │  Query   │ - State machine (Pending → Fetching → Success/Error)
-       │               └────┬─────┘
-       │                    │
-       │                    ▼
-       │          ┌──────────────────┐
-       └─────────►│ QueryObserver    │ - Subscribes to query, transforms data
-                  └──────────────────┘
-                           │
-                           ▼
-                  ┌──────────────────┐
-                  │  QueryViewModel  │ - MVVM wrapper with INotifyPropertyChanged
-                  └──────────────────┘
-                           │
-                           ▼
-                        UI Layer (MAUI, Blazor)
-```
-
-### Key Architectural Components
-
-#### 1. QueryClient
-The central orchestrator that manages caches and provides the primary API surface.
-
-**Responsibilities:**
-- Maintains QueryCache and MutationCache instances
-- Provides high-level query/mutation methods
-- Handles query invalidation and cache updates
-- Subscribes to FocusManager and OnlineManager for automatic refetching
-
-**Key Methods:**
-- `QueryAsync<T>()` - Execute a one-time query
-- `InvalidateQueries()` - Mark queries as stale
-- `RefetchQueries()` - Force refetch
-- `SetQueryData<T>()` / `GetQueryData<T>()` - Manual cache manipulation
-- `MutateAsync<TData, TVariables>()` - Execute mutations
-
-#### 2. Query<TData>
-Represents a single cached query with state management via reducer pattern.
-
-**State Machine:**
-```
-Idle → Pending → Fetching ⟷ (Retry) → Success/Error
-                    ↓
-              (invalidate)
-                    ↓
-                  Stale
-```
-
-**Key Properties:**
-- `State` - Current query state (data, error, status, fetch status)
-- `QueryKey` - Unique identifier for cache lookup
-- `QueryHash` - Deterministic hash of query key
-- `Options` - Configuration (retry, stale time, cache time)
-
-**Key Features:**
-- **Garbage Collection**: Automatically removes unused queries after `GcTime` (default: 5 minutes)
-- **Retry with Exponential Backoff**: Configurable retry attempts with increasing delays
-- **Observer Pattern**: Notifies all subscribed QueryObservers on state changes
-
-#### 3. QueryObserver<TData, TQueryData>
-Subscribes to query state changes and provides reactive updates to consumers.
-
-**Responsibilities:**
-- Create or reuse queries from QueryCache
-- Transform query data via `Select` function
-- Compute derived state (IsLoading, IsStale, etc.)
-- Marshal updates to UI thread
-- Trigger initial fetch when first subscriber attaches
-
-**Type Parameters:**
-- `TData` - Type returned to observer (after select transform)
-- `TQueryData` - Type stored in cache (before select transform)
-
-**Example:**
-```csharp
-// Cache stores List<Todo>, but observer returns only count
-var observer = new QueryObserver<int, List<Todo>>(client, new QueryObserverOptions
-{
-    QueryKey = ["todos"],
-    QueryFn = async ct => await api.GetTodos(ct),
-    Select = todos => todos.Count // Transform: List<Todo> → int
-});
-```
-
-#### 4. QueryCache
-Thread-safe storage for all queries using ConcurrentDictionary.
-
-**Responsibilities:**
-- Store queries by hash for O(1) lookup
-- Notify listeners on query add/remove/update
-- Handle focus/online refetch triggers
-- Batch notifications via NotifyManager
-
-**Key Methods:**
-- `Build<TData>()` - Get existing or create new query
-- `Get<TData>()` - Retrieve query by hash
-- `Remove()` - Delete query from cache
-- `OnFocus()` / `OnOnline()` - Trigger background refetches
-
-#### 5. QueryKey & DefaultQueryKeyHasher
-**QueryKey** uses C# 12 collection expressions for concise syntax:
-```csharp
-QueryKey key = ["todos"];                          // Simple key
-QueryKey key = ["todos", todoId];                  // With parameter
-QueryKey key = ["todos", new { status, page }];    // With object
-```
-
-**DefaultQueryKeyHasher** provides deterministic hashing:
-- Sorts object properties alphabetically for consistent hashing
-- Handles nested objects, arrays, and null values
-- Uses JSON serialization with custom converters
-- Same objects in different order produce same hash
-
-#### 6. Mutation<TData, TVariables>
-Handles data modifications with lifecycle hooks.
-
-**Lifecycle:**
-```
-Idle → Pending → (onMutate) → Execute → Success/Error
-                                           ↓
-                                    (onSuccess/onError)
-                                           ↓
-                                      (onSettled)
-```
-
-**Key Features:**
-- **Optimistic Updates**: Update cache before API call via `onMutate`
-- **Rollback**: Revert changes if mutation fails via `onError`
-- **Invalidation**: Trigger refetch after success via `onSuccess`
-- **Retry Support**: Optional retry with exponential backoff
-
-#### 7. FocusManager & OnlineManager
-Platform-agnostic singletons for lifecycle events.
-
-**FocusManager:**
-- Tracks whether app has window focus
-- Triggers refetch when app regains focus
-- Platform code calls `SetFocused(bool)`
-
-**OnlineManager:**
-- Tracks network connectivity status
-- Triggers refetch when connection restored
-- Platform code calls `SetOnline(bool)`
-
-**Example (MAUI):**
-```csharp
-protected override void OnResume()
-{
-    base.OnResume();
-    FocusManager.Instance.SetFocused(true);
-}
-
-// Network connectivity listener
-Connectivity.ConnectivityChanged += (s, e) =>
-{
-    OnlineManager.Instance.SetOnline(e.NetworkAccess == NetworkAccess.Internet);
-};
-```
-
-#### 8. Retryer<TData>
-Handles retry logic with exponential backoff.
-
-**Algorithm:**
-```csharp
-Attempt 1: Execute immediately
-Attempt 2: Wait 1s  (2^0 * 1000ms)
-Attempt 3: Wait 2s  (2^1 * 1000ms)
-Attempt 4: Wait 4s  (2^2 * 1000ms)
-Attempt 5: Wait 8s  (2^3 * 1000ms)
-Max delay: 30s
-```
-
-**Cancellation:**
-- Respects CancellationToken
-- Stops retry loop immediately on cancel
-- Propagates OperationCanceledException
-
-#### 9. NotifyManager
-Batches multiple state updates into single notification cycle.
-
-**Purpose:**
-- Prevent cascading updates during complex operations
-- Batch multiple query invalidations into single render
-- Defers notifications until transaction completes
-
-**Usage:**
-```csharp
-NotifyManager.Instance.Batch(() =>
-{
-    query1.Invalidate();
-    query2.Invalidate();
-    query3.Invalidate();
-    // All notifications fired together after batch completes
-});
-```
-
-### MVVM Architecture
-
-The MVVM package wraps core observers with `ObservableObject` from CommunityToolkit.Mvvm:
-
-```
-┌──────────────────────┐
-│  QueryViewModel      │ - Wraps QueryObserver
-│  [ObservableProperty]│ - Automatic INotifyPropertyChanged
-└──────────┬───────────┘
-           │
-           ├─ Data: TData?
-           ├─ IsLoading: bool
-           ├─ IsError: bool
-           ├─ Error: Exception?
-           └─ RefetchCommand: IAsyncRelayCommand
-```
-
-**Key Features:**
-- **Source Generators**: `[ObservableProperty]` eliminates boilerplate
-- **Commands**: `[RelayCommand]` creates ICommand/IAsyncRelayCommand
-- **Thread Safety**: Automatic SynchronizationContext marshaling
-- **Disposable**: Proper cleanup of subscriptions
+- **Automatic Caching** with configurable stale time and garbage collection
+- **Stale-While-Revalidate** — serve cached data instantly while refetching in the background
+- **Background Refetching** on window focus, network reconnection, and polling intervals
+- **Optimistic Updates** with automatic rollback on error
+- **Mutations** with lifecycle hooks (onMutate, onSuccess, onError, onSettled)
+- **Infinite Queries** for cursor-based pagination
+- **Hierarchical Query Keys** with prefix-based invalidation
+- **MVVM Bindings** — `QueryViewModel`, `MutationViewModel`, `InfiniteQueryViewModel` with `INotifyPropertyChanged` and `IAsyncRelayCommand`
+- **Retry with Exponential Backoff** (1s, 2s, 4s, 8s, max 30s)
+- **Trim and AOT Safe** — no reflection, `IsTrimmable` and `IsAotCompatible`
 
 ## Installation
 
@@ -261,328 +21,269 @@ The MVVM package wraps core observers with `ObservableObject` from CommunityTool
 # Core library
 dotnet add package RabstackQuery
 
-# MVVM bindings for MAUI/WPF/Avalonia
+# MVVM bindings for MAUI/Blazor
 dotnet add package RabstackQuery.Mvvm
 ```
 
-## Usage
+## Quick Start
 
-### Basic Query
-
-```csharp
-// Create client (typically singleton)
-var queryCache = new QueryCache();
-var client = new QueryClient(queryCache);
-
-// Execute query
-var result = await client.QueryAsync(
-    ["todos"],
-    async ct => await api.GetTodos(ct)
-);
-
-// Access data
-if (result.IsSuccess)
-{
-    var todos = result.Data;
-}
-```
-
-### MVVM ViewModel (MAUI)
+Register the `QueryClient` in DI:
 
 ```csharp
-public partial class TodosViewModel : ObservableObject
+builder.Services.AddRabstackQuery(options =>
 {
-    private readonly QueryClient _client;
-    private readonly ITodoApi _api;
-
-    // Query with automatic UI updates
-    public QueryViewModel<List<Todo>> TodosQuery { get; }
-
-    // Mutation with optimistic updates
-    public MutationViewModel<Todo, CreateTodoRequest> CreateTodoMutation { get; }
-
-    public TodosViewModel(QueryClient client, ITodoApi api)
+    options.DefaultOptions = new QueryClientDefaultOptions
     {
-        _client = client;
-        _api = api;
-
-        // Setup query
-        TodosQuery = client.UseQuery(
-            ["todos"],
-            async ct => await api.GetTodos(ct)
-        );
-
-        // Setup mutation with lifecycle hooks
-        CreateTodoMutation = client.UseMutation<Todo, CreateTodoRequest>(
-            async (request, ct) => await api.CreateTodo(request, ct),
-            new MutationOptions<Todo, CreateTodoRequest>
-            {
-                OnMutate = async (request) =>
-                {
-                    // Optimistic update
-                    var todos = _client.GetQueryData<List<Todo>>(["todos"]) ?? new();
-                    todos.Add(new Todo { Id = -1, Title = request.Title });
-                    _client.SetQueryData(["todos"], todos);
-                },
-                OnSuccess = async (todo, request) =>
-                {
-                    // Invalidate to refetch with server data
-                    _client.InvalidateQueries(["todos"]);
-                },
-                OnError = (error, request) =>
-                {
-                    // Rollback on error
-                    _client.InvalidateQueries(["todos"]);
-                }
-            }
-        );
-    }
-}
-```
-
-### XAML Binding (MAUI)
-
-```xml
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             x:Class="MyApp.TodosPage">
-    <StackLayout>
-        <!-- Loading indicator -->
-        <ActivityIndicator IsRunning="{Binding TodosQuery.IsLoading}"
-                          IsVisible="{Binding TodosQuery.IsLoading}" />
-
-        <!-- Error message -->
-        <Label Text="{Binding TodosQuery.Error.Message}"
-               IsVisible="{Binding TodosQuery.IsError}"
-               TextColor="Red" />
-
-        <!-- Todo list -->
-        <CollectionView ItemsSource="{Binding TodosQuery.Data}"
-                       IsVisible="{Binding TodosQuery.IsSuccess}">
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Label Text="{Binding Title}" />
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-
-        <!-- Add todo button -->
-        <Button Text="Add Todo"
-                Command="{Binding CreateTodoMutation.MutateCommand}"
-                CommandParameter="{Binding NewTodoRequest}" />
-
-        <!-- Refetch button -->
-        <Button Text="Refresh"
-                Command="{Binding TodosQuery.RefetchCommand}" />
-    </StackLayout>
-</ContentPage>
-```
-
-### Advanced: Query with Select Transform
-
-```csharp
-// Cache stores full user object, but component only needs name
-var nameQuery = new QueryObserver<string, User>(client, new QueryObserverOptions
-{
-    QueryKey = ["user", userId],
-    QueryFn = async ct => await api.GetUser(userId, ct),
-    Select = user => user.FullName, // Transform User → string
-    StaleTime = 5 * 60 * 1000, // 5 minutes
-    CacheTime = 10 * 60 * 1000  // 10 minutes
+        StaleTime = TimeSpan.FromSeconds(30),
+        Retry = 2,
+    };
 });
 ```
 
-### Advanced: Dependent Queries
+Use `Scoped` (default) for Blazor, `Singleton` for MAUI:
 
 ```csharp
-// First query
-var userQuery = client.UseQuery(
-    ["user", userId],
-    async ct => await api.GetUser(userId, ct)
-);
+builder.Services.AddRabstackQuery(configure: _ => { }, ServiceLifetime.Singleton);
+```
 
-// Conditional second query based on first result
-MutationViewModel<List<Post>, int>? postsQuery = null;
-if (userQuery.IsSuccess && userQuery.Data is not null)
+## Queries
+
+### Basic Query
+
+`UseQuery` creates a `QueryViewModel` that fetches data, caches it, and exposes reactive properties (`Data`, `IsLoading`, `IsError`, `Error`, `IsSuccess`, `IsStale`) via `INotifyPropertyChanged`:
+
+```csharp
+public sealed class TodosViewModel : IDisposable
 {
-    postsQuery = client.UseQuery(
-        ["posts", userQuery.Data.Id],
-        async ct => await api.GetUserPosts(userQuery.Data.Id, ct)
-    );
+    public QueryViewModel<List<Todo>> TodosQuery { get; }
+
+    public TodosViewModel(QueryClient client, ITodoApi api)
+    {
+        TodosQuery = client.UseQuery(
+            queryKey: ["todos"],
+            queryFn: async ctx => await api.GetTodosAsync(ctx.CancellationToken)
+        );
+    }
+
+    public void Dispose() => TodosQuery.Dispose();
 }
 ```
 
-### Advanced: Pagination with QueryCollectionViewModel
+Bind directly to the ViewModel properties in XAML or Blazor:
+
+```xml
+<ActivityIndicator IsRunning="{Binding TodosQuery.IsLoading}" />
+<Label Text="{Binding TodosQuery.Error.Message}" IsVisible="{Binding TodosQuery.IsError}" />
+<CollectionView ItemsSource="{Binding TodosQuery.Data}" IsVisible="{Binding TodosQuery.IsSuccess}">
+    <CollectionView.ItemTemplate>
+        <DataTemplate><Label Text="{Binding Title}" /></DataTemplate>
+    </CollectionView.ItemTemplate>
+</CollectionView>
+```
+
+### Query Options
+
+Control staleness, polling, placeholder data, and retries:
 
 ```csharp
-public partial class TodoListViewModel : ObservableObject
+TaskQuery = client.UseQuery(
+    queryKey: ["tasks", projectId, taskId],
+    queryFn: async ctx => await api.GetTaskAsync(projectId, taskId, ctx.CancellationToken),
+    enabled: taskId > 0,
+    staleTime: TimeSpan.FromSeconds(15),
+    placeholderData: (_, _) =>
+    {
+        // Seed from a parent list cache for instant perceived load
+        var cached = client.GetQueryData<List<TaskItem>>(["tasks", projectId]);
+        return cached?.FirstOrDefault(t => t.Id == taskId);
+    }
+);
+```
+
+### Query Keys
+
+Keys are hierarchical `List<object>` with C# 12 collection expression syntax. Invalidating a prefix cascades to all queries underneath:
+
+```csharp
+public static class QueryKeys
 {
-    public QueryCollectionViewModel<Todo> Todos { get; }
-
-    [ObservableProperty]
-    private int _page = 1;
-
-    public TodoListViewModel(QueryClient client, ITodoApi api)
-    {
-        Todos = client.UseQueryCollection(
-            ["todos", Page],
-            async ct => await api.GetTodos(Page, ct)
-        );
-    }
-
-    [RelayCommand]
-    private async Task NextPage()
-    {
-        Page++;
-        // Create new query for next page
-        Todos = client.UseQueryCollection(
-            ["todos", Page],
-            async ct => await api.GetTodos(Page, ct)
-        );
-    }
+    public static QueryKey Projects => ["projects"];
+    public static QueryKey Project(int id) => ["projects", id];
+    public static QueryKey Tasks(int projectId) => ["projects", projectId, "tasks"];
 }
+
+// Invalidates Projects, Project(3), and Tasks(3)
+await client.InvalidateQueriesAsync(["projects"]);
+```
+
+### Reusable Query Definitions
+
+`QueryOptions<TData>` bundles key + function + config into a single typed object (analogous to TanStack v5's `queryOptions()`). The same definition works with `UseQuery`, `FetchQueryAsync`, `GetQueryData`, and `SetQueryData`:
+
+```csharp
+public static class Queries
+{
+    public static QueryOptions<IEnumerable<Project>> Projects(IProjectApi api) => new()
+    {
+        QueryKey = QueryKeys.Projects,
+        QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
+        StaleTime = TimeSpan.FromSeconds(60),
+    };
+}
+
+// Observe reactively
+ProjectsQuery = client.UseQuery(Queries.Projects(api));
+
+// Read cache (TData inferred)
+var cached = client.GetQueryData(Queries.Projects(api));
+
+// Prefetch in background
+await client.PrefetchQueryAsync(Queries.Projects(api));
+```
+
+### Select Transform
+
+Cache one type, expose another. The cache stores the full object; the observer transforms it:
+
+```csharp
+TodoCountQuery = client.UseQuery(
+    queryKey: ["todos"],
+    queryFn: async ctx => await api.GetTodosAsync(ctx.CancellationToken),
+    select: todos => todos.Count
+);
+// TodoCountQuery.Data is int, but the cache holds List<Todo>
+```
+
+## Mutations
+
+`UseMutation` creates a `MutationViewModel` with `MutateCommand` (an `IAsyncRelayCommand` for XAML binding) and lifecycle callbacks:
+
+```csharp
+CreateTodoMutation = client.UseMutation<Todo, string>(
+    mutationFn: async (title, context, ct) =>
+        await api.CreateTodoAsync(title, ct),
+    onSuccess: async (todo, title, context) =>
+    {
+        await context.Client.InvalidateQueriesAsync(["todos"]);
+    }
+);
+
+// Fire from code
+await CreateTodoMutation.MutateCommand.ExecuteAsync("Buy milk");
 ```
 
 ```xml
-<!-- XAML -->
-<ListView ItemsSource="{Binding Todos.Items}">
-    <!-- Items automatically update when query refetches -->
-</ListView>
-<Button Text="Next Page" Command="{Binding NextPageCommand}" />
+<!-- Or bind in XAML -->
+<Button Text="Create" Command="{Binding CreateTodoMutation.MutateCommand}" CommandParameter="Buy milk" />
 ```
 
-## Configuration Options
+### Optimistic Updates
 
-### QueryObserverOptions
+Update the cache before the server responds. Roll back on error:
 
 ```csharp
-new QueryObserverOptions<TData, TQueryData>
-{
-    QueryKey = ["key"],                    // Required: Cache key
-    QueryFn = async ct => { },             // Required: Fetch function
-    Enabled = true,                        // Auto-fetch on subscribe
-    StaleTime = 0,                         // 0 = always stale (milliseconds)
-    CacheTime = 5 * 60 * 1000,            // 5 minutes until GC
-    Select = data => transform(data),      // Transform cached data
-    Retry = 3,                             // Number of retry attempts
-    RetryDelay = (attempt, error) => {     // Custom retry delay
-        return attempt * 1000;
+UpdateStatusMutation = client.UseMutation<TaskItem, TaskItemStatus>(
+    mutationFn: async (status, context, ct) =>
+        await api.UpdateStatusAsync(taskId, status, ct),
+    options: new()
+    {
+        OnMutate = async (newStatus, context) =>
+        {
+            await context.Client.CancelQueriesAsync(["tasks", taskId]);
+
+            var previous = context.Client.GetQueryData<TaskItem>(["tasks", taskId]);
+            if (previous is not null)
+            {
+                context.Client.SetQueryData(["tasks", taskId],
+                    previous with { Status = newStatus });
+            }
+
+            return null;
+        },
+        OnError = async (_, _, _, context) =>
+        {
+            await context.Client.InvalidateQueriesAsync(["tasks", taskId]);
+        }
     }
-}
+);
 ```
 
-### MutationOptions
+## Infinite Queries
+
+Cursor-based pagination with `UseInfiniteQuery`:
 
 ```csharp
-new MutationOptions<TData, TVariables>
-{
-    MutationFn = async (vars, ct) => { },  // Required: Mutation function
-    OnMutate = async (vars) => {           // Before mutation (optimistic)
-        // Update cache optimistically
-    },
-    OnSuccess = async (data, vars) => {    // After success
-        // Invalidate related queries
-        client.InvalidateQueries(["key"]);
-    },
-    OnError = (error, vars) => {           // After error
-        // Rollback optimistic updates
-    },
-    OnSettled = async () => {              // Always runs after success/error
-        // Cleanup
-    },
-    Retry = 0,                             // Mutations don't retry by default
-    GcTime = 5 * 60 * 1000                // 5 minutes until GC
-}
+CommentsQuery = client.UseInfiniteQuery(
+    new InfiniteQueryObserverOptions<PagedResult<Comment>, string?>
+    {
+        QueryKey = ["tasks", taskId, "comments"],
+        QueryFn = async ctx =>
+            await api.GetCommentsAsync(taskId, ctx.PageParam, pageSize: 10, ctx.CancellationToken),
+        InitialPageParam = null,
+        GetNextPageParam = ctx => ctx.Page.NextCursor is { } cursor
+            ? PageParamResult<string?>.Some(cursor)
+            : PageParamResult<string?>.None,
+    }
+);
 ```
 
-## Performance Considerations
+The `InfiniteQueryViewModel` exposes `HasNextPage`, `HasPreviousPage`, `FetchNextPageCommand`, and `FetchPreviousPageCommand` for binding.
 
-### Memory Management
-- **Garbage Collection**: Unused queries are automatically removed after `GcTime` (default: 5 minutes)
-- **Weak References**: Consider using for large data sets (not yet implemented)
-- **Disposal**: Always dispose ViewModels to unsubscribe from observers
+## Cache Operations
 
-### Thread Safety
-- **QueryCache**: Uses ConcurrentDictionary for thread-safe access
-- **QueryStore**: Thread-safe query storage
-- **NotifyManager**: Batches updates to prevent race conditions
-- **SynchronizationContext**: MVVM layer marshals all property changes to UI thread
+```csharp
+// Read cached data
+var todos = client.GetQueryData<List<Todo>>(["todos"]);
 
-### Optimization Tips
-1. **Use StaleTime wisely**: Set higher values for data that doesn't change often
-2. **Batch invalidations**: Use `NotifyManager.Batch()` for multiple invalidations
-3. **Select transforms**: Use to reduce memory for derived data
-4. **ObservableCollection**: Use QueryCollectionViewModel for list queries to minimize allocations
+// Write cached data
+client.SetQueryData(["todos"], updatedTodos);
 
-## Comparison to TanStack Query
+// Update with a function
+client.SetQueryData<List<Todo>>(["todos"], prev => prev?.Append(newTodo).ToList());
 
-### Similarities
-- **Core Concepts**: Query keys, caching, stale-while-revalidate, optimistic updates
-- **API Design**: Similar method names and patterns (useQuery → UseQuery, useMutation → UseMutation)
-- **State Management**: Reactive observer pattern with automatic UI updates
-- **Lifecycle Hooks**: onSuccess, onError, onMutate, onSettled callbacks
+// Invalidate (marks stale, triggers refetch for active observers)
+await client.InvalidateQueriesAsync(["todos"]);
 
-### Differences
+// Prefetch (silent failures, warms cache)
+await client.PrefetchQueryAsync(new FetchQueryOptions<List<Todo>>
+{
+    QueryKey = ["todos"],
+    QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken),
+});
 
-| Feature | TanStack Query (React) | RabStack Query (.NET) |
-|---------|----------------------|---------------------|
-| Language | JavaScript/TypeScript | C# with generics |
-| UI Framework | React hooks | MVVM (INotifyPropertyChanged) |
-| Async Primitives | Promise | Task\<T\> |
-| Cancellation | AbortSignal | CancellationToken |
-| Reactivity | React state/hooks | ObservableObject + PropertyChanged |
-| Key Syntax | `['todos', id]` | `["todos", id]` (collection expressions) |
-| Type Safety | TypeScript inference | Full generic constraints |
-| Platform | Web (React) | Cross-platform (.NET: MAUI, Blazor, WPF, Avalonia) |
-| Commands | N/A (React callbacks) | ICommand/IAsyncRelayCommand (MVVM) |
+// Imperative fetch (throws on failure)
+var result = await client.FetchQueryAsync(new FetchQueryOptions<List<Todo>>
+{
+    QueryKey = ["todos"],
+    QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken),
+});
+```
 
-### C#-Specific Enhancements
-- **Nullable Reference Types**: Enforced nullability for safer code
-- **Source Generators**: CommunityToolkit.Mvvm eliminates boilerplate
-- **Pattern Matching**: Used extensively in reducers and state checks
-- **Collection Expressions**: C# 12 syntax for concise query keys
-- **Primary Constructors**: Modern C# syntax throughout
+## Focus and Network Refetching
 
-## Roadmap
+Queries automatically refetch when the app regains focus or reconnects. Wire up the platform signals:
 
-### Completed ✅
-- [x] Core query execution and caching
-- [x] Retry with exponential backoff
-- [x] Stale-while-revalidate
-- [x] Focus/online refetching
-- [x] Mutation support with lifecycle hooks
-- [x] Query invalidation and manual updates
-- [x] MVVM package for MAUI
-- [x] QueryViewModel, MutationViewModel, QueryCollectionViewModel
-- [x] Extension methods (UseQuery, UseMutation)
+```csharp
+// MAUI
+protected override void OnResume()
+{
+    base.OnResume();
+    FocusManager.Instance.SetFocused(true);
+}
 
-### Planned 🚧
-- [ ] Infinite queries with pagination
-- [ ] Hydration/dehydration for SSR
-- [ ] Query filters (complex invalidation patterns)
-- [ ] Blazor package (separate from MAUI)
-- [ ] Network mode (online/always/offlineFirst)
-- [ ] Structural sharing (deep equality checks)
-- [ ] DevTools integration
-- [ ] Suspense-like loading boundaries
-- [ ] Prefetching and preloading
-- [ ] Query cancellation on component unmount
+Connectivity.ConnectivityChanged += (s, e) =>
+    OnlineManager.Instance.SetOnline(e.NetworkAccess == NetworkAccess.Internet);
+```
+
+## Architecture
+
+For design decisions, reactive flow, and component responsibilities, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## License
 
 MIT License - See LICENSE file for details
 
-## Contributing
-
-Contributions welcome! Please read CONTRIBUTING.md for guidelines.
-
 ## Acknowledgments
 
 - Inspired by [TanStack Query](https://tanstack.com/query) by Tanner Linsley
 - Built with [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) for MVVM support
-- Uses modern C# 12 and .NET 10 features
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/rabstack-query/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/rabstack-query/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/rabstack-query/wiki)

@@ -14,7 +14,7 @@ public sealed class MutationFunctionContext
     /// <summary>
     /// Optional metadata associated with this mutation.
     /// </summary>
-    public MutationMeta? Meta { get; }
+    public Meta? Meta { get; }
 
     /// <summary>
     /// Optional mutation key for identifying this mutation.
@@ -26,7 +26,7 @@ public sealed class MutationFunctionContext
     /// </summary>
     internal MutationFunctionContext(
         QueryClient client,
-        MutationMeta? meta,
+        Meta? meta,
         QueryKey? mutationKey)
     {
         Client = client;

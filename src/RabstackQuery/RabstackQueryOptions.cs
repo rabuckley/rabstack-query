@@ -11,7 +11,7 @@ public sealed class RabstackQueryOptions
 {
     /// <summary>
     /// Global default options applied to all queries via
-    /// <see cref="QueryClient.SetDefaultOptions"/>.
+    /// <see cref="QueryClient.DefaultOptions"/>.
     /// </summary>
     public QueryClientDefaultOptions? DefaultOptions { get; set; }
 

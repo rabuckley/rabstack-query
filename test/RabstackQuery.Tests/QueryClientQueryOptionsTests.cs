@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for <see cref="QueryClient"/> overloads that accept <see cref="QueryOptions{TData}"/>.

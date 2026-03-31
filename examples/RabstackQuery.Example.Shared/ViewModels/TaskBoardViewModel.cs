@@ -65,33 +65,32 @@ public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
             GetNextPageParam = ctx => ctx.Page.NextCursor is { } cursor
                 ? PageParamResult<string?>.Some(cursor)
                 : PageParamResult<string?>.None,
-            StaleTime = TimeSpan.FromSeconds(10),
+            // Matches Queries.Tasks() — the infinite variant can't reuse the
+            // QueryOptions directly, but should stay consistent.
+            StaleTime = TimeSpan.FromSeconds(15),
         });
 
         // Project details query with placeholder data seeded from the projects list
         // cache so the page title renders instantly while the detail fetch is in flight.
-        ProjectQuery = client.UseQuery(new QueryObserverOptions<Project>
-        {
-            QueryKey = QueryKeys.Project(projectId),
-            QueryFn = async ctx => await api.GetProjectAsync(projectId, ctx.CancellationToken),
-            PlaceholderData = (_, _) =>
+        ProjectQuery = client.UseQuery(
+            queryKey: QueryKeys.Project(projectId),
+            queryFn: async ctx => await api.GetProjectAsync(projectId, ctx.CancellationToken),
+            enabled: true,
+            placeholderData: (_, _) =>
             {
                 var projects = client.GetQueryData<IEnumerable<Project>>(QueryKeys.Projects);
                 return projects?.FirstOrDefault(p => p.Id == projectId);
-            },
-        });
+            }
+        );
 
         AddTaskMutation = client.UseMutation<TaskItem, (string Title, TaskPriority Priority)>(
             mutationFn: async (variables, context, ct) =>
                 await api.CreateTaskAsync(projectId, variables.Title, variables.Priority, ct),
-            options: new()
+            onSuccess: async (data, variables, context) =>
             {
-                OnSuccess = async (data, variables, onMutateResult, context) =>
-                {
-                    // Refresh the task list and project details (task counts may have changed).
-                    await context.Client.InvalidateQueries(QueryKeys.Tasks(projectId));
-                    await context.Client.InvalidateQueries(QueryKeys.Projects);
-                },
+                // Refresh the task list and project details (task counts may have changed).
+                await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
+                await context.Client.InvalidateQueriesAsync(QueryKeys.Projects);
             }
         );
 

@@ -8,9 +8,16 @@ namespace RabstackQuery;
 /// Non-generic base class for mutations, analogous to the abstract <see cref="Query"/> base class.
 /// Allows the <see cref="MutationCache"/> to store mutations without knowing their type parameters.
 /// </summary>
+/// <remarks>
+/// <para>The only concrete subclass is the internal <c>Mutation&lt;TData, TError, TVariables, TOnMutateResult&gt;</c>.
+/// This class is not designed for subclassing outside of RabstackQuery.</para>
+/// <para><b>Threading:</b> mutation state mutations and observer notifications are not
+/// inherently thread-safe. Callers must ensure mutations are accessed from a single
+/// context (typically the UI/synchronization context).</para>
+/// </remarks>
 public abstract class Mutation : Removable
 {
-    protected Mutation(TimeProvider timeProvider) : base(timeProvider) { }
+    internal Mutation(TimeProvider timeProvider) : base(timeProvider) { }
 
     private int _observerCount;
 
@@ -18,7 +25,7 @@ public abstract class Mutation : Removable
     public abstract MutationStatus CurrentStatus { get; }
     public abstract bool CurrentIsPaused { get; }
     public abstract QueryKey? MutationKey { get; }
-    public abstract MutationMeta? Meta { get; }
+    public abstract Meta? Meta { get; }
     public abstract MutationScope? Scope { get; }
     public abstract void Reset();
 
@@ -47,7 +54,7 @@ public abstract class Mutation : Removable
     /// Registers an observer with this mutation. Clears the GC timer while
     /// observers are active, matching TanStack's <c>mutation.addObserver()</c>.
     /// </summary>
-    public void AddObserver()
+    internal void AddObserver()
     {
         Interlocked.Increment(ref _observerCount);
         ClearGcTimeout();
@@ -58,7 +65,7 @@ public abstract class Mutation : Removable
     /// Unregisters an observer from this mutation. Re-schedules GC when the
     /// last observer leaves, matching TanStack's <c>mutation.removeObserver()</c>.
     /// </summary>
-    public void RemoveObserver()
+    internal void RemoveObserver()
     {
         Interlocked.Decrement(ref _observerCount);
         ScheduleGc();
@@ -115,10 +122,94 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
     /// </summary>
     public override bool CurrentIsPaused => State.IsPaused;
     public override QueryKey? MutationKey => _options.MutationKey;
-    public override MutationMeta? Meta => _options.Meta;
+    public override Meta? Meta => _options.Meta;
     public override MutationScope? Scope => _options.Scope;
 
     public MutationState<TData, TVariables, TOnMutateResult> State { get; private set; }
+
+    // ── Dispatch/Reducer ──────────────────────────────────────────────
+    // Mirrors Query<TData>.Dispatch: every state transition goes through
+    // the reducer, producing a new immutable MutationState and then
+    // notifying observers + cache.
+
+    private void Dispatch(MutationDispatchAction action, Action? onStatusChanged)
+    {
+        State = Reducer(State, action);
+
+        // Map action to the ActionType string expected by MutationCacheUpdatedEvent.
+        // Actions that don't fire cache notifications (SetContext, Cancel) map to null.
+        var actionType = action switch
+        {
+            MutationPendingAction<TVariables> => "pending",
+            MutationPauseAction => "pause",
+            MutationContinueAction => "continue",
+            MutationFailAction => "failed",
+            MutationSuccessAction<TData> => "success",
+            MutationErrorAction => "error",
+            MutationSetContextAction<TOnMutateResult> => (string?)null,
+            MutationCancelAction => (string?)null,
+            _ => throw new InvalidOperationException($"Unknown mutation action: {action.GetType().Name}"),
+        };
+
+        if (actionType is not null)
+        {
+            onStatusChanged?.Invoke();
+            _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = actionType });
+        }
+    }
+
+    private static MutationState<TData, TVariables, TOnMutateResult> Reducer(
+        MutationState<TData, TVariables, TOnMutateResult> state,
+        MutationDispatchAction action)
+    {
+        return action switch
+        {
+            // Pending: clear stale fields from prior execution, set new variables.
+            // Context is also cleared (bug fix: previously leaked from prior execution).
+            // Mirrors TanStack's pending reducer (mutation.ts:352-364).
+            MutationPendingAction<TVariables> pending => new MutationState<TData, TVariables, TOnMutateResult>
+            {
+                Status = MutationStatus.Pending,
+                IsPaused = pending.IsPaused,
+                Variables = pending.Variables,
+                SubmittedAt = pending.SubmittedAt,
+            },
+
+            MutationPauseAction => state with { IsPaused = true },
+            MutationContinueAction => state with { IsPaused = false },
+
+            MutationFailAction fail => state with
+            {
+                FailureCount = fail.FailureCount,
+                FailureReason = fail.Error,
+            },
+
+            MutationSetContextAction<TOnMutateResult> ctx => state with { Context = ctx.Context },
+
+            MutationSuccessAction<TData> success => state with
+            {
+                Data = success.Data,
+                Error = null,
+                FailureCount = 0,
+                FailureReason = null,
+                Status = MutationStatus.Success,
+                IsPaused = false,
+            },
+
+            MutationErrorAction error => state with
+            {
+                Error = error.Error,
+                FailureCount = state.FailureCount + 1,
+                FailureReason = error.Error,
+                Status = MutationStatus.Error,
+                IsPaused = false,
+            },
+
+            MutationCancelAction => state with { IsPaused = false },
+
+            _ => throw new InvalidOperationException($"Unknown mutation action: {action.GetType().Name}"),
+        };
+    }
 
     public Mutation(
         QueryClient client,
@@ -212,48 +303,31 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
             OnPause = () =>
             {
                 _logger.MutationNetworkPaused(MutationId);
-                State.IsPaused = true;
-                onStatusChanged?.Invoke();
-                _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "pause" });
+                Dispatch(new MutationPauseAction(), onStatusChanged);
             },
             OnContinue = () =>
             {
                 _logger.MutationNetworkResumed(MutationId);
-                State.IsPaused = false;
-                onStatusChanged?.Invoke();
-                _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "continue" });
+                Dispatch(new MutationContinueAction(), onStatusChanged);
             },
             OnFail = (count, error) =>
             {
-                State.FailureCount = count;
-                State.FailureReason = error;
-                onStatusChanged?.Invoke();
-                _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "failed" });
+                Dispatch(new MutationFailAction { FailureCount = count, Error = error }, onStatusChanged);
             }
         };
 
         var retryer = new Retryer<TData>(retryerOptions);
         _retryer = retryer;
 
-        // Atomic pending dispatch: set Status, IsPaused, Variables, SubmittedAt
-        // in one block with a single onStatusChanged call. This prevents observers
-        // from seeing IsPaused=true on a mutation that hasn't yet transitioned to
-        // Pending. Mirrors TanStack's dispatch({ type: 'pending' }) which sets
-        // isPaused from canStart() in the same reducer call.
-        // Clear stale fields from any prior execution before transitioning to
-        // Pending. Matches TanStack's pending reducer (mutation.ts:352-364) which
-        // resets data/error/failureCount/failureReason alongside setting status.
-        var isPaused = !retryer.CanStart();
-        State.Data = default;
-        State.Error = null;
-        State.FailureCount = 0;
-        State.FailureReason = null;
-        State.Status = MutationStatus.Pending;
-        State.IsPaused = isPaused;
-        State.Variables = variables;
-        State.SubmittedAt = GetUtcNowMs();
-        onStatusChanged?.Invoke();
-        _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "pending" });
+        // Mirrors TanStack's dispatch({ type: 'pending' }) which atomically
+        // sets isPaused from canStart() and clears stale fields from any prior
+        // execution (mutation.ts:352-364).
+        Dispatch(new MutationPendingAction<TVariables>
+        {
+            Variables = variables,
+            SubmittedAt = GetUtcNowMs(),
+            IsPaused = !retryer.CanStart(),
+        }, onStatusChanged);
 
         // ── Scope-based sequential execution ──────────────────────────
         // If this mutation has a scope, it must wait for any previously-submitted
@@ -282,17 +356,13 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
 
                 if (!prevTask.IsCompleted)
                 {
-                    State.IsPaused = true;
-                    onStatusChanged?.Invoke();
-                    _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "pause" });
+                    Dispatch(new MutationPauseAction(), onStatusChanged);
 
                     // Await without capturing the current SynchronizationContext to
                     // avoid deadlocks on UI-thread dispatchers.
                     await prevTask.ConfigureAwait(false);
 
-                    State.IsPaused = false;
-                    onStatusChanged?.Invoke();
-                    _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "continue" });
+                    Dispatch(new MutationContinueAction(), onStatusChanged);
                 }
             }
 
@@ -310,9 +380,13 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
             var sw = metrics.MutationDuration is not null ? Stopwatch.StartNew() : null;
 
             if (mutationKeyHash is not null)
+            {
                 metrics.MutationTotal?.Add(1, mutationKeyTag);
+            }
             else
+            {
                 metrics.MutationTotal?.Add(1);
+            }
 
             var cacheConfig = _cache.Config;
 
@@ -331,7 +405,7 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 {
                     _logger.MutationOnMutateInvoked(MutationId);
                     var context = await _options.OnMutate(variables, functionContext);
-                    State.Context = context;
+                    Dispatch(new MutationSetContextAction<TOnMutateResult> { Context = context }, onStatusChanged);
                 }
 
                 // Always route through the retryer — even when Retry == 0 (MaxRetries == 1).
@@ -377,24 +451,24 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 }
 
                 // Set success state AFTER callbacks complete without error
-                State.Data = data;
-                State.Status = MutationStatus.Success;
-                State.IsPaused = false;
-                State.FailureCount = 0;
-                State.FailureReason = null;
-                onStatusChanged?.Invoke();
-                _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "success" });
+                Dispatch(new MutationSuccessAction<TData> { Data = data }, onStatusChanged);
 
                 sw?.Stop();
                 if (mutationKeyHash is not null)
                 {
                     metrics.MutationSuccessTotal?.Add(1, mutationKeyTag);
-                    if (sw is not null) metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds, mutationKeyTag);
+                    if (sw is not null)
+                    {
+                        metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds, mutationKeyTag);
+                    }
                 }
                 else
                 {
                     metrics.MutationSuccessTotal?.Add(1);
-                    if (sw is not null) metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds);
+                    if (sw is not null)
+                    {
+                        metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds);
+                    }
                 }
 
                 _logger.MutationExecuteSucceeded(MutationId);
@@ -406,11 +480,16 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 // distinguish these, but C#'s CancellationToken model makes this a
                 // natural concern — Query.cs already has the same pattern (line 612-619).
                 sw?.Stop();
-                State.IsPaused = false;
+                Dispatch(new MutationCancelAction(), onStatusChanged);
                 if (mutationKeyHash is not null)
+                {
                     metrics.MutationCancelledTotal?.Add(1, mutationKeyTag);
+                }
                 else
+                {
                     metrics.MutationCancelledTotal?.Add(1);
+                }
+
                 _logger.MutationCancelled(MutationId);
                 throw;
             }
@@ -420,12 +499,18 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 if (mutationKeyHash is not null)
                 {
                     metrics.MutationErrorTotal?.Add(1, mutationKeyTag);
-                    if (sw is not null) metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds, mutationKeyTag);
+                    if (sw is not null)
+                    {
+                        metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds, mutationKeyTag);
+                    }
                 }
                 else
                 {
                     metrics.MutationErrorTotal?.Add(1);
-                    if (sw is not null) metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds);
+                    if (sw is not null)
+                    {
+                        metrics.MutationDuration?.Record(sw.Elapsed.TotalSeconds);
+                    }
                 }
 
                 // State.Error/FailureReason are typed Exception? so they always capture
@@ -504,13 +589,7 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 // `dispatch({ type: 'error' })` fires only after all callbacks finish.
                 // Before this fix, state was set before callbacks ran, so cache-level
                 // OnError would see Status == Error instead of Pending.
-                State.Error = ex;
-                State.Status = MutationStatus.Error;
-                State.IsPaused = false;
-                State.FailureCount++;
-                State.FailureReason = ex;
-                onStatusChanged?.Invoke();
-                _cache.Notify(new MutationCacheUpdatedEvent { Mutation = this, ActionType = "error" });
+                Dispatch(new MutationErrorAction { Error = ex }, onStatusChanged);
 
                 throw;
             }
@@ -529,7 +608,9 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
             // latest for its scope. If a newer mutation already replaced it, the
             // identity check in TryRemoveScopeEntry is a no-op.
             if (scopeGate is not null && _options.Scope is not null)
+            {
                 _cache.TryRemoveScopeEntry(_options.Scope.Id, scopeGate);
+            }
 
             // Dispose the retryer so its CTS is cleaned up, and null the field
             // so Continue() becomes a no-op after the mutation completes.
@@ -553,6 +634,10 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
             // Divergence from TanStack: TS returns this.#currentMutation ?? this.execute(variables).
             // C# Continue() is void, so we fire-and-forget.
             // TanStack source: mutation.ts — continue() method.
+            //
+            // Exceptions from Execute are handled internally (dispatched as error
+            // state and surfaced via MutationObserver notifications), so the
+            // discarded task won't produce unobserved exceptions.
             var variables = State.Variables;
             Debug.Assert(variables is not null); // guarded by 'is not null' check above
             _ = Execute(variables);
@@ -606,7 +691,9 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
             // Matches TanStack's optionalRemove() which calls scheduleGc() when
             // status === 'pending' rather than removing immediately.
             if (CurrentStatus == MutationStatus.Pending)
+            {
                 ScheduleGc();
+            }
             else
             {
                 _logger.MutationGcRemoved(MutationId);

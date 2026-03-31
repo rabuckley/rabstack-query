@@ -87,7 +87,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task ResetAllDataAsync()
     {
         _mockApi.ResetData();
-        await _client.InvalidateQueries(new InvalidateQueryFilters());
+        await _client.InvalidateQueriesAsync(new InvalidateQueryFilters());
     }
 
     /// <summary>
@@ -96,8 +96,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void RefreshStats()
     {
-        QueryCount = _client.GetQueryCache().GetAll().Count();
-        MutationCount = _client.GetMutationCache().GetAll().Count();
+        QueryCount = _client.QueryCache.GetAll().Count();
+        MutationCount = _client.MutationCache.GetAll().Count();
     }
 
     // No subscriptions to clean up, but implements IDisposable for consistency

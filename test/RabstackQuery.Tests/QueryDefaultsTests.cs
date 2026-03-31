@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class QueryDefaultsTests
 {
@@ -14,8 +14,8 @@ public class QueryDefaultsTests
         });
 
         // Act — build a query that matches the prefix
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1] });
 
         // Assert — the merged GcTime should be 10_000 from the key defaults
@@ -32,8 +32,8 @@ public class QueryDefaultsTests
             GcTime = TimeSpan.FromMilliseconds(10_000)
         });
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["users", 1] });
 
         // Should get the default 5-minute GcTime, not 10_000
@@ -50,10 +50,10 @@ public class QueryDefaultsTests
             GcTime = TimeSpan.FromMilliseconds(10_000)
         });
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Per-query GcTime should win over key defaults
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMilliseconds(99_000) });
 
         Assert.Equal(TimeSpan.FromMilliseconds(99_000), query.Options.GcTime);
@@ -79,8 +79,8 @@ public class QueryDefaultsTests
             GcTime = TimeSpan.FromMilliseconds(20_000)
         });
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1] });
 
         // GcTime comes from the more specific default (20_000)
@@ -93,14 +93,14 @@ public class QueryDefaultsTests
     public void GlobalDefaults_AppliedAsBaseline()
     {
         var client = CreateQueryClient();
-        client.SetDefaultOptions(new QueryClientDefaultOptions
+        client.DefaultOptions = new QueryClientDefaultOptions
         {
             GcTime = TimeSpan.FromSeconds(60),
             Retry = 5
-        });
+        };
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["anything"] });
 
         Assert.Equal(TimeSpan.FromSeconds(60), query.Options.GcTime);
@@ -111,11 +111,11 @@ public class QueryDefaultsTests
     public void GlobalDefaults_OverriddenByKeyDefaults()
     {
         var client = CreateQueryClient();
-        client.SetDefaultOptions(new QueryClientDefaultOptions
+        client.DefaultOptions = new QueryClientDefaultOptions
         {
             GcTime = TimeSpan.FromSeconds(60),
             Retry = 5
-        });
+        };
 
         client.SetQueryDefaults(["todos"], new QueryDefaults
         {
@@ -123,8 +123,8 @@ public class QueryDefaultsTests
             GcTime = TimeSpan.FromMilliseconds(10_000)
         });
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"] });
 
         // GcTime from key defaults, Retry from global defaults
@@ -150,8 +150,8 @@ public class QueryDefaultsTests
             GcTime = TimeSpan.FromMilliseconds(20_000)
         });
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"] });
 
         Assert.Equal(TimeSpan.FromMilliseconds(20_000), query.Options.GcTime);
@@ -169,8 +169,8 @@ public class QueryDefaultsTests
             RetryDelay = customDelay
         });
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"] });
 
         Assert.Same(customDelay, query.Options.RetryDelay);
@@ -289,17 +289,17 @@ public class QueryDefaultsTests
         // TanStack line 46: global GcTime default should be applied to all queries
         // Arrange
         var client = CreateQueryClient();
-        client.SetDefaultOptions(new QueryClientDefaultOptions
+        client.DefaultOptions = new QueryClientDefaultOptions
         {
             GcTime = TimeSpan.FromMilliseconds(10_000)
-        });
+        };
 
         // Act — create a query via SetQueryData (which builds the query through the cache)
         client.SetQueryData(["todos"], "data");
 
         // Verify by building through cache explicitly
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["new-query"] });
 
         // Assert
@@ -307,7 +307,7 @@ public class QueryDefaultsTests
     }
 
     [Fact]
-    public void GetDefaultOptions_Should_Return_Set_Options()
+    public void DefaultOptions_Should_Return_Set_Options()
     {
         // TanStack line 61: getDefaultOptions should return the options set via setDefaultOptions
         // Arrange
@@ -320,10 +320,10 @@ public class QueryDefaultsTests
         };
 
         // Act
-        client.SetDefaultOptions(options);
+        client.DefaultOptions = options;
 
         // Assert
-        var result = client.GetDefaultOptions();
+        var result = client.DefaultOptions;
         Assert.NotNull(result);
         Assert.Equal(TimeSpan.FromSeconds(30), result!.StaleTime);
         Assert.Equal(TimeSpan.FromMinutes(10), result.GcTime);
@@ -331,13 +331,13 @@ public class QueryDefaultsTests
     }
 
     [Fact]
-    public void GetDefaultOptions_Should_Return_Null_When_Not_Set()
+    public void DefaultOptions_Should_Return_Null_When_Not_Set()
     {
         // Arrange
         var client = CreateQueryClient();
 
         // Act & Assert
-        Assert.Null(client.GetDefaultOptions());
+        Assert.Null(client.DefaultOptions);
     }
 
     private static QueryClient CreateQueryClient()

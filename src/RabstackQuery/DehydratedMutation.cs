@@ -9,7 +9,7 @@ public sealed class DehydratedMutation
 
     public required DehydratedMutationState State { get; init; }
 
-    public MutationMeta? Meta { get; init; }
+    public Meta? Meta { get; init; }
 
     public MutationScope? Scope { get; init; }
 }

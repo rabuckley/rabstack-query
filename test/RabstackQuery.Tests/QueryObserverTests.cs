@@ -3,7 +3,7 @@ namespace RabstackQuery;
 /// <summary>
 /// Tests for QueryObserver observer registration, cleanup, and auto-refetch behavior.
 /// Covers the fix for the critical bug where observers weren't registered with queries,
-/// causing InvalidateQueries() to have no effect.
+/// causing InvalidateQueriesAsync() to have no effect.
 /// </summary>
 public sealed class QueryObserverTests
 {
@@ -54,7 +54,7 @@ public sealed class QueryObserverTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
 
         var observer = new QueryObserver<string, string>(
             client,
@@ -126,7 +126,7 @@ public sealed class QueryObserverTests
         var initialUpdateCount = updateCount;
 
         // Act - invalidate the query (now async — triggers refetch internally)
-        await client.InvalidateQueries(["test"]);
+        await client.InvalidateQueriesAsync(["test"]);
 
         // Assert - should have triggered another fetch
         Assert.True(fetchCount > initialFetchCount, "Query should have been refetched after invalidation");
@@ -140,7 +140,7 @@ public sealed class QueryObserverTests
     {
         // Arrange — a disabled observer should not trigger an initial fetch,
         // even though its query is "active" (has observers). This tests the
-        // observer's ShouldFetchOnMount behavior, not InvalidateQueries.
+        // observer's ShouldFetchOnMount behavior, not InvalidateQueriesAsync.
         var client = CreateQueryClient();
         var fetchCount = 0;
 
@@ -168,7 +168,7 @@ public sealed class QueryObserverTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_With_RefetchType_None_Should_Not_Refetch_Disabled_Observer()
+    public async Task InvalidateQueriesAsync_With_RefetchType_None_Should_Not_Refetch_Disabled_Observer()
     {
         // Arrange — invalidation with RefetchType.None should only mark the
         // query as invalidated without triggering any refetch.
@@ -193,7 +193,7 @@ public sealed class QueryObserverTests
         await Task.Delay(50);
 
         // Act - invalidate with no refetch
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             QueryKey = ["test"],
             RefetchType = InvalidateRefetchType.None
@@ -206,7 +206,7 @@ public sealed class QueryObserverTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Not_Refetch_When_No_Listeners()
+    public async Task InvalidateQueriesAsync_Should_Not_Refetch_When_No_Listeners()
     {
         // Arrange — after all listeners unsubscribe, the query becomes
         // inactive and the default RefetchType.Active won't refetch it.
@@ -235,7 +235,7 @@ public sealed class QueryObserverTests
 
         // Act - unsubscribe all listeners, then invalidate
         subscription.Dispose();
-        await client.InvalidateQueries(["test"]);
+        await client.InvalidateQueriesAsync(["test"]);
 
         // Assert - should not have refetched because query is now inactive
         Assert.Equal(initialFetchCount, fetchCount);
@@ -287,7 +287,7 @@ public sealed class QueryObserverTests
     }
 
     [Fact]
-    public async Task Mutation_InvalidateQueries_Should_Trigger_Observer_Refetch()
+    public async Task Mutation_InvalidateQueriesAsync_Should_Trigger_Observer_Refetch()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -323,7 +323,7 @@ public sealed class QueryObserverTests
 
         // Act - add a todo and invalidate
         todos.Add("todo2");
-        await client.InvalidateQueries(["todos"]);
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert - observer should have refetched with new data
         Assert.Equal(2, latestData.Count);
@@ -414,7 +414,7 @@ public sealed class QueryObserverTests
         var initialUpdates2 = observer2Updates;
 
         // Act - invalidate (async — triggers refetch internally)
-        await client.InvalidateQueries(["test"]);
+        await client.InvalidateQueriesAsync(["test"]);
 
         // Assert - both observers should be notified
         Assert.True(observer1Updates > initialUpdates1);
@@ -465,7 +465,7 @@ public sealed class QueryObserverTests
 
         // Act - invalidate the query with active listeners
         // This should trigger a refetch but NOT cause infinite recursion
-        await client.InvalidateQueries(["test"]);
+        await client.InvalidateQueriesAsync(["test"]);
 
         // Assert - should have fetched exactly once more, not infinitely
         // If the bug existed, fetchCount would be > 2 due to repeated refetches
@@ -510,7 +510,7 @@ public sealed class QueryObserverTests
         var initialData = latestData;
 
         // Act - invalidate (async — triggers refetch internally)
-        await client.InvalidateQueries(["test"]);
+        await client.InvalidateQueriesAsync(["test"]);
 
         // Assert - data should have been updated with new version
         Assert.NotEqual(initialData, latestData);

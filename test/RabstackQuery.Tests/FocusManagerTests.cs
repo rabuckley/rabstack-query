@@ -105,18 +105,20 @@ public sealed class FocusManagerTests
         var focusManager = new FocusManager();
         var callCount = 0;
         var focusedValues = new List<bool>();
+
         EventHandler handler = (sender, args) =>
         {
             callCount++;
             focusedValues.Add(focusManager.IsFocused);
         };
+
         focusManager.FocusChanged += handler;
 
         // Act
         focusManager.SetFocused(false); // Event 1: false
         focusManager.SetFocused(false); // No event (same value)
-        focusManager.SetFocused(true);  // Event 2: true
-        focusManager.SetFocused(true);  // No event (same value)
+        focusManager.SetFocused(true); // Event 2: true
+        focusManager.SetFocused(true); // No event (same value)
         focusManager.SetFocused(false); // Event 3: false
 
         // Assert

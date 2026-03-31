@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for <see cref="SkipToken"/> — the composable alternative to
@@ -111,7 +111,7 @@ public sealed class SkipTokenTests
         await Task.Delay(50);
 
         // Assert — query stays in Pending because the sentinel was never invoked
-        Assert.Equal(QueryStatus.Pending, observer.GetCurrentResult().Status);
+        Assert.Equal(QueryStatus.Pending, observer.CurrentResult.Status);
 
         subscription.Dispose();
     }
@@ -134,12 +134,12 @@ public sealed class SkipTokenTests
 
         var subscription = observer.Subscribe(_ =>
         {
-            if (observer.GetCurrentResult().Status is QueryStatus.Succeeded)
+            if (observer.CurrentResult.Status is QueryStatus.Succeeded)
                 fetchCompleted.TrySetResult(true);
         });
 
         // Verify initially disabled
-        Assert.Equal(QueryStatus.Pending, observer.GetCurrentResult().Status);
+        Assert.Equal(QueryStatus.Pending, observer.CurrentResult.Status);
 
         // Act — switch to a real query function
         observer.SetOptions(new QueryObserverOptions<string, string>
@@ -151,7 +151,7 @@ public sealed class SkipTokenTests
         // Assert — fetch should complete
         var completed = await Task.WhenAny(fetchCompleted.Task, Task.Delay(2000));
         Assert.Same(fetchCompleted.Task, completed);
-        Assert.Equal("fetched-data", observer.GetCurrentResult().Data);
+        Assert.Equal("fetched-data", observer.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -179,7 +179,7 @@ public sealed class SkipTokenTests
 
         var subscription = observer.Subscribe(_ =>
         {
-            if (observer.GetCurrentResult().Status is QueryStatus.Succeeded)
+            if (observer.CurrentResult.Status is QueryStatus.Succeeded)
                 firstFetchCompleted.TrySetResult(true);
         });
 
@@ -195,7 +195,7 @@ public sealed class SkipTokenTests
         });
 
         // Assert — observer should now report disabled
-        Assert.False(observer.GetCurrentResult().IsEnabled);
+        Assert.False(observer.CurrentResult.IsEnabled);
 
         subscription.Dispose();
     }
@@ -225,7 +225,7 @@ public sealed class SkipTokenTests
         subscription.Dispose();
 
         // Act
-        var query = client.GetQueryCache().Find(new QueryFilters { QueryKey = ["skip-disabled-query"] });
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["skip-disabled-query"] });
 
         // Assert — the sentinel was never installed as _queryFn, so IsDisabled
         // returns true (no observers + null _queryFn).
@@ -234,7 +234,7 @@ public sealed class SkipTokenTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Skips_SkipToken_Queries()
+    public async Task InvalidateQueriesAsync_Skips_SkipToken_Queries()
     {
         // Mirrors TanStack queryClient.test.tsx:1519-1539 — invalidating
         // a query with skipToken should not trigger a refetch.
@@ -253,11 +253,11 @@ public sealed class SkipTokenTests
         await Task.Delay(20);
 
         // Act
-        await client.InvalidateQueries(["skip-invalidate"]);
+        await client.InvalidateQueriesAsync(["skip-invalidate"]);
         await Task.Delay(50);
 
         // Assert — query stays in Pending (no fetch was triggered)
-        Assert.Equal(QueryStatus.Pending, observer.GetCurrentResult().Status);
+        Assert.Equal(QueryStatus.Pending, observer.CurrentResult.Status);
 
         subscription.Dispose();
     }

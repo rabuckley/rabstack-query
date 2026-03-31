@@ -11,7 +11,7 @@ public sealed class DehydratedQuery
 
     public required DehydratedQueryState State { get; init; }
 
-    public QueryMeta? Meta { get; init; }
+    public Meta? Meta { get; init; }
 
     public long DehydratedAt { get; init; }
 }

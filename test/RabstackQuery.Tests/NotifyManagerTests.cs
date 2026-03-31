@@ -16,10 +16,11 @@ public sealed class NotifyManagerTests
     public void Batch_Should_Execute_Callback()
     {
         // Arrange
+        var client = CreateQueryClient();
         var executed = false;
 
         // Act
-        NotifyManager.Instance.Batch(() =>
+        client.NotifyManager.Batch(() =>
         {
             executed = true;
         });
@@ -33,7 +34,7 @@ public sealed class NotifyManagerTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
         var notificationCount = 0;
 
         // Subscribe to cache notifications
@@ -43,10 +44,10 @@ public sealed class NotifyManagerTests
         });
 
         // Act - nested batches should only flush after outermost batch completes
-        NotifyManager.Instance.Batch(() =>
+        client.NotifyManager.Batch(() =>
         {
             // Create first query - queued
-            var query1 = queryCache.Build<string, string>(
+            var query1 = queryCache.GetOrCreate<string, string>(
                 client,
                 new QueryConfiguration<string>
                 {
@@ -55,9 +56,9 @@ public sealed class NotifyManagerTests
                 });
 
             // Inner batch - should not flush yet
-            NotifyManager.Instance.Batch(() =>
+            client.NotifyManager.Batch(() =>
             {
-                var query2 = queryCache.Build<string, string>(
+                var query2 = queryCache.GetOrCreate<string, string>(
                     client,
                     new QueryConfiguration<string>
                     {
@@ -70,7 +71,7 @@ public sealed class NotifyManagerTests
             });
 
             // Still inside outer batch - no notifications yet
-            var query3 = queryCache.Build<string, string>(
+            var query3 = queryCache.GetOrCreate<string, string>(
                 client,
                 new QueryConfiguration<string>
                 {
@@ -90,7 +91,7 @@ public sealed class NotifyManagerTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
         var notificationCount = 0;
 
         // Subscribe to cache notifications
@@ -102,10 +103,10 @@ public sealed class NotifyManagerTests
         // Act
         try
         {
-            NotifyManager.Instance.Batch(() =>
+            client.NotifyManager.Batch(() =>
             {
                 // Create a query - this should be queued
-                var query1 = queryCache.Build<string, string>(
+                var query1 = queryCache.GetOrCreate<string, string>(
                     client,
                     new QueryConfiguration<string>
                     {
@@ -133,7 +134,7 @@ public sealed class NotifyManagerTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
         var notificationList = new List<string>();
 
         queryCache.Subscribe(@event =>
@@ -143,12 +144,12 @@ public sealed class NotifyManagerTests
         });
 
         // Act
-        NotifyManager.Instance.Batch(() =>
+        client.NotifyManager.Batch(() =>
         {
             // Create multiple queries - each triggers a notification
             for (int i = 0; i < 5; i++)
             {
-                var query = queryCache.Build<string, string>(
+                var query = queryCache.GetOrCreate<string, string>(
                     client,
                     new QueryConfiguration<string>
                     {
@@ -192,11 +193,11 @@ public sealed class NotifyManagerTests
             subscription.Dispose();
         }
 
-        // Act - InvalidateQueries uses Batch internally
-        await client.InvalidateQueries(["todos"]);
+        // Act - InvalidateQueriesAsync uses Batch internally
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert - all queries should be invalidated in a single batch
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
         var queries = queryCache.FindAll(new QueryFilters { QueryKey = ["todos"] })
             .OfType<Query<string>>()
             .ToList();
@@ -210,17 +211,17 @@ public sealed class NotifyManagerTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
         var notificationCount = 0;
 
         queryCache.Subscribe(_ => notificationCount++);
 
         // Act — use the generic Batch<T> overload to return a value
-        var result = NotifyManager.Instance.Batch(() =>
+        var result = client.NotifyManager.Batch(() =>
         {
-            queryCache.Build<string, string>(client,
+            queryCache.GetOrCreate<string, string>(client,
                 new QueryConfiguration<string> { QueryKey = ["batch-generic", 1], GcTime = QueryTimeDefaults.GcTime });
-            queryCache.Build<string, string>(client,
+            queryCache.GetOrCreate<string, string>(client,
                 new QueryConfiguration<string> { QueryKey = ["batch-generic", 2], GcTime = QueryTimeDefaults.GcTime });
 
             return 42;
@@ -236,7 +237,7 @@ public sealed class NotifyManagerTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var queryCache = client.GetQueryCache();
+        var queryCache = client.QueryCache;
         var notificationCount = 0;
         var lockObj = new object();
 
@@ -252,9 +253,9 @@ public sealed class NotifyManagerTests
         var tasks = Enumerable.Range(0, 10).Select(i =>
             Task.Run(() =>
             {
-                NotifyManager.Instance.Batch(() =>
+                client.NotifyManager.Batch(() =>
                 {
-                    var query = queryCache.Build<string, string>(
+                    var query = queryCache.GetOrCreate<string, string>(
                         client,
                         new QueryConfiguration<string>
                         {

@@ -16,6 +16,7 @@ namespace RabstackQuery;
 public sealed class MutationCache : Subscribable<MutationCacheListener>
 {
     private ILogger _logger;
+    private INotifyManager _notifyManager = null!;
     private readonly ConcurrentDictionary<int, Mutation> _mutations = new();
     private int _nextId;
 
@@ -38,7 +39,11 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     /// </summary>
     public MutationCacheConfig Config { get; }
 
-    public MutationCache(MutationCacheConfig? config = null, ILoggerFactory? loggerFactory = null)
+    public MutationCache() : this(null, null) { }
+
+    public MutationCache(MutationCacheConfig? config) : this(config, null) { }
+
+    public MutationCache(MutationCacheConfig? config, ILoggerFactory? loggerFactory)
     {
         Config = config ?? MutationCacheConfig.Empty;
         _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<MutationCache>();
@@ -56,14 +61,27 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     }
 
     /// <summary>
+    /// Called by <see cref="QueryClient"/> after construction to wire up the
+    /// per-client notification manager. Same post-construction pattern as
+    /// <see cref="SetLoggerFactory"/>.
+    /// </summary>
+    internal void SetNotifyManager(INotifyManager notifyManager)
+    {
+        _notifyManager = notifyManager;
+    }
+
+    /// <summary>
     /// Creates or retrieves a mutation with the given options.
     /// </summary>
-    public Mutation<TData, TError, TVariables, TOnMutateResult> Build<TData, TError, TVariables, TOnMutateResult>(
+    public Mutation<TData, TError, TVariables, TOnMutateResult> GetOrCreate<TData, TError, TVariables, TOnMutateResult>(
         QueryClient client,
         MutationOptions<TData, TError, TVariables, TOnMutateResult> options,
         MutationState<TData, TVariables, TOnMutateResult>? state = null)
         where TError : Exception
     {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
+
         // Apply key-prefix and global defaults before creating the mutation.
         // Mirrors TanStack's mutationCache.build() at mutationCache.ts:114.
         options = client.DefaultMutationOptions(options);
@@ -100,7 +118,7 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     {
         // Batch-notify removed for each mutation before clearing, matching
         // TanStack's mutationCache.clear() at mutationCache.ts:190-198.
-        NotifyManager.Instance.Batch(() =>
+        _notifyManager.Batch(() =>
         {
             foreach (var mutation in _mutations.Values)
                 Notify(new MutationCacheRemovedEvent { Mutation = mutation });
@@ -176,7 +194,7 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
 
         // Batch notifications so observers see a single flush after all mutations
         // are woken, matching TanStack's notifyManager.batch() at mutationCache.ts:234.
-        NotifyManager.Instance.Batch(() =>
+        _notifyManager.Batch(() =>
         {
             foreach (var mutation in paused)
             {
@@ -198,14 +216,16 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     public IEnumerable<Mutation> GetAll() => _mutations.Values;
 
     /// <summary>
-    /// Returns all mutations matching the given filters. When filters is null,
-    /// returns all mutations.
+    /// Returns all mutations matching the given filters.
     /// </summary>
-    public IEnumerable<Mutation> FindAll(MutationFilters? filters = null)
+    public IEnumerable<Mutation> FindAll(MutationFilters? filters)
     {
         if (filters is null) return GetAll();
         return GetAll().Where(m => MatchMutation(m, filters));
     }
+
+    /// <summary>Returns all mutations.</summary>
+    public IEnumerable<Mutation> FindAll() => FindAll(null);
 
     /// <summary>
     /// Returns the first mutation matching the given filters, or null.
@@ -220,9 +240,10 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     /// </summary>
     internal void Notify(MutationCacheNotifyEvent @event)
     {
-        NotifyManager.Instance.Batch(() =>
+        var snapshot = GetListenerSnapshot();
+        _notifyManager.Batch(() =>
         {
-            foreach (var listener in Listeners) listener(@event);
+            foreach (var listener in snapshot) listener(@event);
         });
     }
 

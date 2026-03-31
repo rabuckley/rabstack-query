@@ -1,6 +1,10 @@
 ﻿namespace RabstackQuery;
 
-public class QueryConfig<TData>
+/// <summary>
+/// Initialization parameters passed to a <see cref="Query{TData}"/> constructor,
+/// bundling the owning client, key, hash, options, and optional pre-existing state.
+/// </summary>
+public sealed class QueryConfig<TData>
 {
     public required QueryClient Client { get; init; }
 

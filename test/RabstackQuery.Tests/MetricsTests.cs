@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Time.Testing;
 
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for the metrics instrumentation across the entire RabStack Query pipeline.
@@ -39,18 +39,26 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var fetchTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_total");
+
         var fetchSuccess = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_success_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_success_total");
+
         var fetchDuration = new MetricCollector<double>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_duration");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_duration");
 
         // Act
         await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["test"],
-            QueryFn = async _ => "result"
-        });
+            {
+                QueryKey = ["test"], QueryFn = async _ => "result"
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert
         var fetches = fetchTotal.GetMeasurementSnapshot();
@@ -76,19 +84,27 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var fetchTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_total");
+
         var fetchError = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_error_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_error_total");
+
         var fetchDuration = new MetricCollector<double>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_duration");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_duration");
 
         // Act
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             client.FetchQueryAsync(new FetchQueryOptions<string>
-            {
-                QueryKey = ["fail"],
-                QueryFn = _ => throw new InvalidOperationException("boom")
-            }));
+                {
+                    QueryKey = ["fail"], QueryFn = _ => throw new InvalidOperationException("boom")
+                },
+                TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Single(fetchTotal.GetMeasurementSnapshot());
@@ -108,24 +124,30 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var fetchCancelled = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_cancelled_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_cancelled_total");
+
         var fetchDuration = new MetricCollector<double>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_duration");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_duration");
 
         using var cts = new CancellationTokenSource();
 
         // Act — cancel while the query function is waiting
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             client.FetchQueryAsync(new FetchQueryOptions<string>
-            {
-                QueryKey = ["cancel"],
-                QueryFn = async ctx =>
                 {
-                    cts.Cancel();
-                    ctx.CancellationToken.ThrowIfCancellationRequested();
-                    return "never";
-                }
-            }, cts.Token));
+                    QueryKey = ["cancel"],
+                    QueryFn = async ctx =>
+                    {
+                        cts.Cancel();
+                        ctx.CancellationToken.ThrowIfCancellationRequested();
+                        return "never";
+                    }
+                },
+                cts.Token));
 
         // Assert — cancelled count recorded, but no duration
         Assert.Single(fetchCancelled.GetMeasurementSnapshot());
@@ -141,24 +163,31 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var fetchTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_total");
+
         var fetchDedup = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.fetch_deduplicated_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.fetch_deduplicated_total");
 
         var tcs = new TaskCompletionSource<string>();
 
         // Build a query directly so we can call Fetch() twice
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["dedup"],
-            GcTime = QueryTimeDefaults.GcTime
-        });
+        var cache = client.QueryCache;
+
+        var query = cache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["dedup"], GcTime = QueryTimeDefaults.GcTime
+            });
+
         query.SetQueryFn(_ => tcs.Task);
 
         // Act — first fetch starts the in-flight task, second is deduplicated
-        var fetch1 = query.Fetch();
-        var fetch2 = query.Fetch();
+        var fetch1 = query.Fetch(TestContext.Current.CancellationToken);
+        var fetch2 = query.Fetch(TestContext.Current.CancellationToken);
         tcs.SetResult("done");
         await fetch1;
         await fetch2;
@@ -177,7 +206,9 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var cacheHit = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.cache.hit_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.cache.hit_total");
 
         var options = new FetchQueryOptions<string>
         {
@@ -188,11 +219,11 @@ public sealed class MetricsTests
         };
 
         // First fetch populates the cache
-        await client.FetchQueryAsync(options);
+        await client.FetchQueryAsync(options, TestContext.Current.CancellationToken);
         Assert.Empty(cacheHit.GetMeasurementSnapshot());
 
         // Act — second fetch should be a cache hit
-        await client.FetchQueryAsync(options);
+        await client.FetchQueryAsync(options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(cacheHit.GetMeasurementSnapshot());
@@ -205,14 +236,16 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var cacheMiss = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.cache.miss_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.cache.miss_total");
 
         // Act — first fetch with StaleTime.Zero (default) is always a cache miss
         await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["miss-test"],
-            QueryFn = async _ => "data"
-        });
+            {
+                QueryKey = ["miss-test"], QueryFn = async _ => "data"
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(cacheMiss.GetMeasurementSnapshot());
@@ -227,21 +260,24 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var cacheSize = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.cache.size");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.cache.size");
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Act — add two queries
-        var q1 = cache.Build<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["size-a"],
-            GcTime = QueryTimeDefaults.GcTime
-        });
-        var q2 = cache.Build<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["size-b"],
-            GcTime = QueryTimeDefaults.GcTime
-        });
+        var q1 = cache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["size-a"], GcTime = QueryTimeDefaults.GcTime
+            });
+
+        var q2 = cache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["size-b"], GcTime = QueryTimeDefaults.GcTime
+            });
 
         // Assert — two increments
         var snapshot = cacheSize.GetMeasurementSnapshot();
@@ -267,14 +303,17 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics(timeProvider);
 
         var gcRemoved = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.cache.gc_removed_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.cache.gc_removed_total");
 
-        var cache = client.GetQueryCache();
-        cache.Build<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["gc-test"],
-            GcTime = TimeSpan.FromSeconds(10)
-        });
+        var cache = client.QueryCache;
+
+        cache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["gc-test"], GcTime = TimeSpan.FromSeconds(10)
+            });
 
         Assert.Single(cache.GetAll());
 
@@ -295,21 +334,29 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var mutationTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.total");
+
         var mutationSuccess = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.success_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.success_total");
+
         var mutationDuration = new MetricCollector<double>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.duration");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.duration");
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
-            MutationKey = ["test-mutation"]
+            MutationFn = async (input, context, ct) => input.ToUpper(), MutationKey = ["test-mutation"]
         };
+
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act
-        await observer.MutateAsync("hello");
+        await observer.MutateAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var totals = mutationTotal.GetMeasurementSnapshot();
@@ -334,11 +381,19 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var mutationTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.total");
+
         var mutationError = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.error_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.error_total");
+
         var mutationDuration = new MetricCollector<double>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.duration");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.duration");
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
@@ -346,11 +401,12 @@ public sealed class MetricsTests
                 throw new InvalidOperationException("mutation failed"),
             MutationKey = ["fail-mutation"]
         };
+
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            observer.MutateAsync("hello"));
+            observer.MutateAsync("hello", cancellationToken: TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Single(mutationTotal.GetMeasurementSnapshot());
@@ -370,17 +426,20 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var mutationTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.mutation.total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.mutation.total");
 
         // No MutationKey set — intentionally omitted
         var options = new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => input
         };
+
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act
-        await observer.MutateAsync("test");
+        await observer.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert — measurement recorded but without a key tag
         var totals = mutationTotal.GetMeasurementSnapshot();
@@ -399,33 +458,42 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var retryTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.retry.total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.retry.total");
 
         var attempt = 0;
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["retry-test"],
-            GcTime = QueryTimeDefaults.GcTime,
-            Retry = 2,
-            RetryDelay = (_, _) => TimeSpan.Zero
-        });
+        var cache = client.QueryCache;
+
+        var query = cache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string>
+            {
+                QueryKey = ["retry-test"],
+                GcTime = QueryTimeDefaults.GcTime,
+                Retry = 2,
+                RetryDelay = (_, _) => TimeSpan.Zero
+            });
+
         query.SetQueryFn(_ =>
         {
             attempt++;
+
             if (attempt < 3)
                 throw new InvalidOperationException($"fail #{attempt}");
+
             return Task.FromResult("success");
         });
 
         // Act
-        await query.Fetch();
+        await query.Fetch(TestContext.Current.CancellationToken);
 
         // Assert — 2 retry attempts (the initial attempt is not a retry)
         var retries = retryTotal.GetMeasurementSnapshot();
         Assert.Equal(2, retries.Count);
-        Assert.All(retries, m =>
-            Assert.Equal("query", m.Tags["rabstackquery.retry.source"]));
+
+        Assert.All(retries,
+            m =>
+                Assert.Equal("query", m.Tags["rabstackquery.retry.source"]));
     }
 
     // ── Observer Active Count ───────────────────────────────────────
@@ -437,7 +505,9 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var activeObservers = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.observer.active");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.observer.active");
 
         var observer = new QueryObserver<string, string>(
             client,
@@ -474,17 +544,19 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var invalidationTotal = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.invalidation_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.invalidation_total");
 
         // Populate the cache so the query has state to invalidate
         await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["invalidate-test"],
-            QueryFn = async _ => "data"
-        });
+            {
+                QueryKey = ["invalidate-test"], QueryFn = async _ => "data"
+            },
+            TestContext.Current.CancellationToken);
 
         // Act
-        await client.InvalidateQueries(["invalidate-test"]);
+        await client.InvalidateQueriesAsync(["invalidate-test"], TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(invalidationTotal.GetMeasurementSnapshot());
@@ -499,7 +571,9 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var refetchOnFocus = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.refetch_on_focus_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.refetch_on_focus_total");
 
         // Create an observer with default RefetchOnWindowFocus (WhenStale) and
         // StaleTime.Zero (always stale) so that OnFocus triggers a refetch.
@@ -507,18 +581,16 @@ public sealed class MetricsTests
             client,
             new QueryObserverOptions<string, string>
             {
-                QueryKey = ["focus-test"],
-                QueryFn = async _ => "data",
-                RefetchOnWindowFocus = RefetchOnBehavior.Always
+                QueryKey = ["focus-test"], QueryFn = async _ => "data", RefetchOnWindowFocus = RefetchOnBehavior.Always
             });
 
         // Subscribe to activate the observer (required for OnFocus to see it)
         var sub = observer.Subscribe(_ => { });
-        await Task.Delay(100); // Allow initial fetch to complete
+        await Task.Delay(100, TestContext.Current.CancellationToken); // Allow initial fetch to complete
 
         // Act — simulate focus regained
-        client.GetQueryCache().OnFocus();
-        await Task.Delay(100); // Allow fire-and-forget fetch to start
+        client.QueryCache.OnFocus();
+        await Task.Delay(100, TestContext.Current.CancellationToken); // Allow fire-and-forget fetch to start
 
         // Assert
         Assert.Single(refetchOnFocus.GetMeasurementSnapshot());
@@ -535,7 +607,9 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var refetchOnReconnect = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.query.refetch_on_reconnect_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.query.refetch_on_reconnect_total");
 
         var observer = new QueryObserver<string, string>(
             client,
@@ -547,11 +621,11 @@ public sealed class MetricsTests
             });
 
         var sub = observer.Subscribe(_ => { });
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Act — simulate network reconnection
-        client.GetQueryCache().OnOnline();
-        await Task.Delay(100);
+        client.QueryCache.OnOnline();
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(refetchOnReconnect.GetMeasurementSnapshot());
@@ -570,32 +644,33 @@ public sealed class MetricsTests
         // Act — perform operations that would normally record metrics.
         // The key assertion is that no exception is thrown.
         await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["no-metrics"],
-            QueryFn = async _ => "data"
-        });
+            {
+                QueryKey = ["no-metrics"], QueryFn = async _ => "data"
+            },
+            TestContext.Current.CancellationToken);
 
         var observer = new QueryObserver<string, string>(
             client,
             new QueryObserverOptions<string, string>
             {
-                QueryKey = ["no-metrics-observer"],
-                QueryFn = async _ => "data",
-                Enabled = false
+                QueryKey = ["no-metrics-observer"], QueryFn = async _ => "data", Enabled = false
             });
 
         var sub = observer.Subscribe(_ => { });
         sub.Dispose();
 
-        await client.InvalidateQueries(["no-metrics"]);
+        await client.InvalidateQueriesAsync(["no-metrics"], TestContext.Current.CancellationToken);
 
         var mutationOptions = new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => input
         };
+
         var mutationObserver = new MutationObserver<string, Exception, string, object?>(
-            client, mutationOptions);
-        await mutationObserver.MutateAsync("test");
+            client,
+            mutationOptions);
+
+        await mutationObserver.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert — if we got here, no NullReferenceException was thrown
     }
@@ -609,21 +684,21 @@ public sealed class MetricsTests
         var (client, meterFactory) = CreateClientWithMetrics();
 
         var cacheHit = new MetricCollector<long>(
-            meterFactory, QueryMetrics.MeterName, "rabstackquery.cache.hit_total");
+            meterFactory,
+            QueryMetrics.MeterName,
+            "rabstackquery.cache.hit_total");
 
         var options = new FetchQueryOptions<string>
         {
-            QueryKey = ["ensure-test"],
-            QueryFn = async _ => "data",
-            StaleTime = TimeSpan.MaxValue
+            QueryKey = ["ensure-test"], QueryFn = async _ => "data", StaleTime = TimeSpan.MaxValue
         };
 
         // Populate the cache
-        await client.FetchQueryAsync(options);
+        await client.FetchQueryAsync(options, TestContext.Current.CancellationToken);
         Assert.Empty(cacheHit.GetMeasurementSnapshot());
 
         // Act — EnsureQueryDataAsync should hit the cache
-        await client.EnsureQueryDataAsync(options);
+        await client.EnsureQueryDataAsync(options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(cacheHit.GetMeasurementSnapshot());

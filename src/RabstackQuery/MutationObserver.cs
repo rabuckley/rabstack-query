@@ -18,6 +18,8 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
         QueryClient client,
         MutationOptions<TData, TError, TVariables, TOnMutateResult> options)
     {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.MutationObserver");
         _options = client.DefaultMutationOptions(options);
@@ -37,7 +39,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
 
         // Notify cache subscribers of options change, matching TanStack's
         // mutationObserver.ts:77-82 which fires observerOptionsUpdated.
-        _client.GetMutationCache().Notify(new MutationCacheObserverOptionsUpdatedEvent
+        _client.MutationCache.Notify(new MutationCacheObserverOptionsUpdatedEvent
         {
             Mutation = _currentMutation
         });
@@ -66,16 +68,16 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
         MutateOptions<TData, TError, TVariables, TOnMutateResult>? options = null,
         CancellationToken cancellationToken = default)
     {
-        var mutationCache = _client.GetMutationCache();
+        var mutationCache = _client.MutationCache;
         var previousMutation = _currentMutation;
-        _currentMutation = mutationCache.Build(_client, _options);
+        _currentMutation = mutationCache.GetOrCreate(_client, _options);
         _logger.MutationObserverCreated(_currentMutation.MutationId);
 
         // Transfer observer registration from the old mutation to the new one.
         // This keeps the GC timer cleared on the active mutation while allowing
         // the previous one to be collected. Matches TanStack's mutationObserver.ts
         // pattern where setOptions() transfers the observer between mutations.
-        if (HasListeners())
+        if (HasListeners)
         {
             previousMutation?.RemoveObserver();
             _currentMutation.AddObserver();
@@ -98,20 +100,23 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
     }
 
     /// <summary>
-    /// Gets the current mutation result.
+    /// The current mutation result.
     /// </summary>
-    public IMutationResult<TData, TError> GetCurrentResult()
+    public IMutationResult<TData, TError> CurrentResult
     {
-        if (_currentMutation is null)
+        get
         {
-            return new MutationResult<TData, TError, TVariables, TOnMutateResult>(
-                new MutationState<TData, TVariables, TOnMutateResult>
-                {
-                    Status = MutationStatus.Idle
-                });
-        }
+            if (_currentMutation is null)
+            {
+                return new MutationResult<TData, TError, TVariables, TOnMutateResult>(
+                    new MutationState<TData, TVariables, TOnMutateResult>
+                    {
+                        Status = MutationStatus.Idle
+                    });
+            }
 
-        return new MutationResult<TData, TError, TVariables, TOnMutateResult>(_currentMutation.State);
+            return new MutationResult<TData, TError, TVariables, TOnMutateResult>(_currentMutation.State);
+        }
     }
 
     /// <summary>
@@ -123,7 +128,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
     public void Reset()
     {
         // Remove observer from the current mutation so its GC timer can fire.
-        if (HasListeners())
+        if (HasListeners)
         {
             _currentMutation?.RemoveObserver();
         }
@@ -137,7 +142,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
 
         // Register with the current mutation on first subscriber so the mutation's
         // GC timer is cleared while the observer is active.
-        if (Listeners.Count == 1)
+        if (ListenerCount == 1)
         {
             _currentMutation?.AddObserver();
         }
@@ -149,7 +154,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
 
         // Unregister from the current mutation when the last subscriber leaves,
         // allowing the mutation to be garbage collected.
-        if (Listeners.Count == 0)
+        if (ListenerCount == 0)
         {
             _currentMutation?.RemoveObserver();
         }
@@ -157,11 +162,12 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
 
     private void NotifyListeners()
     {
-        var result = GetCurrentResult();
+        var result = CurrentResult;
 
-        NotifyManager.Instance.Batch(() =>
+        var snapshot = GetListenerSnapshot();
+        _client.NotifyManager.Batch(() =>
         {
-            foreach (var listener in Listeners)
+            foreach (var listener in snapshot)
             {
                 listener(result);
             }

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 
 namespace RabstackQuery;
 
@@ -26,6 +27,10 @@ public sealed class QueryObserver<TData> : QueryObserver<TData, TData>
     }
 }
 
+/// <summary>
+/// Subscribes to a <see cref="Query{TData}"/> and produces <see cref="QueryResult{TData}"/>
+/// snapshots, handling stale-time evaluation, refetch scheduling, and placeholder data.
+/// </summary>
 public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListener<TData>>, IQueryObserver
 {
     private readonly QueryClient _client;
@@ -41,15 +46,25 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     // properties through a tracked wrapper. Used by ShouldNotifyListeners as
     // the implicit set when NotifyOnChangeProps is null (auto-tracking mode).
     // Mirrors TanStack's `#trackedProps` in queryObserver.ts:69.
-    private readonly HashSet<string> _trackedProps = [];
+    // Uses ConcurrentDictionary as a thread-safe set — TrackProp is called from
+    // TrackedQueryResult property accessors on arbitrary threads during combine
+    // evaluation, concurrently with ShouldNotifyListeners reads on the dispatch
+    // thread. TanStack is single-threaded so doesn't need this.
+    private readonly ConcurrentDictionary<string, byte> _trackedProps = new();
 
-    // Memoization state for placeholder data. These mirror TanStack's
+    // Memoization state bundled into an immutable snapshot. Mirrors TanStack's
     // `#currentResultOptions`, `#currentResultState`, and `#lastQueryWithDefinedData`
-    // fields in queryObserver.ts, used to avoid redundant placeholder computation
-    // and Select re-invocation when the placeholder delegate hasn't changed.
-    private QueryObserverOptions<TData, TQueryData>? _currentResultOptions;
-    private QueryState<TQueryData>? _currentResultState;
-    private Query<TQueryData>? _lastQueryWithDefinedData;
+    // fields in queryObserver.ts. Bundling prevents the class of bug at line 478
+    // of the original code where scattered fields could be read in an inconsistent
+    // state during UpdateResult.
+    private MemoSnapshot _memo = new();
+
+    private sealed class MemoSnapshot
+    {
+        public QueryObserverOptions<TData, TQueryData>? Options { get; init; }
+        public QueryState<TQueryData>? State { get; init; }
+        public Query<TQueryData>? LastQueryWithDefinedData { get; init; }
+    }
 
     // Snapshot of the query's update counts at the time this observer attached,
     // used to compute IsFetchedAfterMount. Mirrors TanStack's
@@ -60,6 +75,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         QueryClient client,
         QueryObserverOptions<TData, TQueryData> options)
     {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.QueryObserver");
         _options = options;
@@ -70,7 +87,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
     public bool IsStaleTimeStatic => ResolveStaleTime() == Timeout.InfiniteTimeSpan;
 
-    public bool IsCurrentResultStale => GetCurrentResult().IsStale;
+    public bool IsCurrentResultStale => CurrentResult.IsStale;
 
     /// <summary>
     /// The current options this observer was last configured with.
@@ -83,7 +100,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     /// Records a property name as tracked. Called by <see cref="TrackedQueryResult{TData}"/>
     /// when the consumer accesses a property through a tracked wrapper.
     /// </summary>
-    internal void TrackProp(string propertyName) => _trackedProps.Add(propertyName);
+    internal void TrackProp(string propertyName) => _trackedProps.TryAdd(propertyName, 0);
 
     /// <summary>
     /// Wraps the given result in a <see cref="TrackedQueryResult{TData}"/> that records
@@ -138,7 +155,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
             // Trigger a fetch if we have active listeners and the query is enabled,
             // matching TanStack's behavior where a key change causes a refetch.
-            if (Listeners.Count > 0 && ResolveEnabled())
+            if (ListenerCount > 0 && ResolveEnabled())
             {
                 _ = ExecuteFetch();
             }
@@ -164,7 +181,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             // When enabled transitions from false → true with active listeners,
             // trigger a fetch. Mirrors TanStack's shouldFetchOptionally in setOptions.
             var nextEnabled = ResolveEnabled();
-            if (Listeners.Count > 0 && !prevEnabled && nextEnabled)
+            if (ListenerCount > 0 && !prevEnabled && nextEnabled)
             {
                 _ = ExecuteFetch();
             }
@@ -187,7 +204,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // call so cache listeners can react to option changes (e.g. for DevTools).
         if (_currentQuery is not null)
         {
-            _client.GetQueryCache().Notify(new QueryCacheObserverOptionsUpdatedEvent
+            _client.QueryCache.Notify(new QueryCacheObserverOptionsUpdatedEvent
             {
                 Query = _currentQuery,
                 Observer = this
@@ -197,7 +214,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
     private void UpdateQuery()
     {
-        var queryCache = _client.GetQueryCache();
+        var queryCache = _client.QueryCache;
 
         // Deliberately omit InitialData — the observer creates a bare query that
         // starts as Pending. Setting InitialData (even to default) would mark the
@@ -206,7 +223,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         var queryOptions = new QueryConfiguration<TQueryData>
         {
             QueryKey = _options.QueryKey,
-            GcTime = _options.CacheTime,
+            GcTime = _options.GcTime,
             QueryKeyHasher = _options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance,
             NetworkMode = _options.NetworkMode ?? NetworkMode.Online
         };
@@ -218,7 +235,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         if (_options.Meta is { } meta)
             queryOptions.Meta = meta;
 
-        _currentQuery = queryCache.Build<TQueryData, TQueryData>(_client, queryOptions);
+        _currentQuery = queryCache.GetOrCreate<TQueryData, TQueryData>(_client, queryOptions);
 
         // Set query function if provided — but never install the skipToken
         // sentinel onto the query. Without this guard, the throwing sentinel
@@ -239,7 +256,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // TanStack queryObserver.ts:712-715 — only register with the query when
         // there are listeners. In the constructor path (no listeners yet), we skip
         // AddObserver; OnSubscribe will add it when the first listener arrives.
-        if (HasListeners())
+        if (HasListeners)
         {
             _currentQuery.AddObserver(this);
         }
@@ -264,7 +281,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // RefetchIntervalFn form: the function may return a different interval
         // based on updated query state (e.g., slow down after N successful fetches).
         // Mirrors TanStack's onQueryUpdate which calls #updateTimers().
-        if (HasListeners())
+        if (HasListeners)
         {
             UpdateTimers();
         }
@@ -302,9 +319,10 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // No explicit set — fall back to auto-tracked properties.
         // If nothing has been tracked (no TrackedQueryResult wrapper was used),
         // always notify (backward compatible).
-        if (_trackedProps.Count == 0) return true;
+        if (_trackedProps.IsEmpty) return true;
 
-        return QueryResultComparer.HasChangedProperty(prevResult, curr, _trackedProps);
+        return QueryResultComparer.HasChangedProperty(prevResult, curr,
+            _trackedProps.Keys);
     }
 
     private void UpdateResult()
@@ -317,7 +335,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
         var state = _currentQuery.State;
         var prevResult = _currentResult;
-        var prevOptions = _currentResultOptions;
+        var memo = _memo;
+        var prevOptions = memo.Options;
 
         // Placeholder data activation: the query must be pending with no data,
         // and a PlaceholderData delegate must be configured.
@@ -342,8 +361,12 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
                 && ReferenceEquals(placeholderDataFn, prevOptions.PlaceholderData))
             {
                 // Reuse previous result wholesale — data and Select output are unchanged
-                _currentResultOptions = _options;
-                _currentResultState = state;
+                _memo = new MemoSnapshot
+                {
+                    Options = _options,
+                    State = state,
+                    LastQueryWithDefinedData = memo.LastQueryWithDefinedData,
+                };
                 return;
             }
 
@@ -351,12 +374,12 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             // (non-placeholder) data so KeepPreviousData can propagate it.
             // Avoid `?.State?.Data` because `TQueryData?` is not valid for
             // unconstrained generic types — extract the data manually.
-            var previousData = _lastQueryWithDefinedData?.State is { } prevState
+            var previousData = memo.LastQueryWithDefinedData?.State is { } prevState
                 ? prevState.Data
                 : default;
             var placeholderResult = placeholderDataFn(
                 previousData,
-                _lastQueryWithDefinedData);
+                memo.LastQueryWithDefinedData);
 
             if (placeholderResult is not null)
             {
@@ -377,8 +400,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             // FetchAction dispatch preserves existing data while only changing
             // FetchStatus). Mirrors TanStack's selectResult memoization.
             if (!isPlaceholderData
-                && _currentResultState is not null
-                && ReferenceEquals(data, _currentResultState.Data)
+                && memo.State is not null
+                && ReferenceEquals(data, memo.State.Data)
                 && prevOptions?.Select is not null
                 && ReferenceEquals(_options.Select, prevOptions.Select)
                 && _currentResult is not null)
@@ -413,10 +436,16 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // ReferenceEquals to skip spurious notifications when SetQueries is called
         // with the same query list). Mirrors TanStack's shallowEqualObjects check
         // in QueriesObserver.setQueries.
-        if (IsResultUnchanged(state, status, transformedData, isPlaceholderData))
+        if (IsResultUnchanged(memo, state, status, transformedData, isPlaceholderData))
         {
-            _currentResultOptions = _options;
-            _currentResultState = state;
+            _memo = new MemoSnapshot
+            {
+                Options = _options,
+                State = state,
+                LastQueryWithDefinedData = (!isPlaceholderData && state.Data is not null)
+                    ? _currentQuery
+                    : memo.LastQueryWithDefinedData,
+            };
             return;
         }
 
@@ -442,16 +471,15 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             initialDataUpdateCount: _currentQueryInitialState?.DataUpdateCount ?? 0,
             initialErrorUpdateCount: _currentQueryInitialState?.ErrorUpdateCount ?? 0);
 
-        // Update memoization bookkeeping
-        _currentResultOptions = _options;
-        _currentResultState = state;
-
-        // Track the most recent query with real data for KeepPreviousData.
-        // Only update when the query has non-placeholder data.
-        if (!isPlaceholderData && state.Data is not null)
+        // Update memoization bookkeeping atomically
+        _memo = new MemoSnapshot
         {
-            _lastQueryWithDefinedData = _currentQuery;
-        }
+            Options = _options,
+            State = state,
+            LastQueryWithDefinedData = (!isPlaceholderData && state.Data is not null)
+                ? _currentQuery
+                : memo.LastQueryWithDefinedData,
+        };
     }
 
     /// <summary>
@@ -462,6 +490,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     /// detection. Mirrors TanStack's <c>shallowEqualObjects</c> check.
     /// </summary>
     private bool IsResultUnchanged(
+        MemoSnapshot memo,
         QueryState<TQueryData> state,
         QueryStatus status,
         TData? transformedData,
@@ -470,12 +499,12 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         if (_currentResult is null)
             return false;
 
-        // Check whether the previous _currentResult's snapshot of IsInvalidated
-        // matches the new state. Without this, InvalidateAction dispatches are
-        // invisible to the memoization gate because none of the other compared
-        // fields change — so _currentResult keeps the old IsInvalidated=false
-        // snapshot and IsStale returns the wrong value.
-        var prevIsInvalidated = _currentResultState?.IsInvalidated ?? false;
+        // Check whether the previous snapshot's IsInvalidated matches the new
+        // state. Without this, InvalidateAction dispatches are invisible to the
+        // memoization gate because none of the other compared fields change —
+        // so _currentResult keeps the old IsInvalidated=false snapshot and
+        // IsStale returns the wrong value.
+        var prevIsInvalidated = memo.State?.IsInvalidated ?? false;
 
         var isFetchedAfterMount =
             state.DataUpdateCount > (_currentQueryInitialState?.DataUpdateCount ?? 0)
@@ -503,7 +532,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             QueryKey = _options.QueryKey,
             Enabled = ResolveEnabled(),
             StaleTime = ResolveStaleTime(),
-            CacheTime = _options.CacheTime,
+            GcTime = _options.GcTime,
             RefetchOnWindowFocus = _options.RefetchOnWindowFocus,
             RefetchOnReconnect = _options.RefetchOnReconnect,
             RefetchOnMount = _options.RefetchOnMount,
@@ -517,19 +546,17 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     {
         if (_currentResult is null) return;
 
-        NotifyManager.Instance.Batch(() =>
+        var snapshot = GetListenerSnapshot();
+        _client.NotifyManager.Batch(() =>
         {
-            foreach (var listener in Listeners)
+            foreach (var listener in snapshot)
             {
                 listener(_currentResult);
             }
         });
     }
 
-    public IQueryResult<TData> GetCurrentResult()
-    {
-        return _currentResult ?? CreateInitialResult();
-    }
+    public IQueryResult<TData> CurrentResult => _currentResult ?? CreateInitialResult();
 
     private IQueryResult<TData> CreateInitialResult()
     {
@@ -612,17 +639,17 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // the fetch promise resolves (queryObserver.ts:329-331).
         UpdateResult();
 
-        return GetCurrentResult();
+        return CurrentResult;
     }
 
     protected override void OnSubscribe()
     {
         base.OnSubscribe();
 
-        if (Listeners.Count == 1)
+        if (ListenerCount == 1)
         {
             _client.Metrics.ActiveObservers?.Add(1);
-            _logger.ObserverSubscribed(_currentQuery?.QueryHash, Listeners.Count);
+            _logger.ObserverSubscribed(_currentQuery?.QueryHash, ListenerCount);
 
             // Re-add observer to the query (OnUnsubscribe removes it when all
             // listeners leave). AddObserver is idempotent so this is safe on the
@@ -682,31 +709,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     }
 
     private bool IsStaleByTime(QueryState<TQueryData> state, TimeSpan staleTime)
-    {
-        // No data = always stale, regardless of staleTime configuration.
-        // TanStack checks `this.state.data === undefined`; in C# we use
-        // DataUpdatedAt == 0 as the "never fetched" sentinel because value-type
-        // TQueryData (e.g. int) defaults to a non-null value and `Data is null`
-        // would always be false. DataUpdatedAt is only set > 0 after a successful
-        // fetch, so this correctly identifies "never fetched" for both reference
-        // and value types.
-        if (state.DataUpdatedAt == 0) return true;
-
-        // Static = never stale, not even after invalidation.
-        // Mirrors TanStack's `if (staleTime === 'static') return false`.
-        if (staleTime == Timeout.InfiniteTimeSpan) return false;
-
-        // StaleTime of Zero means always stale (default behavior)
-        if (staleTime == TimeSpan.Zero) return true;
-
-        if (state.IsInvalidated) return true;
-
-        // Uses >= to match TanStack's `dataUpdatedAt + staleTime <= Date.now()`
-        var now = _client.TimeProvider.GetUtcNowMs();
-        var elapsed = now - state.DataUpdatedAt;
-
-        return elapsed >= staleTime.TotalMilliseconds;
-    }
+        => QueryTimeDefaults.IsStale(state.DataUpdatedAt, staleTime, state.IsInvalidated, _client.TimeProvider.GetUtcNowMs());
 
     public bool ShouldFetchOnWindowFocus() =>
         ShouldFetchOn(_options.RefetchOnWindowFocus);
@@ -951,10 +954,10 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     {
         base.OnUnsubscribe();
 
-        _logger.ObserverUnsubscribed(_currentQuery?.QueryHash, Listeners.Count);
+        _logger.ObserverUnsubscribed(_currentQuery?.QueryHash, ListenerCount);
 
         // When all listeners unsubscribe, tear down the observer
-        if (Listeners.Count == 0)
+        if (ListenerCount == 0)
         {
             _client.Metrics.ActiveObservers?.Add(-1);
             Destroy();

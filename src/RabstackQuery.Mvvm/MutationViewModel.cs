@@ -68,13 +68,13 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.MutationViewModel");
         _syncContext = SynchronizationContext.Current;
 
-        var mutationOptions = options ?? new MutationOptions<TData, TError, TVariables, TOnMutateResult>();
-        mutationOptions.MutationFn = mutationFn;
+        var mutationOptions = (options ?? new MutationOptions<TData, TError, TVariables, TOnMutateResult>())
+            with { MutationFn = mutationFn };
 
         _observer = new MutationObserver<TData, TError, TVariables, TOnMutateResult>(client, mutationOptions);
         _subscription = _observer.Subscribe(OnResultChanged);
 
-        UpdateFromResult(_observer.GetCurrentResult());
+        UpdateFromResult(_observer.CurrentResult);
         _logger.MutationViewModelCreated();
     }
 

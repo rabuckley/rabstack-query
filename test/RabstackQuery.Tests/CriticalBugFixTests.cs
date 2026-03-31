@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests covering the critical bugs identified in the production-readiness review.
@@ -13,10 +13,6 @@ public sealed class CriticalBugFixTests
     }
 
     #region OnFocus / OnOnline type cast fix
-
-    // Previously, QueryCache.OnFocus and OnOnline cast every query to
-    // Query<object>, which silently skipped any query with a different TData.
-    // The fix calls the abstract Query.Fetch() method directly.
 
     [Fact]
     public async Task OnFocus_Should_Refetch_Strongly_Typed_Queries()
@@ -42,13 +38,13 @@ public sealed class CriticalBugFixTests
         var subscription = observer.Subscribe(_ => { });
 
         // Wait for initial fetch
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         var countAfterInitial = fetchCount;
         Assert.True(countAfterInitial >= 1, "Initial fetch should have fired");
 
         // Act — simulate focus regained
-        client.GetQueryCache().OnFocus();
-        await Task.Delay(200);
+        client.QueryCache.OnFocus();
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // Assert — the query should have been refetched despite being Query<string>,
         // not Query<object>
@@ -82,13 +78,13 @@ public sealed class CriticalBugFixTests
         var subscription = observer.Subscribe(_ => { });
 
         // Wait for initial fetch
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         var countAfterInitial = fetchCount;
         Assert.True(countAfterInitial >= 1, "Initial fetch should have fired");
 
         // Act — simulate connection restored
-        client.GetQueryCache().OnOnline();
-        await Task.Delay(200);
+        client.QueryCache.OnOnline();
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(fetchCount > countAfterInitial,
@@ -123,7 +119,7 @@ public sealed class CriticalBugFixTests
         var countAfterInitial = fetchCount;
 
         // Act
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
         await Task.Delay(200);
 
         // Assert
@@ -171,18 +167,19 @@ public sealed class CriticalBugFixTests
 
         var sub1 = stringObserver.Subscribe(_ => { });
         var sub2 = intObserver.Subscribe(_ => { });
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         var stringCountBefore = stringFetchCount;
         var intCountBefore = intFetchCount;
 
         // Act
-        client.GetQueryCache().OnFocus();
-        await Task.Delay(200);
+        client.QueryCache.OnFocus();
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // Assert — both queries should have been refetched
         Assert.True(stringFetchCount > stringCountBefore,
             "String query should be refetched on focus");
+
         Assert.True(intFetchCount > intCountBefore,
             "Int query should be refetched on focus");
 
@@ -212,8 +209,7 @@ public sealed class CriticalBugFixTests
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => observer.MutateAsync("test"));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => observer.MutateAsync("test"));
         Assert.Equal("Expected failure", ex.Message);
     }
 
@@ -242,7 +238,7 @@ public sealed class CriticalBugFixTests
         // Act
         try
         {
-            await observer.MutateAsync("test");
+            await observer.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
         }
         catch (InvalidOperationException)
         {
@@ -273,7 +269,7 @@ public sealed class CriticalBugFixTests
         // Act
         try
         {
-            await observer.MutateAsync("test");
+            await observer.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
         }
         catch (InvalidOperationException)
         {
@@ -281,7 +277,7 @@ public sealed class CriticalBugFixTests
         }
 
         // Assert — result should reflect the error state
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsError);
         Assert.False(result.IsSuccess);
         Assert.False(result.IsPending);
@@ -303,11 +299,11 @@ public sealed class CriticalBugFixTests
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act — should not throw
-        var result = await observer.MutateAsync("hello");
+        var result = await observer.MutateAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("HELLO", result);
-        Assert.True(observer.GetCurrentResult().IsSuccess);
+        Assert.True(observer.CurrentResult.IsSuccess);
     }
 
     [Fact]
@@ -337,8 +333,7 @@ public sealed class CriticalBugFixTests
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => observer.MutateAsync("test"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => observer.MutateAsync("test"));
 
         // Assert
         Assert.True(onErrorCalled, "OnError should fire before exception propagates");
@@ -356,12 +351,13 @@ public sealed class CriticalBugFixTests
     public void NotifyManager_Batch_Should_Execute_Callback_Synchronously()
     {
         // Arrange
+        var client = new QueryClient(new QueryCache());
         var callbackExecuted = false;
         var executedOnSameThread = false;
         var callingThread = Environment.CurrentManagedThreadId;
 
         // Act
-        NotifyManager.Instance.Batch(() =>
+        client.NotifyManager.Batch(() =>
         {
             callbackExecuted = true;
             executedOnSameThread = Environment.CurrentManagedThreadId == callingThread;
@@ -376,14 +372,15 @@ public sealed class CriticalBugFixTests
     public void NotifyManager_Nested_Batch_Should_Not_Flush_Until_Outermost_Returns()
     {
         // Arrange — verify that nested batches defer flushing to the outermost batch
+        var client = new QueryClient(new QueryCache());
         var executionOrder = new List<string>();
 
         // Act
-        NotifyManager.Instance.Batch(() =>
+        client.NotifyManager.Batch(() =>
         {
             executionOrder.Add("outer-start");
 
-            NotifyManager.Instance.Batch(() =>
+            client.NotifyManager.Batch(() =>
             {
                 executionOrder.Add("inner");
             });
@@ -414,9 +411,7 @@ public sealed class CriticalBugFixTests
             client,
             new QueryObserverOptions<string, string>
             {
-                QueryKey = ["immutability-test"],
-                QueryFn = async _ => "fetched-data",
-                Enabled = true
+                QueryKey = ["immutability-test"], QueryFn = async _ => "fetched-data", Enabled = true
             }
         );
 
@@ -428,12 +423,13 @@ public sealed class CriticalBugFixTests
         });
 
         // Wait for the fetch to complete
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert — should have observed state transitions through different
         // immutable state objects: Pending/Fetching -> Succeeded/Idle
-        Assert.Contains(stateSnapshots, s =>
-            s.Status == QueryStatus.Succeeded && s.FetchStatus == FetchStatus.Idle);
+        Assert.Contains(stateSnapshots,
+            s =>
+                s.Status == QueryStatus.Succeeded && s.FetchStatus == FetchStatus.Idle);
 
         subscription.Dispose();
     }
@@ -467,7 +463,13 @@ public sealed class CriticalBugFixTests
     public void DefaultQueryKeyHasher_Instance_Should_Match_New_Instance()
     {
         // Verify that the shared instance produces the same results as a new instance
-        QueryKey key = ["test", new { id = 42 }];
+        QueryKey key =
+        [
+            "test", new
+            {
+                id = 42
+            }
+        ];
 
         var fromSingleton = DefaultQueryKeyHasher.Instance.HashQueryKey(key);
         var fromNew = new DefaultQueryKeyHasher().HashQueryKey(key);

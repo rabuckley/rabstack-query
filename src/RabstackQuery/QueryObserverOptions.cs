@@ -1,5 +1,9 @@
 namespace RabstackQuery;
 
+/// <summary>
+/// Configuration for a <see cref="QueryObserver{TData, TQueryData}"/>, controlling
+/// stale time, refetch behavior, polling, placeholder data, and data selection.
+/// </summary>
 public record QueryObserverOptions<TData, TQueryData>
 {
     public required QueryKey QueryKey { get; init; }
@@ -51,7 +55,7 @@ public record QueryObserverOptions<TData, TQueryData>
     /// Duration before inactive queries are garbage collected.
     /// Defaults to 5 minutes.
     /// </summary>
-    public TimeSpan CacheTime { get; init; } = QueryTimeDefaults.GcTime;
+    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
 
     /// <summary>
     /// Query function to execute.
@@ -125,7 +129,7 @@ public record QueryObserverOptions<TData, TQueryData>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.Meta"/>
-    public QueryMeta? Meta { get; init; }
+    public Meta? Meta { get; init; }
 
     /// <summary>
     /// Per-observer override for <see cref="RabstackQuery.NetworkMode"/>.
@@ -203,4 +207,5 @@ public static class QueryObserverOptions
     {
         return new QueryObserverOptions<TData> { QueryKey = queryKey, QueryFn = queryFn };
     }
+
 }

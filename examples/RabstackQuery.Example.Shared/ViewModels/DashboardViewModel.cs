@@ -13,7 +13,7 @@ namespace RabstackQuery.Example.Shared.ViewModels;
 /// - <b>Select transforms</b> -- three observers sharing <see cref="QueryKeys.Projects"/> cache key,
 ///   each projecting to a different type (total task count, completion rate, most active project)
 /// - <b>RefetchInterval toggle</b> via runtime <c>SetOptions</c>
-/// - <b>Bulk InvalidateQueries</b> with filters
+/// - <b>Bulk InvalidateQueriesAsync</b> with filters
 /// - <b>PrefetchQuery</b> to warm the task list cache
 /// - <b>Staleness indicator</b> bound to <c>IsStale</c>
 /// </summary>
@@ -39,14 +39,14 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
     // -- Derived queries (select transforms, no polling) ----------------------
 
-    public QueryViewModel<string, IEnumerable<Project>> CompletionRateQuery { get; }
+    public QueryViewModel<string, IReadOnlyList<Project>> CompletionRateQuery { get; }
 
-    public QueryViewModel<string?, IEnumerable<Project>> MostActiveProjectQuery { get; }
+    public QueryViewModel<string?, IReadOnlyList<Project>> MostActiveProjectQuery { get; }
 
     // -- Runtime toggle -------------------------------------------------------
 
     [ObservableProperty]
-    public partial bool RefetchInBackground { get; set; } = true;
+    public partial bool RefetchInBackground { get; set; }
 
     public DashboardViewModel(QueryClient client, ITaskBoardApi api)
     {
@@ -60,45 +60,40 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         // type must be IEnumerable<Project> to match QueryCollectionViewModel's internal
         // type (ProjectListViewModel also observes this key via UseQueryCollection).
 
-        Func<QueryFunctionContext, Task<IEnumerable<Project>>> queryFn =
-            async ctx => await api.GetProjectsAsync(ctx.CancellationToken);
 
         _totalTaskCountBaseOptions = new QueryObserverOptions<int, IEnumerable<Project>>
         {
             QueryKey = QueryKeys.Projects,
-            QueryFn = queryFn,
+            QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
             Select = projects => projects.Sum(p => p.TaskCount),
-            RefetchInterval = PollingInterval,
             RefetchIntervalInBackground = false,
             StaleTime = DashboardStaleTime,
         };
 
         TotalTaskCountQuery = client.UseQuery(_totalTaskCountBaseOptions);
 
-        CompletionRateQuery = client.UseQuery(new QueryObserverOptions<string, IEnumerable<Project>>
-        {
-            QueryKey = QueryKeys.Projects,
-            QueryFn = queryFn,
-            Select = projects =>
+        CompletionRateQuery = client.UseQuery(
+            queryKey: QueryKeys.Projects,
+            queryFn: async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
+            enabled: true,
+            select: projects =>
             {
                 var total = projects.Sum(p => p.TaskCount);
                 if (total == 0) return "0%";
                 var completed = projects.Sum(p => p.CompletedTaskCount);
                 return $"{completed * 100 / total}%";
             },
-            StaleTime = DashboardStaleTime,
-        });
+            staleTime: DashboardStaleTime
+        );
 
-        MostActiveProjectQuery = client.UseQuery(new QueryObserverOptions<string?, IEnumerable<Project>>
-        {
-            QueryKey = QueryKeys.Projects,
-            QueryFn = queryFn,
-            Select = projects => projects
+        MostActiveProjectQuery = client.UseQuery(
+            queryKey: ["projects"],
+            queryFn: async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
+            select: projects => projects
                 .OrderByDescending(p => p.TaskCount - p.CompletedTaskCount)
                 .Select(p => p.Name)
-                .FirstOrDefault(),
-            StaleTime = DashboardStaleTime,
-        });
+                .FirstOrDefault()
+        );
     }
 
     /// <summary>
@@ -121,7 +116,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task InvalidateAllProjectsAsync()
     {
-        await _client.InvalidateQueries(QueryKeys.Projects);
+        await _client.InvalidateQueriesAsync(QueryKeys.Projects);
     }
 
     /// <summary>

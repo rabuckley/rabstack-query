@@ -1,5 +1,11 @@
 ﻿namespace RabstackQuery;
 
+/// <summary>
+/// Snapshot of a query's current state, produced by a <see cref="QueryObserver{TData,TQueryData}"/>.
+/// </summary>
+/// <remarks>
+/// This interface is implemented by the framework. Consumers should not implement it directly.
+/// </remarks>
 public interface IQueryResult<TData>
 {
     /// <summary>
@@ -43,8 +49,14 @@ public interface IQueryResult<TData>
     /// </summary>
     public int ErrorUpdateCount { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query is in an error state.
+    /// </summary>
     public bool IsError { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query has completed at least one fetch (success or error).
+    /// </summary>
     public bool IsFetched { get; }
 
     /// <summary>
@@ -59,10 +71,20 @@ public interface IQueryResult<TData>
     /// </summary>
     public bool IsFetchedAfterMount { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if a fetch is currently in flight (including background refetches).
+    /// </summary>
     public bool IsFetching { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query is fetching for the first time with no cached data.
+    /// Equivalent to <c>IsPending &amp;&amp; IsFetching</c>.
+    /// </summary>
     public bool IsLoading { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query has no cached data yet (status is <see cref="QueryStatus.Pending"/>).
+    /// </summary>
     public bool IsPending { get; }
 
     /// <summary>
@@ -70,18 +92,40 @@ public interface IQueryResult<TData>
     /// </summary>
     public bool IsLoadingError { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query's fetch is paused (e.g., waiting for network connectivity).
+    /// </summary>
     public bool IsPaused { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the current data came from <c>PlaceholderData</c>
+    /// rather than an actual fetch.
+    /// </summary>
     public bool IsPlaceholderData { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query failed during a background refetch (data was already cached).
+    /// </summary>
     public bool IsRefetchError { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if a background refetch is in progress while cached data exists.
+    /// </summary>
     public bool IsRefetching { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the cached data is considered stale according to <c>StaleTime</c>.
+    /// </summary>
     public bool IsStale { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query has successfully fetched data.
+    /// </summary>
     public bool IsSuccess { get; }
 
+    /// <summary>
+    /// <see langword="true"/> if the query's observer is enabled and will fetch on mount.
+    /// </summary>
     public bool IsEnabled { get; }
 
     /// <summary>
@@ -96,7 +140,18 @@ public interface IQueryResult<TData>
         RefetchOptions? options = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Zero-argument overload for binary-stable interface evolution.</summary>
+    Task<IQueryResult<TData>> RefetchAsync() => RefetchAsync(null, default);
+
+    /// <summary>
+    /// The overall query status: <see cref="QueryStatus.Pending"/>,
+    /// <see cref="QueryStatus.Error"/>, or <see cref="QueryStatus.Success"/>.
+    /// </summary>
     public QueryStatus Status { get; }
 
+    /// <summary>
+    /// The current fetch status: <see cref="RabstackQuery.FetchStatus.Fetching"/>,
+    /// <see cref="RabstackQuery.FetchStatus.Paused"/>, or <see cref="RabstackQuery.FetchStatus.Idle"/>.
+    /// </summary>
     public FetchStatus FetchStatus { get; }
 }

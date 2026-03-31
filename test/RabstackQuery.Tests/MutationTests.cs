@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for mutation functionality with context flow, callbacks, and type parameters.
@@ -40,7 +40,7 @@ public sealed class MutationTests
         // Assert
         Assert.Equal("Result: test", result);
         Assert.Equal(4, capturedContext); // OnMutate context should be "test".Length = 4
-        Assert.Equal("Result: test", observer.GetCurrentResult().Data);
+        Assert.Equal("Result: test", observer.CurrentResult.Data);
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public sealed class MutationTests
         // Arrange
         var client = CreateQueryClient();
         var metaValue = (object?)null;
-        var meta = new MutationMeta(new Dictionary<string, object?> { ["key"] = "value" });
+        var meta = new Meta(new Dictionary<string, object?> { ["key"] = "value" });
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
@@ -401,7 +401,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, CustomException, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -469,7 +469,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -524,7 +524,7 @@ public sealed class MutationTests
 
         // Act
         await observer.MutateAsync("test");
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -548,7 +548,7 @@ public sealed class MutationTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => observer.MutateAsync("test"));
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         Assert.True(result.IsError);
         Assert.False(result.IsSuccess);
@@ -576,7 +576,7 @@ public sealed class MutationTests
 
         // Act
         observer.Reset();
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert
         Assert.Equal(MutationStatus.Idle, result.Status);
@@ -636,7 +636,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -664,7 +664,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -691,7 +691,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string?, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -722,7 +722,7 @@ public sealed class MutationTests
         // Assert — should reflect the latest mutation
         Assert.Equal("FIRST", result1);
         Assert.Equal("SECOND", result2);
-        Assert.Equal("SECOND", observer.GetCurrentResult().Data);
+        Assert.Equal("SECOND", observer.CurrentResult.Data);
     }
 
     [Fact]
@@ -746,7 +746,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -830,7 +830,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -853,13 +853,13 @@ public sealed class MutationTests
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
         try { await observer.MutateAsync("test"); } catch { }
-        Assert.True(observer.GetCurrentResult().IsError);
+        Assert.True(observer.CurrentResult.IsError);
 
         // Act
         observer.Reset();
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsIdle);
         Assert.Null(result.Error);
         Assert.Null(result.Data);
@@ -916,7 +916,7 @@ public sealed class MutationTests
         // Assert — onSuccess threw, then onError + onSettled ran in the error path
         Assert.Same(callbackError, ex);
         Assert.Equal(["onMutate", "onSuccess", "onError", "onSettled"], results);
-        Assert.Equal(MutationStatus.Error, observer.GetCurrentResult().Status);
+        Assert.Equal(MutationStatus.Error, observer.CurrentResult.Status);
     }
 
     /// <summary>
@@ -1015,7 +1015,7 @@ public sealed class MutationTests
 
         var mutation = new Mutation<string, Exception, string, object?>(
             client,
-            client.GetMutationCache(),
+            client.MutationCache,
             1,
             options);
 
@@ -1055,9 +1055,9 @@ public sealed class MutationTests
         var firstStarted = new SemaphoreSlim(0, 1);
         var firstGate = new TaskCompletionSource<bool>();
 
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        var mutationA = cache.Build<string, Exception, string, object?>(
+        var mutationA = cache.GetOrCreate<string, Exception, string, object?>(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1072,7 +1072,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationB = cache.Build<string, Exception, string, object?>(
+        var mutationB = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1113,7 +1113,7 @@ public sealed class MutationTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Each mutation signals the semaphore as its very first synchronous step,
         // then awaits a gate before returning. Since both signals happen before the
@@ -1123,7 +1123,7 @@ public sealed class MutationTests
         var gateA = new TaskCompletionSource();
         var gateB = new TaskCompletionSource();
 
-        var mutationA = cache.Build<string, Exception, string, object?>(
+        var mutationA = cache.GetOrCreate<string, Exception, string, object?>(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1135,7 +1135,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationB = cache.Build<string, Exception, string, object?>(
+        var mutationB = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1178,7 +1178,7 @@ public sealed class MutationTests
         // Arrange
         var client = CreateQueryClient();
         var results = new ConcurrentQueue<string>();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Scope-1 gate: hold A1 so B1 has to queue
         var scope1Gate = new SemaphoreSlim(0, 1);
@@ -1191,7 +1191,7 @@ public sealed class MutationTests
         var scope1 = new MutationScope("1");
         var scope2 = new MutationScope("2");
 
-        var mutationA1 = cache.Build<string, Exception, string, object?>(
+        var mutationA1 = cache.GetOrCreate<string, Exception, string, object?>(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1206,7 +1206,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationB1 = cache.Build<string, Exception, string, object?>(
+        var mutationB1 = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1219,7 +1219,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationA2 = cache.Build<string, Exception, string, object?>(
+        var mutationA2 = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1234,7 +1234,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationB2 = cache.Build<string, Exception, string, object?>(
+        var mutationB2 = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1295,9 +1295,9 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var scope = new MutationScope("fail-scope");
         var results = new List<string>();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        var mutationA = cache.Build<string, Exception, string, object?>(
+        var mutationA = cache.GetOrCreate<string, Exception, string, object?>(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1309,7 +1309,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationB = cache.Build<string, Exception, string, object?>(
+        var mutationB = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1347,12 +1347,12 @@ public sealed class MutationTests
         // Arrange
         var client = CreateQueryClient();
         var scope = new MutationScope("cancel-scope");
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         var aStarted = new SemaphoreSlim(0, 1);
         var aGate = new TaskCompletionSource();
 
-        var mutationA = cache.Build<string, Exception, string, object?>(
+        var mutationA = cache.GetOrCreate<string, Exception, string, object?>(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1365,7 +1365,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationB = cache.Build<string, Exception, string, object?>(
+        var mutationB = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1377,7 +1377,7 @@ public sealed class MutationTests
                 }
             });
 
-        var mutationC = cache.Build<string, Exception, string, object?>(
+        var mutationC = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1424,12 +1424,12 @@ public sealed class MutationTests
         // Arrange
         var client = CreateQueryClient();
         var scope = new MutationScope("clear-scope");
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         var aStarted = new SemaphoreSlim(0, 1);
         var aGate = new TaskCompletionSource();
 
-        var mutationA = cache.Build<string, Exception, string, object?>(
+        var mutationA = cache.GetOrCreate<string, Exception, string, object?>(
             client,
             new MutationOptions<string, Exception, string, object?>
             {
@@ -1443,7 +1443,7 @@ public sealed class MutationTests
             });
 
         var bReached = new SemaphoreSlim(0, 1);
-        var mutationB = cache.Build<string, Exception, string, object?>(
+        var mutationB = cache.GetOrCreate(
             client,
             new MutationOptions<string, Exception, string, object?>
             {

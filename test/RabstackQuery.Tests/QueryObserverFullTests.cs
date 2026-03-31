@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for QueryObserver subscription lifecycle, Select transforms,
@@ -134,7 +134,7 @@ public sealed class QueryObserverFullTests
 
         // Act — unsubscribe, then trigger an update
         subscription.Dispose();
-        await client.InvalidateQueries(["unsub-test"]);
+        await client.InvalidateQueriesAsync(["unsub-test"]);
         await Task.Delay(100);
 
         // Assert — no new notifications after unsubscribe
@@ -301,7 +301,7 @@ public sealed class QueryObserverFullTests
         var subscription = observer.Subscribe(_ => { });
 
         // Act
-        await client.InvalidateQueries(["disabled-invalidate"]);
+        await client.InvalidateQueriesAsync(["disabled-invalidate"]);
         await Task.Delay(100);
 
         // Assert
@@ -479,7 +479,7 @@ public sealed class QueryObserverFullTests
 
         // Build a query with retry=0 so it fails immediately
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["error-test"]);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryOptions = new QueryConfiguration<string>
         {
             QueryKey = ["error-test"],
@@ -487,7 +487,7 @@ public sealed class QueryObserverFullTests
             GcTime = QueryTimeDefaults.GcTime,
             Retry = 0
         };
-        var query = cache.Build<string, string>(client, queryOptions);
+        var query = cache.GetOrCreate<string, string>(client, queryOptions);
         query.SetQueryFn(async _ => throw new InvalidOperationException("fail"));
 
         var observer = new QueryObserver<string, string>(
@@ -506,7 +506,7 @@ public sealed class QueryObserverFullTests
         try { await query.Fetch(); } catch { }
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsError);
         Assert.NotNull(result.Error);
 
@@ -548,9 +548,9 @@ public sealed class QueryObserverFullTests
 
         // Act — invalidate to trigger refetch. Don't await directly: the refetch
         // blocks on tcs.Task which is resolved below, so awaiting would deadlock.
-        // The synchronous preamble of InvalidateQueries dispatches FetchAction,
+        // The synchronous preamble of InvalidateQueriesAsync dispatches FetchAction,
         // which notifies the listener before the async refetch suspends.
-        var invalidateTask = client.InvalidateQueries(["refetch-test"]);
+        var invalidateTask = client.InvalidateQueriesAsync(["refetch-test"]);
 
         // Assert
         Assert.True(isFetchingDuringRefetch, "IsFetching should be true during refetch");
@@ -637,7 +637,7 @@ public sealed class QueryObserverFullTests
         );
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — per TanStack, initial status is Pending when no data
         Assert.True(result.IsPending);
@@ -665,7 +665,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert
         Assert.Equal("latest-data", result.Data);
@@ -696,7 +696,7 @@ public sealed class QueryObserverFullTests
             });
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — no fetch has happened at all
         Assert.False(result.IsFetched);
@@ -733,7 +733,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsFetched);
         Assert.True(result.IsFetchedAfterMount);
     }
@@ -772,8 +772,8 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Verify first observer sees the data
-        Assert.True(firstObserver.GetCurrentResult().IsFetched);
-        Assert.True(firstObserver.GetCurrentResult().IsFetchedAfterMount);
+        Assert.True(firstObserver.CurrentResult.IsFetched);
+        Assert.True(firstObserver.CurrentResult.IsFetchedAfterMount);
 
         // Act — second observer attaches to the same query key with cached data
         var secondObserver = new QueryObserver<string, string>(client,
@@ -788,7 +788,7 @@ public sealed class QueryObserverFullTests
         // Data is not stale, so no refetch fires
         await Task.Delay(50);
 
-        var result = secondObserver.GetCurrentResult();
+        var result = secondObserver.CurrentResult;
 
         // Assert — the query was fetched before, but not after this observer mounted
         Assert.True(result.IsFetched);
@@ -807,8 +807,8 @@ public sealed class QueryObserverFullTests
         // Arrange — pre-build the query with Retry=0 so the error completes immediately
         var client = CreateQueryClient();
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["fetched-after-mount-err"]);
-        var cache = client.GetQueryCache();
-        cache.Build<string, string>(client, new QueryConfiguration<string>
+        var cache = client.QueryCache;
+        cache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
         {
             QueryKey = ["fetched-after-mount-err"],
             QueryHash = queryHash,
@@ -828,7 +828,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(100);
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsFetched);
         Assert.True(result.IsFetchedAfterMount);
         Assert.True(result.IsError);
@@ -862,7 +862,7 @@ public sealed class QueryObserverFullTests
         await fetchedA.Task;
         await Task.Delay(50);
 
-        Assert.True(observer.GetCurrentResult().IsFetchedAfterMount);
+        Assert.True(observer.CurrentResult.IsFetchedAfterMount);
 
         // Act — change key, which rebinds the observer to a new query
         observer.SetOptions(new QueryObserverOptions<string, string>
@@ -873,7 +873,7 @@ public sealed class QueryObserverFullTests
         });
 
         // Assert — observer is now on a fresh query with no fetches yet
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.False(result.IsFetchedAfterMount);
     }
 
@@ -1021,7 +1021,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange — pre-build query with Retry=0 so errors fail immediately
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["result-refetch-throw"]);
         var queryOptions = new QueryConfiguration<string>
         {
@@ -1030,7 +1030,7 @@ public sealed class QueryObserverFullTests
             GcTime = QueryTimeDefaults.GcTime,
             Retry = 0
         };
-        var query = cache.Build<string, string>(client, queryOptions);
+        var query = cache.GetOrCreate<string, string>(client, queryOptions);
         query.SetQueryFn(_ => throw new InvalidOperationException("fetch failed"));
 
         var observer = new QueryObserver<string, string>(
@@ -1059,7 +1059,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange — pre-build query with Retry=0 so errors fail immediately
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["result-refetch-suppress"]);
         var queryOptions = new QueryConfiguration<string>
         {
@@ -1068,7 +1068,7 @@ public sealed class QueryObserverFullTests
             GcTime = QueryTimeDefaults.GcTime,
             Retry = 0
         };
-        var query = cache.Build<string, string>(client, queryOptions);
+        var query = cache.GetOrCreate<string, string>(client, queryOptions);
         query.SetQueryFn(_ => throw new InvalidOperationException("fetch failed"));
 
         var observer = new QueryObserver<string, string>(
@@ -1111,7 +1111,7 @@ public sealed class QueryObserverFullTests
         );
 
         // Act — get the initial (pending) result and refetch from it
-        var initialResult = observer.GetCurrentResult();
+        var initialResult = observer.CurrentResult;
         Assert.True(initialResult.IsPending);
 
         var fetchedResult = await initialResult.RefetchAsync();
@@ -1148,7 +1148,7 @@ public sealed class QueryObserverFullTests
 
         // Act
         var subscription = observer.Subscribe(_ => { });
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — observer should see cached data immediately
         Assert.Equal(QueryStatus.Succeeded, result.Status);
@@ -1221,7 +1221,7 @@ public sealed class QueryObserverFullTests
         var sub1 = observer.Subscribe(_ => { });
         await Task.Delay(50);
         Assert.Equal(1, fetchCount);
-        Assert.Equal("data", observer.GetCurrentResult().Data);
+        Assert.Equal("data", observer.CurrentResult.Data);
 
         // Unsubscribe
         sub1.Dispose();
@@ -1232,7 +1232,7 @@ public sealed class QueryObserverFullTests
 
         // Assert
         Assert.Equal(1, fetchCount); // No new fetch
-        Assert.Equal("data", observer.GetCurrentResult().Data);
+        Assert.Equal("data", observer.CurrentResult.Data);
 
         sub2.Dispose();
     }
@@ -1273,7 +1273,7 @@ public sealed class QueryObserverFullTests
 
         // Assert — observer should have been notified
         Assert.True(callbackCount >= 2, $"Expected at least 2 callbacks, got {callbackCount}");
-        Assert.Equal("external-data", observer.GetCurrentResult().Data);
+        Assert.Equal("external-data", observer.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -1388,7 +1388,7 @@ public sealed class QueryObserverFullTests
         );
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — TanStack: disabled observers should not be stale
         Assert.False(result.IsStale);
@@ -1669,7 +1669,7 @@ public sealed class QueryObserverFullTests
 
         // Assert — now enabled, should have fetched
         Assert.True(postsFetched);
-        Assert.Equal("post-list", postsObserver.GetCurrentResult().Data);
+        Assert.Equal("post-list", postsObserver.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -1731,7 +1731,7 @@ public sealed class QueryObserverFullTests
         );
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — disabled observers should not be stale, regardless of mechanism
         Assert.False(result.IsStale);
@@ -1771,7 +1771,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Assert — placeholder phase: IsPlaceholderData=true, status overridden to Succeeded
-        var placeholderResult = observer.GetCurrentResult();
+        var placeholderResult = observer.CurrentResult;
         Assert.Equal("loading…", placeholderResult.Data);
         Assert.True(placeholderResult.IsPlaceholderData);
         Assert.True(placeholderResult.IsSuccess);
@@ -1782,7 +1782,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Assert — real data replaces placeholder
-        var realResult = observer.GetCurrentResult();
+        var realResult = observer.CurrentResult;
         Assert.Equal("real-data", realResult.Data);
         Assert.False(realResult.IsPlaceholderData);
         Assert.True(realResult.IsSuccess);
@@ -1812,7 +1812,7 @@ public sealed class QueryObserverFullTests
         );
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — cache hit, no placeholder
         Assert.Equal("cached-value", result.Data);
@@ -1836,7 +1836,7 @@ public sealed class QueryObserverFullTests
             {
                 QueryKey = ["page", "1"],
                 QueryFn = async _ => "page-1-data",
-                PlaceholderData = QueryUtilities.KeepPreviousData<string>,
+                PlaceholderData = QueryUtilities.KeepPreviousData,
                 Enabled = true
             }
         );
@@ -1845,21 +1845,21 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Verify first page loaded
-        Assert.Equal("page-1-data", observer.GetCurrentResult().Data);
-        Assert.False(observer.GetCurrentResult().IsPlaceholderData);
+        Assert.Equal("page-1-data", observer.CurrentResult.Data);
+        Assert.False(observer.CurrentResult.IsPlaceholderData);
 
         // Act — switch to page 2 with a slow fetch
         observer.SetOptions(new QueryObserverOptions<string, string>
         {
             QueryKey = ["page", "2"],
             QueryFn = async _ => await tcs.Task,
-            PlaceholderData = QueryUtilities.KeepPreviousData<string>,
+            PlaceholderData = QueryUtilities.KeepPreviousData,
             Enabled = true
         });
         await Task.Delay(50);
 
         // Assert — previous data shown as placeholder while page 2 loads
-        var midResult = observer.GetCurrentResult();
+        var midResult = observer.CurrentResult;
         Assert.Equal("page-1-data", midResult.Data);
         Assert.True(midResult.IsPlaceholderData);
 
@@ -1867,7 +1867,7 @@ public sealed class QueryObserverFullTests
         tcs.SetResult("page-2-data");
         await Task.Delay(50);
 
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.Equal("page-2-data", finalResult.Data);
         Assert.False(finalResult.IsPlaceholderData);
 
@@ -1901,7 +1901,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Assert — placeholder data went through Select
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Equal(2, result.Data);
         Assert.True(result.IsPlaceholderData);
 
@@ -1909,7 +1909,7 @@ public sealed class QueryObserverFullTests
         tcs.SetResult(["a", "b", "c"]);
         await Task.Delay(50);
 
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.Equal(3, finalResult.Data);
         Assert.False(finalResult.IsPlaceholderData);
 
@@ -1942,7 +1942,7 @@ public sealed class QueryObserverFullTests
         await Task.Delay(50);
 
         // Assert — null placeholder means no activation
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.False(result.IsPlaceholderData);
         Assert.True(result.IsPending);
         Assert.Null(result.Data);
@@ -1989,8 +1989,8 @@ public sealed class QueryObserverFullTests
         // Act — trigger another update (e.g., from external event) while still pending.
         // The same placeholder delegate should be memoized. Use RefetchType.None to
         // avoid deadlocking: the in-flight fetch awaits `tcs.Task`, and a refetch
-        // would deduplicate to the same task, blocking InvalidateQueries forever.
-        await client.InvalidateQueries(
+        // would deduplicate to the same task, blocking InvalidateQueriesAsync forever.
+        await client.InvalidateQueriesAsync(
             new InvalidateQueryFilters { QueryKey = ["placeholder-memo"], RefetchType = InvalidateRefetchType.None },
             TestContext.Current.CancellationToken);
         await Task.Delay(50, TestContext.Current.CancellationToken);
@@ -2592,7 +2592,7 @@ public sealed class QueryObserverFullTests
         timeProvider.Advance(TimeSpan.FromMilliseconds(21));
 
         // Re-read: IsStale is computed dynamically from the clock
-        var currentResult = observer.GetCurrentResult();
+        var currentResult = observer.CurrentResult;
         Assert.True(currentResult.IsStale);
     }
 
@@ -2622,7 +2622,7 @@ public sealed class QueryObserverFullTests
             });
 
         // Before data: result should be stale (no data yet)
-        var beforeData = observer.GetCurrentResult();
+        var beforeData = observer.CurrentResult;
         Assert.True(beforeData.IsStale);
 
         // Subscribe to trigger the fetch
@@ -2666,17 +2666,17 @@ public sealed class QueryObserverFullTests
         await fetched.Task;
 
         // Sanity — data is not stale before invalidation
-        Assert.False(observer.GetCurrentResult().IsStale);
+        Assert.False(observer.CurrentResult.IsStale);
 
         // Act — invalidate without refetching
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             QueryKey = ["static-invalidate"],
             RefetchType = InvalidateRefetchType.None
         });
 
         // Assert — still not stale despite invalidation (static staleTime)
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.False(result.IsStale);
     }
 
@@ -2760,11 +2760,11 @@ public sealed class QueryObserverFullTests
     }
 
     /// <summary>
-    /// RefetchQueries should skip queries with static staleTime, matching
+    /// RefetchQueriesAsync should skip queries with static staleTime, matching
     /// TanStack's <c>.filter(q => !q.isDisabled() && !q.isStatic())</c>.
     /// </summary>
     [Fact(Timeout = 10_000)]
-    public async Task RefetchQueries_Should_Skip_Static_Queries()
+    public async Task RefetchQueriesAsync_Should_Skip_Static_Queries()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -2807,7 +2807,7 @@ public sealed class QueryObserverFullTests
         Assert.Equal(1, normalFetchCount);
 
         // Act — refetch all queries under the ["refetch-static"] prefix
-        await client.RefetchQueries(["refetch-static"]);
+        await client.RefetchQueriesAsync(["refetch-static"]);
 
         // Assert — static query was skipped, normal query was refetched
         Assert.Equal(1, staticFetchCount);
@@ -2841,7 +2841,7 @@ public sealed class QueryObserverFullTests
         Assert.Equal("data", first);
 
         // Invalidate without refetching
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             QueryKey = ["fetch-static"],
             RefetchType = InvalidateRefetchType.None
@@ -2873,7 +2873,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange — set Retry=0 globally so the query fails immediately
         var client = CreateQueryClient();
-        client.SetDefaultOptions(new QueryClientDefaultOptions { Retry = 0 });
+        client.DefaultOptions = new QueryClientDefaultOptions { Retry = 0 };
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
@@ -2899,7 +2899,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.SetDefaultOptions(new QueryClientDefaultOptions { Retry = 0 });
+        client.DefaultOptions = new QueryClientDefaultOptions { Retry = 0 };
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
@@ -2926,7 +2926,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.SetDefaultOptions(new QueryClientDefaultOptions { Retry = 0 });
+        client.DefaultOptions = new QueryClientDefaultOptions { Retry = 0 };
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
@@ -3024,7 +3024,7 @@ public sealed class QueryObserverFullTests
             // Wait for initial fetch to succeed
             await initialFetchDone.WaitAsync(TimeSpan.FromSeconds(5));
             await Task.Delay(10); // let state propagate
-            Assert.Equal("data", observer.GetCurrentResult().Data);
+            Assert.Equal("data", observer.CurrentResult.Data);
 
             // Before background error, data is fresh → should NOT refetch on focus
             Assert.False(observer.ShouldFetchOnWindowFocus());
@@ -3240,7 +3240,7 @@ public sealed class QueryObserverFullTests
             });
 
         // Subscribe and set retry to 0 so the error surfaces immediately
-        client.GetQueryCache().Build<string, string>(client, new QueryConfiguration<string>
+        client.QueryCache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
         {
             QueryKey = ["notify-multi"],
             QueryKeyHasher = DefaultQueryKeyHasher.Instance,
@@ -3456,7 +3456,7 @@ public sealed class QueryObserverFullTests
 
         // Assert — no refetch, data is already available
         Assert.Equal(0, fetchCount);
-        Assert.Equal("prefetched", observer.GetCurrentResult().Data);
+        Assert.Equal("prefetched", observer.CurrentResult.Data);
     }
 
     /// <summary>
@@ -3626,7 +3626,7 @@ public sealed class QueryObserverFullTests
 
         // Assert — static blocks even Always
         Assert.Equal(0, fetchCount);
-        Assert.Equal("prefetched", observer.GetCurrentResult().Data);
+        Assert.Equal("prefetched", observer.CurrentResult.Data);
     }
 
     #endregion
@@ -3660,13 +3660,13 @@ public sealed class QueryObserverFullTests
                     return Task.FromResult("refetched");
                 },
                 StaleTime = TimeSpan.FromMinutes(10),
-                CacheTime = TimeSpan.FromSeconds(5)
+                GcTime = TimeSpan.FromSeconds(5)
             });
 
         // Subscribe — observer attaches, sees cached data, no fetch (fresh).
         var sub1 = observer.Subscribe(_ => { });
         Assert.Equal(0, fetchCount);
-        Assert.Equal("cached", observer.GetCurrentResult().Data);
+        Assert.Equal("cached", observer.CurrentResult.Data);
 
         // Unsubscribe — starts the 5s GC timer.
         sub1.Dispose();
@@ -3689,14 +3689,14 @@ public sealed class QueryObserverFullTests
                     return Task.FromResult("refetched");
                 },
                 StaleTime = TimeSpan.FromMinutes(10),
-                CacheTime = TimeSpan.FromSeconds(5)
+                GcTime = TimeSpan.FromSeconds(5)
             });
 
         using var sub2 = observer2.Subscribe(_ => { });
 
         // Assert — data is still fresh from cache, no new fetch
-        Assert.Equal("cached", observer2.GetCurrentResult().Data);
-        Assert.False(observer2.GetCurrentResult().IsStale);
+        Assert.Equal("cached", observer2.CurrentResult.Data);
+        Assert.False(observer2.CurrentResult.IsStale);
     }
 
     /// <summary>
@@ -3724,11 +3724,11 @@ public sealed class QueryObserverFullTests
         using var subscription = observer.Subscribe(r => results.Add(r));
 
         // Immediately after subscribe, data should be fresh.
-        Assert.False(observer.GetCurrentResult().IsStale);
+        Assert.False(observer.CurrentResult.IsStale);
 
         // Advance just under the stale threshold — still fresh.
         timeProvider.Advance(TimeSpan.FromSeconds(29));
-        Assert.False(observer.GetCurrentResult().IsStale);
+        Assert.False(observer.CurrentResult.IsStale);
 
         // Advance past the stale threshold (+ the 1ms buffer).
         // The stale timeout timer should fire and push a new result.
@@ -3770,11 +3770,11 @@ public sealed class QueryObserverFullTests
 
         // Assert — no exception and data stays fresh (no stale timer scheduled).
         Assert.Null(exception);
-        Assert.False(observer.GetCurrentResult().IsStale);
+        Assert.False(observer.CurrentResult.IsStale);
 
         // Advancing time should not cause a stale notification — there is no timer.
         timeProvider.Advance(TimeSpan.FromHours(1));
-        Assert.False(observer.GetCurrentResult().IsStale);
+        Assert.False(observer.CurrentResult.IsStale);
     }
 
     /// <summary>
@@ -3830,7 +3830,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var receivedEvents = new List<QueryCacheObserverOptionsUpdatedEvent>();
 
         var cacheSubscription = cache.Subscribe(evt =>
@@ -3878,7 +3878,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         var observer = new QueryObserver<string, string>(
             client,
@@ -3994,7 +3994,7 @@ public sealed class QueryObserverFullTests
 
         // Act — subscribe and read the result
         var subscription = observer.Subscribe(_ => { });
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — disabled observer with no data is not stale
         Assert.False(result.IsStale);
@@ -4036,7 +4036,7 @@ public sealed class QueryObserverFullTests
         // Small delay for the result dispatch to propagate
         await Task.Delay(50);
 
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — Status == Succeeded implies Data is present and FetchStatus == Idle
         Assert.Equal(QueryStatus.Succeeded, result.Status);

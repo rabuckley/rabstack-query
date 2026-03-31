@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class MutationFiltersTests
 {
@@ -7,26 +7,28 @@ public class MutationFiltersTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationKey = ["todos", "create"]
-            });
-        cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationKey = ["todos", "update"]
-            });
-        cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationKey = ["users", "create"]
-            });
+        cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos", "create"]
+        });
+
+        cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos", "update"]
+        });
+
+        cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["users", "create"],
+        });
 
         // Act — prefix match
-        var result = cache.FindAll(new MutationFilters { MutationKey = ["todos"] }).ToList();
+        var result = cache.FindAll(new MutationFilters
+        {
+            MutationKey = ["todos"]
+        }).ToList();
 
         // Assert
         Assert.Equal(2, result.Count);
@@ -36,19 +38,26 @@ public class MutationFiltersTests
     public void FindAll_ByStatus_ReturnsMatchingMutations()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        var mutation = cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationKey = ["todos", "create"]
-            });
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos", "create"]
+        });
 
         // Initially Idle
-        var idleResult = cache.FindAll(new MutationFilters { Status = MutationStatus.Idle }).ToList();
+        var idleResult = cache.FindAll(new MutationFilters
+        {
+            Status = MutationStatus.Idle,
+        }).ToList();
+
         Assert.Single(idleResult);
 
-        var pendingResult = cache.FindAll(new MutationFilters { Status = MutationStatus.Pending }).ToList();
+        var pendingResult = cache.FindAll(new MutationFilters
+        {
+            Status = MutationStatus.Pending
+        }).ToList();
+
         Assert.Empty(pendingResult);
     }
 
@@ -56,24 +65,22 @@ public class MutationFiltersTests
     public void FindAll_WithPredicate()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationKey = ["todos"]
-            });
-        cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationKey = ["users"]
-            });
+        cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos"]
+        });
+
+        cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["users"]
+        });
 
         // Act
         var result = cache.FindAll(new MutationFilters
         {
-            Predicate = m => m.MutationKey is not null &&
-                             m.MutationKey.First()?.ToString() == "users"
+            Predicate = m => m.MutationKey is not null && m.MutationKey.First()?.ToString() == "users"
         }).ToList();
 
         Assert.Single(result);
@@ -83,15 +90,19 @@ public class MutationFiltersTests
     public void Find_ReturnsFirstMatch()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        cache.Build<string, Exception, string, object?>(client,
+        cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["todos"]
             });
 
-        var result = cache.Find(new MutationFilters { MutationKey = ["todos"] });
+        var result = cache.Find(new MutationFilters
+        {
+            MutationKey = ["todos"]
+        });
+
         Assert.NotNull(result);
     }
 
@@ -99,9 +110,13 @@ public class MutationFiltersTests
     public void Find_ReturnsNull_WhenNoMatch()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        var result = cache.Find(new MutationFilters { MutationKey = ["nonexistent"] });
+        var result = cache.Find(new MutationFilters
+        {
+            MutationKey = ["nonexistent"]
+        });
+
         Assert.Null(result);
     }
 
@@ -109,14 +124,15 @@ public class MutationFiltersTests
     public void FindAll_ExactMatch_OnlyMatchesExact()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
-        cache.Build<string, Exception, string, object?>(client,
+        cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["todos"]
             });
-        cache.Build<string, Exception, string, object?>(client,
+
+        cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["todos", "create"]
@@ -125,8 +141,7 @@ public class MutationFiltersTests
         // Act — exact match should only find ["todos"]
         var result = cache.FindAll(new MutationFilters
         {
-            MutationKey = ["todos"],
-            Exact = true
+            MutationKey = ["todos"], Exact = true
         }).ToList();
 
         Assert.Single(result);
@@ -136,15 +151,16 @@ public class MutationFiltersTests
     public void IsMutating_CountsPendingMutations()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Build two mutations — both start as Idle
-        cache.Build<string, Exception, string, object?>(client,
+        cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["todos"]
             });
-        cache.Build<string, Exception, string, object?>(client,
+
+        cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["users"]
@@ -158,18 +174,24 @@ public class MutationFiltersTests
     public void FindAll_NoKey_MatchesMutationsWithoutKey()
     {
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Mutation without a key
-        cache.Build<string, Exception, string, object?>(client,
-            new MutationOptions<string, Exception, string, object?> { });
+        cache.GetOrCreate(client,
+            new MutationOptions<string, Exception, string, object?>
+            {
+            });
 
         // Act — no key filter should match all
         var result = cache.FindAll(null).ToList();
         Assert.Single(result);
 
         // With a key filter, mutations without keys should not match
-        var filtered = cache.FindAll(new MutationFilters { MutationKey = ["todos"] }).ToList();
+        var filtered = cache.FindAll(new MutationFilters
+        {
+            MutationKey = ["todos"]
+        }).ToList();
+
         Assert.Empty(filtered);
     }
 

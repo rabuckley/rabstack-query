@@ -240,19 +240,6 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
     }
 
     /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with simplified
-    /// <see cref="MutationCallbacks{TData, TVariables}"/>. Automatically subscribed and disposed.
-    /// </summary>
-    protected MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-        MutationCallbacks<TData, TVariables> callbacks)
-    {
-        var vm = Client.UseMutation<TData, TVariables>(mutationFn, callbacks);
-        Track(vm);
-        return vm;
-    }
-
-    /// <summary>
     /// Creates a <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/>
     /// with typed error and optimistic update context. Automatically subscribed and disposed.
     /// </summary>
@@ -278,6 +265,36 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
             MutationOptions<TData, Exception, TVariables, TOnMutateResult>? options = null)
     {
         var vm = Client.UseMutation<TData, TVariables, TOnMutateResult>(mutationFn, options);
+        Track(vm);
+        return vm;
+    }
+
+    // ── Mutation (from definition) ────────────────────────────────────
+
+    /// <summary>
+    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> from a
+    /// <see cref="MutationDefinition{TData, TVariables}"/> definition. All type parameters are
+    /// inferred from the definition object. Automatically subscribed and disposed.
+    /// </summary>
+    protected MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
+        MutationDefinition<TData, TVariables> def,
+        MutationCallbacks<TData, TVariables>? callbacks = null)
+    {
+        var vm = Client.UseMutation(def, callbacks);
+        Track(vm);
+        return vm;
+    }
+
+    /// <summary>
+    /// Creates a <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/>
+    /// from an <see cref="OptimisticMutationDefinition{TData, TVariables, TOnMutateResult}"/> definition.
+    /// All type parameters are inferred. Automatically subscribed and disposed.
+    /// </summary>
+    protected MutationViewModel<TData, Exception, TVariables, TOnMutateResult>
+        UseMutation<TData, TVariables, TOnMutateResult>(
+            OptimisticMutationDefinition<TData, TVariables, TOnMutateResult> def)
+    {
+        var vm = Client.UseMutation(def);
         Track(vm);
         return vm;
     }

@@ -38,8 +38,22 @@ public sealed class DefaultQueryKeyHasherTests
     {
         // Arrange
         var hasher = new DefaultQueryKeyHasher();
-        QueryKey key1 = ["todos", new { a = 1, b = 2 }];
-        QueryKey key2 = ["todos", new { b = 2, a = 1 }];
+
+        QueryKey key1 =
+        [
+            "todos", new
+            {
+                a = 1, b = 2
+            }
+        ];
+
+        QueryKey key2 =
+        [
+            "todos", new
+            {
+                b = 2, a = 1
+            }
+        ];
 
         // Act
         var hash1 = hasher.HashQueryKey(key1);
@@ -54,8 +68,32 @@ public sealed class DefaultQueryKeyHasherTests
     {
         // Arrange
         var hasher = new DefaultQueryKeyHasher();
-        QueryKey key1 = ["todos", new Dictionary<string, object> { { "a", 1 }, { "b", 2 } }];
-        QueryKey key2 = ["todos", new Dictionary<string, object> { { "b", 2 }, { "a", 1 } }];
+
+        QueryKey key1 =
+        [
+            "todos", new Dictionary<string, object>
+            {
+                {
+                    "a", 1
+                },
+                {
+                    "b", 2
+                }
+            }
+        ];
+
+        QueryKey key2 =
+        [
+            "todos", new Dictionary<string, object>
+            {
+                {
+                    "b", 2
+                },
+                {
+                    "a", 1
+                }
+            }
+        ];
 
         // Act
         var hash1 = hasher.HashQueryKey(key1);
@@ -70,8 +108,30 @@ public sealed class DefaultQueryKeyHasherTests
     {
         // Arrange
         var hasher = new DefaultQueryKeyHasher();
-        QueryKey key1 = ["todos", new { a = 1, b = new[] { 3, 2, 1 } }];
-        QueryKey key2 = ["todos", new { b = new[] { 3, 2, 1 }, a = 1 }];
+
+        QueryKey key1 =
+        [
+            "todos", new
+            {
+                a = 1,
+                b = new[]
+                {
+                    3, 2, 1
+                }
+            }
+        ];
+
+        QueryKey key2 =
+        [
+            "todos", new
+            {
+                b = new[]
+                {
+                    3, 2, 1
+                },
+                a = 1
+            }
+        ];
 
         // Act
         var hash1 = hasher.HashQueryKey(key1);

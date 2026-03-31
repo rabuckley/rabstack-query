@@ -18,6 +18,7 @@ public sealed record QueryListItem
     public required bool IsInvalidated { get; init; }
     public required int FetchFailureCount { get; init; }
     public required string? ErrorDisplay { get; init; }
+    public required bool IsDevToolsTriggered { get; init; }
 
     /// <summary>
     /// Status color hex string for the indicator bar, derived from <see cref="DisplayStatus"/>.

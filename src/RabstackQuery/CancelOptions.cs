@@ -3,7 +3,7 @@ namespace RabstackQuery;
 /// <summary>
 /// Options for <see cref="Query.Cancel"/>.
 /// </summary>
-public sealed class CancelOptions
+public sealed record CancelOptions
 {
     /// <summary>
     /// When true, revert the query to its pre-fetch state on cancellation.

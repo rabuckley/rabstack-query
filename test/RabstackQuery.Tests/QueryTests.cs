@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for the Query state machine, garbage collection, retry logic,
@@ -19,7 +19,7 @@ public sealed class QueryTests
         int retry = 3,
         Func<int, Exception, TimeSpan>? retryDelay = null)
     {
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
         var options = new QueryConfiguration<TData>
         {
@@ -29,7 +29,7 @@ public sealed class QueryTests
             Retry = retry,
             RetryDelay = retryDelay,
         };
-        return cache.Build<TData, TData>(client, options);
+        return cache.GetOrCreate<TData, TData>(client, options);
     }
 
     #region State Machine
@@ -399,7 +399,7 @@ public sealed class QueryTests
     {
         // Arrange — gcTime=1 (minimum valid timeout) so removal happens quickly
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = BuildQuery<string>(client, ["gc-test"], gcTime: TimeSpan.FromMilliseconds(1), retry: 0);
         query.SetQueryFn(async _ => "data");
 
@@ -415,7 +415,7 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = BuildQuery<string>(client, ["gc-observer-test"], gcTime: TimeSpan.FromMilliseconds(1), retry: 0);
         query.SetQueryFn(async _ => "data");
 
@@ -555,18 +555,18 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["gc-max"]);
 
         // Build the same query with increasing gcTimes
-        var q1 = cache.Build<string, string>(client, new QueryConfiguration<string>
+        var q1 = cache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
         {
             QueryKey = ["gc-max"],
             QueryHash = queryHash,
             GcTime = TimeSpan.FromMilliseconds(100)
         });
 
-        var q2 = cache.Build<string, string>(client, new QueryConfiguration<string>
+        var q2 = cache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
         {
             QueryKey = ["gc-max"],
             QueryHash = queryHash,
@@ -574,7 +574,7 @@ public sealed class QueryTests
         });
 
         // Build with a smaller gcTime — should not reduce
-        var q3 = cache.Build<string, string>(client, new QueryConfiguration<string>
+        var q3 = cache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
         {
             QueryKey = ["gc-max"],
             QueryHash = queryHash,
@@ -765,10 +765,10 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["initial"]);
 
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -792,10 +792,10 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["reset-initial"]);
 
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -828,12 +828,12 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["factory"]);
         var callCount = 0;
 
         // Act
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -858,11 +858,11 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["factory-null"]);
 
         // Act
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -886,11 +886,11 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["factory-precedence"]);
 
         // Act
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -915,11 +915,11 @@ public sealed class QueryTests
         var client = CreateQueryClient();
         client.SetQueryData(["todos"], new[] { "buy milk", "walk dog" });
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todo", 1]);
 
         // Act — derive initial data for a single-item query from the list
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -943,11 +943,11 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["factory-reset"]);
         var callCount = 0;
 
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -985,11 +985,11 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["updated-at"]);
 
         // Act
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -1012,11 +1012,11 @@ public sealed class QueryTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["updated-at-factory"]);
 
         // Act
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -1043,11 +1043,11 @@ public sealed class QueryTests
         var start = new DateTimeOffset(2025, 6, 1, 0, 0, 0, TimeSpan.Zero);
         var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(start);
         var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["updated-at-null"]);
 
         // Act
-        var query = cache.Build<string, string>(
+        var query = cache.GetOrCreate<string, string>(
             client,
             new QueryConfiguration<string>
             {
@@ -1581,7 +1581,7 @@ public sealed class QueryTests
         var ftp = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
             new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero));
         var client = new QueryClient(new QueryCache(), timeProvider: ftp);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         var query = BuildQuery<string>(client, ["gc-observer-removal"],
             gcTime: TimeSpan.FromMilliseconds(100), retry: 0);
@@ -1622,7 +1622,7 @@ public sealed class QueryTests
         var ftp = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
             new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero));
         var client = new QueryClient(new QueryCache(), timeProvider: ftp);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         var query = BuildQuery<string>(client, ["gc-readd"],
             gcTime: TimeSpan.FromMilliseconds(500), retry: 0);
@@ -1676,7 +1676,7 @@ public sealed class QueryTests
         var ftp = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
             new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero));
         var client = new QueryClient(new QueryCache(), timeProvider: ftp);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         var query = BuildQuery<string>(client, ["gc-fire"],
             gcTime: TimeSpan.FromMilliseconds(200), retry: 0);
@@ -1762,7 +1762,7 @@ public sealed class QueryTests
 
         // Subscribe a cache listener to detect when the query enters pause
         var paused = new TaskCompletionSource();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         using var pauseSubscription = cache.Subscribe(@event =>
         {
             if (@event is QueryCacheQueryUpdatedEvent { Action: PauseAction })

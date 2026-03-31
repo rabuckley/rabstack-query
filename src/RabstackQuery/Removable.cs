@@ -1,5 +1,20 @@
 namespace RabstackQuery;
 
+/// <summary>
+/// Abstract base for cache entries (<see cref="Query"/> and <see cref="Mutation"/>) that
+/// support garbage-collection via a configurable timeout. When all observers unsubscribe,
+/// the subclass schedules a GC timer; if no observer resubscribes before it fires, the
+/// entry removes itself from the cache.
+/// </summary>
+/// <remarks>
+/// <para><b>Threading:</b> Timer callbacks run on arbitrary thread-pool threads.
+/// <see cref="ScheduleGc"/> and <see cref="ClearGcTimeout"/> use
+/// <see cref="Interlocked.Exchange{T}(ref T, T)"/> for thread-safe timer swap-and-dispose.</para>
+/// <para><b>Disposal:</b> <see cref="Dispose(bool)"/> clears the GC timer. Subclasses that
+/// hold additional resources must override <see cref="Dispose(bool)"/>, call
+/// <c>base.Dispose(disposing)</c>, and clean up their own state.</para>
+/// <para>This class is not designed for subclassing outside of RabstackQuery.</para>
+/// </remarks>
 public abstract class Removable : IDisposable
 {
     private readonly TimeProvider _timeProvider;
@@ -10,7 +25,7 @@ public abstract class Removable : IDisposable
     // Interlocked.Exchange for thread-safe swap-and-dispose.
     private ITimer? _gcTimer;
 
-    protected Removable(TimeProvider timeProvider)
+    internal Removable(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider;
     }
@@ -77,7 +92,17 @@ public abstract class Removable : IDisposable
 
     private static bool IsValidTimeout(TimeSpan t) => t != Timeout.InfiniteTimeSpan && t > TimeSpan.Zero;
 
-    // subclass must implement removal logic
+    /// <summary>
+    /// Called when the GC timer fires after no observer has resubscribed within
+    /// <c>GcTime</c>. Subclasses remove themselves from their owning cache.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Threading:</b> called on an arbitrary thread-pool thread by the
+    /// <see cref="TimeProvider"/> timer. Implementations must be safe to call
+    /// concurrently with other query/mutation operations.</para>
+    /// <para><b>Exceptions:</b> any exception thrown is caught and swallowed by
+    /// <see cref="ScheduleGc"/> to prevent timer callbacks from crashing the process.</para>
+    /// </remarks>
     protected abstract void OptionalRemove();
 
     public void Dispose()

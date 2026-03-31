@@ -5,6 +5,6 @@ namespace RabstackQuery;
 /// Sets <see cref="FetchStatus.Paused"/>. Mirrors TanStack's
 /// <c>{ type: 'pause' }</c> action from query.ts:620–622.
 /// </summary>
-public sealed class PauseAction : DispatchAction
+internal sealed class PauseAction : DispatchAction
 {
 }

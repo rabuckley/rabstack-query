@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for QueryCache: storage operations, notification events, and focus/online refetch triggers.
@@ -13,10 +13,10 @@ public sealed class QueryCacheTests
 
     private static Query<TData> BuildQuery<TData>(QueryClient client, QueryKey queryKey, QueryState<TData>? state = null)
     {
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
         var options = new QueryConfiguration<TData> { QueryKey = queryKey, QueryHash = queryHash, GcTime = QueryTimeDefaults.GcTime };
-        return cache.Build<TData, TData>(client, options, state);
+        return cache.GetOrCreate<TData, TData>(client, options, state);
     }
 
     #region Get / GetAll / GetByHash
@@ -29,7 +29,7 @@ public sealed class QueryCacheTests
         var query = BuildQuery<string>(client, ["todos"]);
 
         // Act
-        var found = client.GetQueryCache().Get<string>(query.QueryHash!);
+        var found = client.QueryCache.Get<string>(query.QueryHash!);
 
         // Assert
         Assert.NotNull(found);
@@ -43,7 +43,7 @@ public sealed class QueryCacheTests
         var client = CreateQueryClient();
 
         // Act
-        var found = client.GetQueryCache().Get<string>("nonexistent-hash");
+        var found = client.QueryCache.Get<string>("nonexistent-hash");
 
         // Assert
         Assert.Null(found);
@@ -58,7 +58,7 @@ public sealed class QueryCacheTests
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
 
         // Act & Assert — requesting the wrong TData should throw
-        Assert.Throws<InvalidOperationException>(() => client.GetQueryCache().Get<int>(queryHash));
+        Assert.Throws<InvalidOperationException>(() => client.QueryCache.Get<int>(queryHash));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class QueryCacheTests
         BuildQuery<int>(client, ["count"]);
 
         // Act
-        var all = client.GetQueryCache().GetAll().ToList();
+        var all = client.QueryCache.GetAll().ToList();
 
         // Assert
         Assert.Equal(2, all.Count);
@@ -84,7 +84,7 @@ public sealed class QueryCacheTests
         var query = BuildQuery<string>(client, ["todos"]);
 
         // Act
-        var found = client.GetQueryCache().GetByHash(query.QueryHash!);
+        var found = client.QueryCache.GetByHash(query.QueryHash!);
 
         // Assert
         Assert.NotNull(found);
@@ -98,7 +98,7 @@ public sealed class QueryCacheTests
         var client = CreateQueryClient();
 
         // Act
-        var found = client.GetQueryCache().GetByHash("nonexistent");
+        var found = client.QueryCache.GetByHash("nonexistent");
 
         // Assert
         Assert.Null(found);
@@ -113,13 +113,13 @@ public sealed class QueryCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
         var options = new QueryConfiguration<string> { QueryKey = ["todos"], QueryHash = queryHash, GcTime = QueryTimeDefaults.GcTime };
 
         // Act
-        var query1 = cache.Build<string, string>(client, options);
-        var query2 = cache.Build<string, string>(client, options);
+        var query1 = cache.GetOrCreate<string, string>(client, options);
+        var query2 = cache.GetOrCreate<string, string>(client, options);
 
         // Assert
         Assert.Same(query1, query2);
@@ -145,11 +145,11 @@ public sealed class QueryCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var options = new QueryConfiguration<string> { QueryKey = null, GcTime = QueryTimeDefaults.GcTime };
 
         // Act & Assert
-        Assert.Throws<ArgumentException>(() => cache.Build<string, string>(client, options));
+        Assert.Throws<ArgumentException>(() => cache.GetOrCreate<string, string>(client, options));
     }
 
     /// <summary>
@@ -161,12 +161,12 @@ public sealed class QueryCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         QueryKey key = ["computed-hash-test"];
         var options = new QueryConfiguration<string> { QueryKey = key, GcTime = QueryTimeDefaults.GcTime };
 
         // Act
-        var query = cache.Build<string, string>(client, options);
+        var query = cache.GetOrCreate<string, string>(client, options);
 
         // Assert
         var expectedHash = DefaultQueryKeyHasher.Instance.HashQueryKey(key);
@@ -182,13 +182,13 @@ public sealed class QueryCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         QueryKey key = ["custom-hash-test"];
         var customHash = "custom-hash";
         var options = new QueryConfiguration<string> { QueryKey = key, QueryHash = customHash, GcTime = QueryTimeDefaults.GcTime };
 
         // Act
-        var query = cache.Build<string, string>(client, options);
+        var query = cache.GetOrCreate<string, string>(client, options);
 
         // Assert
         Assert.Equal(customHash, query.QueryHash);
@@ -205,7 +205,7 @@ public sealed class QueryCacheTests
         // Arrange
         var client = CreateQueryClient();
         var query = BuildQuery<string>(client, ["todos"]);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Act — adding the same query again should be a no-op
         cache.Add(query);
@@ -220,7 +220,7 @@ public sealed class QueryCacheTests
         // Arrange
         var client = CreateQueryClient();
         var query = BuildQuery<string>(client, ["todos"]);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Act
         cache.Remove(query);
@@ -237,7 +237,7 @@ public sealed class QueryCacheTests
         var client = CreateQueryClient();
         BuildQuery<string>(client, ["todos"]);
         BuildQuery<int>(client, ["count"]);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         Assert.Equal(2, cache.GetAll().Count());
 
         // Act
@@ -256,7 +256,7 @@ public sealed class QueryCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         QueryCacheNotifyEvent? receivedEvent = null;
 
         cache.Subscribe(@event => receivedEvent = @event);
@@ -275,7 +275,7 @@ public sealed class QueryCacheTests
         // Arrange
         var client = CreateQueryClient();
         var query = BuildQuery<string>(client, ["todos"]);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         QueryCacheNotifyEvent? receivedEvent = null;
 
         cache.Subscribe(@event => receivedEvent = @event);
@@ -295,7 +295,7 @@ public sealed class QueryCacheTests
         var client = CreateQueryClient();
         var query = BuildQuery<string>(client, ["todos"]);
         query.SetQueryFn(async _ => "data");
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var updatedEvents = new List<QueryCacheNotifyEvent>();
 
         cache.Subscribe(@event => updatedEvents.Add(@event));
@@ -341,7 +341,7 @@ public sealed class QueryCacheTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -378,7 +378,7 @@ public sealed class QueryCacheTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act
-        client.GetQueryCache().OnOnline();
+        client.QueryCache.OnOnline();
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert

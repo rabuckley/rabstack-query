@@ -4,6 +4,10 @@ using System.Runtime.CompilerServices;
 
 namespace RabstackQuery;
 
+/// <summary>
+/// An ordered sequence of elements that uniquely identifies a query in the cache.
+/// Supports C# collection expression syntax, e.g. <c>QueryKey key = ["todos", 1];</c>.
+/// </summary>
 [CollectionBuilder(typeof(QueryKeyCollectionBuilder), nameof(QueryKeyCollectionBuilder.Create))]
 [DebuggerDisplay("{ToString(),nq}")]
 public sealed class QueryKey : IEnumerable<object?>
@@ -13,6 +17,19 @@ public sealed class QueryKey : IEnumerable<object?>
     private QueryKey(List<object> list)
     {
         _list = list;
+    }
+
+    /// <summary>
+    /// Creates a <see cref="QueryKey"/> from the provided elements.
+    /// </summary>
+    /// <remarks>
+    /// This factory is provided for languages that lack C# collection expression
+    /// support (e.g. F#, VB.NET). C# callers should prefer the collection
+    /// expression syntax: <c>QueryKey key = ["todos", 1];</c>
+    /// </remarks>
+    public static QueryKey Create(params object[] elements)
+    {
+        return new(new List<object>(elements));
     }
 
     /// <summary>

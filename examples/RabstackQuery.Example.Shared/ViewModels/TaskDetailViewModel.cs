@@ -57,15 +57,14 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Task detail query with placeholder data from infinite list cache --
 
-        TaskQuery = client.UseQuery(new QueryObserverOptions<TaskItem>
-        {
-            QueryKey = QueryKeys.Task(projectId, taskId),
-            QueryFn = async ctx => await api.GetTaskAsync(projectId, taskId, ctx.CancellationToken),
-            Enabled = taskId > 0,
-
+        TaskQuery = client.UseQuery(
+            queryKey: QueryKeys.Task(projectId, taskId),
+            queryFn: async ctx => await api.GetTaskAsync(projectId, taskId, ctx.CancellationToken),
+            enabled: taskId > 0,
+            staleTime: TimeSpan.FromSeconds(15),
             // Seed placeholder data from the infinite query list cache so the UI
             // shows something instantly while the detail fetch is in flight.
-            PlaceholderData = (_, _) =>
+            placeholderData: (_, _) =>
             {
                 var infiniteData = client.GetQueryData<InfiniteData<PagedResult<TaskItem>, string?>>(
                     QueryKeys.Tasks(projectId));
@@ -73,7 +72,7 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
                     .SelectMany(p => p.Items)
                     .FirstOrDefault(t => t.Id == taskId);
             }
-        });
+        );
 
         // Sync editable fields when the query result changes. We subscribe to
         // PropertyChanged rather than polling so the fields update as soon as real
@@ -102,16 +101,13 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
         UpdateTaskMutation = client.UseMutation<TaskItem, (string Title, string? Description, TaskPriority Priority)>(
             mutationFn: async (variables, context, ct) =>
                 await api.UpdateTaskAsync(projectId, taskId, variables.Title, variables.Description, variables.Priority, ct),
-            options: new()
+            onSuccess: async (updatedTask, _, context) =>
             {
-                OnSuccess = async (updatedTask, _, _, context) =>
-                {
-                    // Update the detail cache with the server response
-                    context.Client.SetQueryData(QueryKeys.Task(projectId, taskId), updatedTask);
+                // Update the detail cache with the server response
+                context.Client.SetQueryData(QueryKeys.Task(projectId, taskId), updatedTask);
 
-                    // Invalidate the task list so it refetches with the updated data
-                    await context.Client.InvalidateQueries(QueryKeys.Tasks(projectId));
-                }
+                // Invalidate the task list so it refetches with the updated data
+                await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
             }
         );
 
@@ -143,12 +139,12 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
                     context.Client.SetQueryData(QueryKeys.Task(projectId, taskId), updatedTask);
 
                     // Invalidate the task list to reflect the status change
-                    await context.Client.InvalidateQueries(QueryKeys.Tasks(projectId));
+                    await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
                 },
                 OnError = async (_, _, _, context) =>
                 {
                     // Roll back the optimistic update by refetching
-                    await context.Client.InvalidateQueries(QueryKeys.Task(projectId, taskId));
+                    await context.Client.InvalidateQueriesAsync(QueryKeys.Task(projectId, taskId));
                 }
             }
         );
@@ -164,7 +160,8 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
                 ? PageParamResult<string?>.Some(cursor)
                 : PageParamResult<string?>.None,
             Enabled = taskId > 0,
-            StaleTime = TimeSpan.FromSeconds(30),
+            // Comments are append-only — existing data stays valid longer.
+            StaleTime = TimeSpan.FromMinutes(2),
         });
 
         // -- Add comment mutation ─────────────────────────────────────────
@@ -172,12 +169,9 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
         AddCommentMutation = client.UseMutation<Comment, string>(
             mutationFn: async (body, context, ct) =>
                 await api.AddCommentAsync(taskId, body, ct),
-            options: new()
+            onSuccess: async (_, _, context) =>
             {
-                OnSuccess = async (_, _, _, context) =>
-                {
-                    await context.Client.InvalidateQueries(QueryKeys.Comments(taskId));
-                }
+                await context.Client.InvalidateQueriesAsync(QueryKeys.Comments(taskId));
             }
         );
     }

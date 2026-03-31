@@ -32,7 +32,7 @@ public sealed class FetchQueryOptions<TData>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.Meta"/>
-    public QueryMeta? Meta { get; init; }
+    public Meta? Meta { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.NetworkMode"/>
     public NetworkMode? NetworkMode { get; init; }

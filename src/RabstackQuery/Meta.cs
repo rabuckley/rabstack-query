@@ -1,24 +1,23 @@
+using System.Collections;
+
 namespace RabstackQuery;
 
 /// <summary>
-/// Metadata for arbitrary key-value storage with queries.
-/// Structurally identical to <see cref="MutationMeta"/> — kept as a separate
-/// type to match TanStack's distinct QueryMeta / MutationMeta and avoid
-/// coupling their evolution.
+/// Arbitrary key-value metadata for queries and mutations.
 /// </summary>
-public sealed class QueryMeta
+public sealed class Meta : IReadOnlyDictionary<string, object?>
 {
     private readonly IReadOnlyDictionary<string, object?> _data;
 
     /// <summary>
-    /// Creates a new empty QueryMeta instance.
+    /// Creates a new empty Meta instance.
     /// </summary>
-    public QueryMeta() : this(new Dictionary<string, object?>()) { }
+    public Meta() : this(new Dictionary<string, object?>()) { }
 
     /// <summary>
-    /// Creates a new QueryMeta instance with the provided data.
+    /// Creates a new Meta instance with the provided data.
     /// </summary>
-    public QueryMeta(IReadOnlyDictionary<string, object?> data)
+    public Meta(IReadOnlyDictionary<string, object?> data)
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
@@ -43,4 +42,9 @@ public sealed class QueryMeta
     /// Gets the number of key-value pairs in this metadata.
     /// </summary>
     public int Count => _data.Count;
+
+    public IEnumerable<object?> Values => _data.Values;
+    public bool ContainsKey(string key) => _data.ContainsKey(key);
+    public IEnumerator<KeyValuePair<string, object?>> GetEnumerator() => _data.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

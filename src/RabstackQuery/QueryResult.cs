@@ -2,6 +2,10 @@ using System.Diagnostics;
 
 namespace RabstackQuery;
 
+/// <summary>
+/// A point-in-time snapshot of a query's data, error, and status flags,
+/// produced by a <see cref="QueryObserver{TData, TQueryData}"/> for consumption by UI layers.
+/// </summary>
 public sealed class QueryResult<TData> : IQueryResult<TData>
 {
     private readonly QueryState<TData> _state;
@@ -95,15 +99,12 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
     {
         get
         {
-            // If no stale time option, always consider stale
             if (_options is null) return true;
 
             // Disabled observers are never considered stale — they don't participate
             // in automatic refetching, so reporting stale would be misleading.
             // Mirrors TanStack's behavior where disabled observers report isStale=false.
             if (!_options.Enabled) return false;
-
-            var staleTime = _options.StaleTime;
 
             // No data = always stale, regardless of staleTime.
             // TanStack checks `this.state.data === undefined` without a timestamp
@@ -112,27 +113,8 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
             // successfully fetched (DataUpdatedAt == 0).
             if (_state.Data is null && _state.DataUpdatedAt == 0) return true;
 
-            // Static = never stale, not even after invalidation.
-            // Mirrors TanStack's `if (staleTime === 'static') return false`.
-            if (staleTime == Timeout.InfiniteTimeSpan) return false;
-
-            // StaleTime of Zero means always stale
-            if (staleTime == TimeSpan.Zero) return true;
-
-            // Invalidated queries are always stale — mirrors TanStack's
-            // `if (this.state.isInvalidated) return true` in isStaleByTime
-            // (query.ts:318).
-            if (_state.IsInvalidated) return true;
-
-            // Never fetched = always stale, regardless of clock position
-            if (_state.DataUpdatedAt == 0) return true;
-
-            // Check if data is older than stale time.
-            // Uses >= to match TanStack's `dataUpdatedAt + staleTime <= Date.now()`.
-            var now = _timeProvider.GetUtcNowMs();
-            var elapsed = now - _state.DataUpdatedAt;
-
-            return elapsed >= staleTime.TotalMilliseconds;
+            return QueryTimeDefaults.IsStale(
+                _state.DataUpdatedAt, _options.StaleTime, _state.IsInvalidated, _timeProvider.GetUtcNowMs());
         }
     }
 

@@ -135,7 +135,7 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
             {
                 OnSuccess = async (data, variables, onMutateResult, context) =>
                 {
-                    await context.Client.InvalidateQueries(QueryKeys.Tasks(ProjectId));
+                    await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(ProjectId));
                 },
             }
         );

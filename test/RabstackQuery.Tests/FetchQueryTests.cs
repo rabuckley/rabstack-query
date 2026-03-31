@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class FetchQueryTests
 {
@@ -11,14 +11,15 @@ public class FetchQueryTests
 
         // Act
         var result = await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "fetched";
-            }
-        });
+                QueryKey = ["todos"],
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "fetched";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("fetched", result);
@@ -34,27 +35,29 @@ public class FetchQueryTests
 
         // First call populates cache
         await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            StaleTime = TimeSpan.FromSeconds(60), // 60 seconds — data won't be stale
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "cached";
-            }
-        });
+                QueryKey = ["todos"],
+                StaleTime = TimeSpan.FromSeconds(60), // 60 seconds — data won't be stale
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "cached";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Act — second call with same staleTime should skip fetch
         var result = await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            StaleTime = TimeSpan.FromSeconds(60),
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "new-data";
-            }
-        });
+                QueryKey = ["todos"],
+                StaleTime = TimeSpan.FromSeconds(60),
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "new-data";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — should return cached data, fetch called only once
         Assert.Equal("cached", result);
@@ -70,27 +73,29 @@ public class FetchQueryTests
 
         // First call populates cache
         await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            StaleTime = TimeSpan.Zero, // Always stale
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return $"fetch-{fetchCount}";
-            }
-        });
+                QueryKey = ["todos"],
+                StaleTime = TimeSpan.Zero, // Always stale
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return $"fetch-{fetchCount}";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Act — second call with staleTime=0 should refetch
         var result = await client.FetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            StaleTime = TimeSpan.Zero,
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return $"fetch-{fetchCount}";
-            }
-        });
+                QueryKey = ["todos"],
+                StaleTime = TimeSpan.Zero,
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return $"fetch-{fetchCount}";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — should have fetched twice
         Assert.Equal("fetch-2", result);
@@ -104,10 +109,10 @@ public class FetchQueryTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             client.FetchQueryAsync(new FetchQueryOptions<string>
-            {
-                QueryKey = ["fail"],
-                QueryFn = _ => throw new InvalidOperationException("boom")
-            }));
+                {
+                    QueryKey = ["fail"], QueryFn = _ => throw new InvalidOperationException("boom")
+                },
+                TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -118,10 +123,10 @@ public class FetchQueryTests
         // Act — should not throw
         var exception = await Record.ExceptionAsync(() =>
             client.PrefetchQueryAsync(new FetchQueryOptions<string>
-            {
-                QueryKey = ["fail"],
-                QueryFn = _ => throw new InvalidOperationException("boom")
-            }));
+                {
+                    QueryKey = ["fail"], QueryFn = _ => throw new InvalidOperationException("boom")
+                },
+                TestContext.Current.CancellationToken));
 
         Assert.Null(exception);
     }
@@ -132,10 +137,10 @@ public class FetchQueryTests
         var client = CreateQueryClient();
 
         await client.PrefetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            QueryFn = async _ => "prefetched"
-        });
+            {
+                QueryKey = ["todos"], QueryFn = async _ => "prefetched"
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — data should be in cache
         var data = client.GetQueryData<string>(["todos"]);
@@ -153,15 +158,16 @@ public class FetchQueryTests
 
         // Act
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            StaleTime = TimeSpan.FromSeconds(60), // Fresh for 60 seconds
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "fetched";
-            }
-        });
+                QueryKey = ["todos"],
+                StaleTime = TimeSpan.FromSeconds(60), // Fresh for 60 seconds
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "fetched";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — should return seeded data without fetching
         Assert.Equal("seeded", result);
@@ -174,10 +180,10 @@ public class FetchQueryTests
         var client = CreateQueryClient();
 
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            QueryFn = async _ => "fetched"
-        });
+            {
+                QueryKey = ["todos"], QueryFn = async _ => "fetched"
+            },
+            TestContext.Current.CancellationToken);
 
         Assert.Equal("fetched", result);
     }
@@ -193,15 +199,16 @@ public class FetchQueryTests
 
         // Act — staleTime=0 means always stale
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["todos"],
-            StaleTime = TimeSpan.Zero,
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "fresh";
-            }
-        });
+                QueryKey = ["todos"],
+                StaleTime = TimeSpan.Zero,
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "fresh";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("fresh", result);
@@ -221,15 +228,16 @@ public class FetchQueryTests
 
         // Act
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["empty"],
-            StaleTime = TimeSpan.FromSeconds(60),
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "fetched";
-            }
-        });
+                QueryKey = ["empty"],
+                StaleTime = TimeSpan.FromSeconds(60),
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "fetched";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — should return the empty string, not fetch
         Assert.Equal("", result);
@@ -247,15 +255,16 @@ public class FetchQueryTests
 
         // Act
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["with-initial"],
-            InitialData = "seeded-from-initial",
-            QueryFn = async _ =>
             {
-                fetchCount++;
-                return "fetched";
-            }
-        });
+                QueryKey = ["with-initial"],
+                InitialData = "seeded-from-initial",
+                QueryFn = async _ =>
+                {
+                    fetchCount++;
+                    return "fetched";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — should return initial data, not fetch
         Assert.Equal("seeded-from-initial", result);
@@ -280,24 +289,25 @@ public class FetchQueryTests
 
         // Act — staleTime=0 means always stale, RevalidateIfStale triggers background fetch
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["stale-revalidate"],
-            StaleTime = TimeSpan.Zero,
-            RevalidateIfStale = true,
-            QueryFn = async _ =>
             {
-                Interlocked.Increment(ref fetchCount);
-                fetchStarted.TrySetResult();
-                return "fresh-data";
-            }
-        });
+                QueryKey = ["stale-revalidate"],
+                StaleTime = TimeSpan.Zero,
+                RevalidateIfStale = true,
+                QueryFn = async _ =>
+                {
+                    Interlocked.Increment(ref fetchCount);
+                    fetchStarted.TrySetResult();
+                    return "fresh-data";
+                }
+            },
+            TestContext.Current.CancellationToken);
 
         // Assert — should return stale data immediately
         Assert.Equal("old-data", result);
 
         // Wait for background refetch to complete
-        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(50); // Let state propagate
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await Task.Delay(50, TestContext.Current.CancellationToken); // Let state propagate
 
         // Verify cache was updated in the background
         var cached = client.GetQueryData<string>(["stale-revalidate"]);
@@ -315,11 +325,10 @@ public class FetchQueryTests
         var client = new QueryClient(new QueryCache(), timeProvider: fakeTime);
 
         await client.PrefetchQueryAsync(new FetchQueryOptions<string>
-        {
-            QueryKey = ["gc-test"],
-            GcTime = TimeSpan.FromMilliseconds(10),
-            QueryFn = async _ => "prefetched"
-        });
+            {
+                QueryKey = ["gc-test"], GcTime = TimeSpan.FromMilliseconds(10), QueryFn = async _ => "prefetched"
+            },
+            TestContext.Current.CancellationToken);
 
         // Verify data is in cache
         Assert.Equal("prefetched", client.GetQueryData<string>(["gc-test"]));
@@ -329,7 +338,7 @@ public class FetchQueryTests
 
         // Assert — data should be garbage collected
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["gc-test"]);
-        var query = client.GetQueryCache().Get<string>(queryHash);
+        var query = client.QueryCache.Get<string>(queryHash);
         Assert.Null(query);
     }
 
@@ -349,40 +358,39 @@ public class FetchQueryTests
 
         // 1. staleTime=100ms, data age=0 → fresh, returns cached 0
         var result1 = await client.FetchQueryAsync(new FetchQueryOptions<int>
-        {
-            QueryKey = ["key"],
-            StaleTime = TimeSpan.FromMilliseconds(100),
-            QueryFn = async _ => ++count
-        });
+            {
+                QueryKey = ["key"], StaleTime = TimeSpan.FromMilliseconds(100), QueryFn = async _ => ++count
+            },
+            TestContext.Current.CancellationToken);
+
         Assert.Equal(0, result1);
 
         // 2. Advance 10ms. staleTime=10ms, data age=10ms → stale (10 >= 10), refetches
         fakeTime.Advance(TimeSpan.FromMilliseconds(10));
+
         var result2 = await client.FetchQueryAsync(new FetchQueryOptions<int>
         {
-            QueryKey = ["key"],
-            StaleTime = TimeSpan.FromMilliseconds(10),
-            QueryFn = async _ => ++count
-        });
+            QueryKey = ["key"], StaleTime = TimeSpan.FromMilliseconds(10), QueryFn = async _ => ++count
+        }, TestContext.Current.CancellationToken);
+
         Assert.Equal(1, result2);
 
         // 3. Immediately after, staleTime=10ms, data age=0 → fresh, returns cached
         var result3 = await client.FetchQueryAsync(new FetchQueryOptions<int>
         {
-            QueryKey = ["key"],
-            StaleTime = TimeSpan.FromMilliseconds(10),
-            QueryFn = async _ => ++count
-        });
+            QueryKey = ["key"], StaleTime = TimeSpan.FromMilliseconds(10), QueryFn = async _ => ++count
+        }, TestContext.Current.CancellationToken);
+
         Assert.Equal(1, result3);
 
         // 4. Advance 10ms. staleTime=10ms, data age=10ms → stale, refetches
         fakeTime.Advance(TimeSpan.FromMilliseconds(10));
+
         var result4 = await client.FetchQueryAsync(new FetchQueryOptions<int>
         {
-            QueryKey = ["key"],
-            StaleTime = TimeSpan.FromMilliseconds(10),
-            QueryFn = async _ => ++count
-        });
+            QueryKey = ["key"], StaleTime = TimeSpan.FromMilliseconds(10), QueryFn = async _ => ++count
+        }, TestContext.Current.CancellationToken);
+
         Assert.Equal(2, result4);
     }
 

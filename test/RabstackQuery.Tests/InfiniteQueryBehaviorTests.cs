@@ -48,7 +48,7 @@ public sealed class InfiniteQueryBehaviorTests
         await observer.FetchNextPageAsync();
 
         // Assert — should have only 2 pages due to MaxPages
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.Equal(2, finalResult.Data!.Pages.Count);
 
         // Pages should be the last 2 (page-1 and page-2), not page-0
@@ -92,7 +92,7 @@ public sealed class InfiniteQueryBehaviorTests
         await observer.FetchPreviousPageAsync();
 
         // Assert — should have 2 pages, the most recent backward fetches
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.Equal(2, finalResult.Data!.Pages.Count);
 
         // Pages should be page-3 and page-4 (dropped page-5 from the end)
@@ -139,7 +139,7 @@ public sealed class InfiniteQueryBehaviorTests
         await observer.FetchNextPageAsync(); // should be no-op, no more pages
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Equal(3, result.Data!.Pages.Count);
         Assert.False(result.HasNextPage);
         Assert.Equal(3, fetchCount); // only 3 actual fetches
@@ -227,7 +227,7 @@ public sealed class InfiniteQueryBehaviorTests
         await observer.FetchNextPageAsync(); // page 2
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Equal(3, result.Data!.Pages.Count);
         Assert.Equal("page-0", result.Data.Pages[0]);
         Assert.Equal(0, result.Data.PageParams[0]); // 0 was a valid param, not None
@@ -286,7 +286,7 @@ public sealed class InfiniteQueryBehaviorTests
         blockDuringRefetch = true;
 
         // Act — trigger a refetch with cancellation token, then cancel mid-refetch
-        var refetchResult = observer.GetCurrentResult();
+        var refetchResult = observer.CurrentResult;
         var refetchTask = refetchResult.RefetchAsync(cancellationToken: cts.Token);
 
         // Wait for second page fetch to start, then cancel
@@ -329,7 +329,7 @@ public sealed class InfiniteQueryBehaviorTests
         await observer.FetchNextPageAsync();
 
         // Assert
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Equal(2, result.Data!.Pages.Count);
         Assert.Equal("data-for-null", result.Data.Pages[0]);
         Assert.Null(result.Data.PageParams[0]);

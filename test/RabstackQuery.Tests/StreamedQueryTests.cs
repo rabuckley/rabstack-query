@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for <see cref="StreamedQuery"/>, ported from TanStack's
@@ -59,47 +59,47 @@ public sealed class StreamedQueryTests
         var client = CreateQueryClient();
         var gate = new SemaphoreSlim(0);
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-basic"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     _ => ControlledStream(gate, 3))
             });
 
-        var results = new List<IQueryResult<List<int>>>();
+        var results = new List<IQueryResult<IReadOnlyList<int>>>();
         var subscription = observer.Subscribe(r => results.Add(r));
 
         // Act & Assert — initial state
-        var current = observer.GetCurrentResult();
+        var current = observer.CurrentResult;
         Assert.Equal(QueryStatus.Pending, current.Status);
         Assert.Equal(FetchStatus.Fetching, current.FetchStatus);
         Assert.Null(current.Data);
 
         // Release chunk 0
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 1);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 1);
 
-        current = observer.GetCurrentResult();
+        current = observer.CurrentResult;
         Assert.Equal(QueryStatus.Succeeded, current.Status);
         Assert.Equal(FetchStatus.Fetching, current.FetchStatus);
         Assert.Equal([0], current.Data);
 
         // Release chunk 1
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 2);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 2);
 
-        current = observer.GetCurrentResult();
+        current = observer.CurrentResult;
         Assert.Equal(QueryStatus.Succeeded, current.Status);
         Assert.Equal(FetchStatus.Fetching, current.FetchStatus);
         Assert.Equal([0, 1], current.Data);
 
         // Release chunk 2 (final)
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
-        current = observer.GetCurrentResult();
+        current = observer.CurrentResult;
         Assert.Equal(QueryStatus.Succeeded, current.Status);
         Assert.Equal(FetchStatus.Idle, current.FetchStatus);
         Assert.Equal([0, 1, 2], current.Data);
@@ -118,9 +118,9 @@ public sealed class StreamedQueryTests
         var client = CreateQueryClient();
         var gate = new SemaphoreSlim(0);
 
-        var observer = new QueryObserver<List<int[]>, List<int[]>>(
+        var observer = new QueryObserver<IReadOnlyList<int[]>, IReadOnlyList<int[]>>(
             client,
-            new QueryObserverOptions<List<int[]>, List<int[]>>
+            new QueryObserverOptions<IReadOnlyList<int[]>, IReadOnlyList<int[]>>
             {
                 QueryKey = ["stream-array-chunks"],
                 QueryFn = StreamedQuery.Create<int[]>(
@@ -131,18 +131,18 @@ public sealed class StreamedQueryTests
 
         // Act — release all chunks
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 1);
-        Assert.Equal([[0, 0]], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 1);
+        Assert.Equal([[0, 0]], observer.CurrentResult.Data);
 
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 2);
-        Assert.Equal([0, 0], observer.GetCurrentResult().Data![0]);
-        Assert.Equal([1, 1], observer.GetCurrentResult().Data![1]);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 2);
+        Assert.Equal([0, 0], observer.CurrentResult.Data![0]);
+        Assert.Equal([1, 1], observer.CurrentResult.Data![1]);
 
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
-        var data = observer.GetCurrentResult().Data!;
+        var data = observer.CurrentResult.Data!;
         Assert.Equal(3, data.Count);
         Assert.Equal([0, 0], data[0]);
         Assert.Equal([1, 1], data[1]);
@@ -170,23 +170,23 @@ public sealed class StreamedQueryTests
         // Arrange
         var client = CreateQueryClient();
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-empty"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     _ => EmptyStream())
             });
 
         // Act
         var subscription = observer.Subscribe(_ => { });
 
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
         // Assert — empty stream completes immediately, so by the time we check
         // it has already transitioned to Succeeded/Idle.
-        var current = observer.GetCurrentResult();
+        var current = observer.CurrentResult;
         Assert.Equal(QueryStatus.Succeeded, current.Status);
         Assert.Equal(FetchStatus.Idle, current.FetchStatus);
         Assert.NotNull(current.Data);
@@ -218,12 +218,12 @@ public sealed class StreamedQueryTests
         var client = CreateQueryClient();
         var gate = new SemaphoreSlim(0);
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-reset"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     _ => ControlledStream(gate, 2))
             });
 
@@ -231,27 +231,27 @@ public sealed class StreamedQueryTests
 
         // Complete initial fetch
         gate.Release(2);
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         // Act — refetch
         _ = observer.RefetchAsync();
 
         // The reset mode should clear data and go to pending
-        await WaitForCondition(() => observer.GetCurrentResult().Status == QueryStatus.Pending);
-        Assert.Equal(QueryStatus.Pending, observer.GetCurrentResult().Status);
-        Assert.Equal(FetchStatus.Fetching, observer.GetCurrentResult().FetchStatus);
-        Assert.Null(observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.Status == QueryStatus.Pending);
+        Assert.Equal(QueryStatus.Pending, observer.CurrentResult.Status);
+        Assert.Equal(FetchStatus.Fetching, observer.CurrentResult.FetchStatus);
+        Assert.Null(observer.CurrentResult.Data);
 
         // Release first chunk of refetch
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 1);
-        Assert.Equal([0], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 1);
+        Assert.Equal([0], observer.CurrentResult.Data);
 
         // Release second chunk (final)
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -267,12 +267,12 @@ public sealed class StreamedQueryTests
         var client = CreateQueryClient();
         var gate = new SemaphoreSlim(0);
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-append"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     _ => ControlledStream(gate, 2),
                     refetchMode: StreamRefetchMode.Append)
             });
@@ -281,26 +281,26 @@ public sealed class StreamedQueryTests
 
         // Complete initial fetch
         gate.Release(2);
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         // Act — refetch
         _ = observer.RefetchAsync();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Fetching);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Fetching);
 
         // Data should still be [0, 1] (not cleared)
-        Assert.Equal(QueryStatus.Succeeded, observer.GetCurrentResult().Status);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        Assert.Equal(QueryStatus.Succeeded, observer.CurrentResult.Status);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         // Release first chunk of refetch — appended
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 3);
-        Assert.Equal([0, 1, 0], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 3);
+        Assert.Equal([0, 1, 0], observer.CurrentResult.Data);
 
         // Release second chunk (final)
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
-        Assert.Equal([0, 1, 0, 1], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
+        Assert.Equal([0, 1, 0, 1], observer.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -317,12 +317,12 @@ public sealed class StreamedQueryTests
         var gate = new SemaphoreSlim(0);
         var offset = 0;
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-replace"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     _ => ControlledStream(gate, 2, offset),
                     refetchMode: StreamRefetchMode.Replace)
             });
@@ -331,28 +331,28 @@ public sealed class StreamedQueryTests
 
         // Complete initial fetch
         gate.Release(2);
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         // Act — refetch with different offset
         offset = 100;
         _ = observer.RefetchAsync();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Fetching);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Fetching);
 
         // Data should still be [0, 1] during refetch
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         // Release chunks — data should remain [0, 1] while buffering
         gate.Release();
         // Give the stream a moment to process the chunk
         await Task.Delay(50);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         gate.Release();
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
         // Now the replace should have happened
-        Assert.Equal([100, 101], observer.GetCurrentResult().Data);
+        Assert.Equal([100, 101], observer.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -378,12 +378,12 @@ public sealed class StreamedQueryTests
         var secondStreamStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var invocation = 0;
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-abort-refetch"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     ctx =>
                     {
                         // Consume the signal so cancellation is active, and pass
@@ -400,8 +400,8 @@ public sealed class StreamedQueryTests
 
         // Stream first 2 of 3 chunks
         gate1.Release(2);
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 2);
-        Assert.Equal([0, 1], observer.GetCurrentResult().Data);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 2);
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
 
         // Act — refetch (should abort the first stream at chunk 2 of 3)
         _ = observer.RefetchAsync();
@@ -414,11 +414,11 @@ public sealed class StreamedQueryTests
         // SuccessState (StreamedQuery catches the cancel and returns partial data)
         // that briefly sets FetchStatus to Idle before the new fetch completes.
         gate2.Release(3);
-        await WaitForCondition(() => observer.GetCurrentResult().Data?.Count == 5);
+        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 5);
 
         // First stream contributed [0, 1], second stream appends [0, 1, 2]
-        Assert.Equal([0, 1, 0, 1, 2], observer.GetCurrentResult().Data);
-        Assert.Equal(FetchStatus.Idle, observer.GetCurrentResult().FetchStatus);
+        Assert.Equal([0, 1, 0, 1, 2], observer.CurrentResult.Data);
+        Assert.Equal(FetchStatus.Idle, observer.CurrentResult.FetchStatus);
 
         subscription.Dispose();
     }
@@ -435,12 +435,12 @@ public sealed class StreamedQueryTests
         var client = CreateQueryClient();
         var gate = new SemaphoreSlim(0);
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-abort-unsub"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     ctx =>
                     {
                         // Consume the signal so cancellation is active, and pass
@@ -456,11 +456,11 @@ public sealed class StreamedQueryTests
         gate.Release();
         await WaitForCondition(() =>
         {
-            var state = GetQueryState<List<int>>(client, ["stream-abort-unsub"]);
+            var state = GetQueryState<IReadOnlyList<int>>(client, ["stream-abort-unsub"]);
             return state?.Data?.Count == 1;
         });
 
-        var state = GetQueryState<List<int>>(client, ["stream-abort-unsub"]);
+        var state = GetQueryState<IReadOnlyList<int>>(client, ["stream-abort-unsub"]);
         Assert.Equal(QueryStatus.Succeeded, state!.Status);
         Assert.Equal(FetchStatus.Fetching, state.FetchStatus);
         Assert.Equal([0], state.Data);
@@ -475,11 +475,11 @@ public sealed class StreamedQueryTests
         // FetchCore dispatches the success state.
         await WaitForCondition(() =>
         {
-            var s = GetQueryState<List<int>>(client, ["stream-abort-unsub"]);
+            var s = GetQueryState<IReadOnlyList<int>>(client, ["stream-abort-unsub"]);
             return s is { Status: QueryStatus.Succeeded, FetchStatus: FetchStatus.Idle };
         });
 
-        state = GetQueryState<List<int>>(client, ["stream-abort-unsub"]);
+        state = GetQueryState<IReadOnlyList<int>>(client, ["stream-abort-unsub"]);
         Assert.Equal(QueryStatus.Succeeded, state!.Status);
         Assert.Equal(FetchStatus.Idle, state.FetchStatus);
         Assert.Equal([0], state.Data);
@@ -497,12 +497,12 @@ public sealed class StreamedQueryTests
         var client = CreateQueryClient();
         var gate = new SemaphoreSlim(0);
 
-        var observer = new QueryObserver<List<int>, List<int>>(
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
             client,
-            new QueryObserverOptions<List<int>, List<int>>
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
             {
                 QueryKey = ["stream-no-abort"],
-                QueryFn = StreamedQuery.Create<int>(
+                QueryFn = StreamedQuery.Create(
                     // Do NOT consume CancellationToken — signal not consumed
                     _ => ControlledStream(gate, 3))
             });
@@ -513,11 +513,11 @@ public sealed class StreamedQueryTests
         gate.Release();
         await WaitForCondition(() =>
         {
-            var state = GetQueryState<List<int>>(client, ["stream-no-abort"]);
+            var state = GetQueryState<IReadOnlyList<int>>(client, ["stream-no-abort"]);
             return state?.Data?.Count == 1;
         });
 
-        var state = GetQueryState<List<int>>(client, ["stream-no-abort"]);
+        var state = GetQueryState<IReadOnlyList<int>>(client, ["stream-no-abort"]);
         Assert.Equal(QueryStatus.Succeeded, state!.Status);
         Assert.Equal(FetchStatus.Fetching, state.FetchStatus);
         Assert.Equal([0], state.Data);
@@ -529,11 +529,11 @@ public sealed class StreamedQueryTests
         gate.Release();
         await WaitForCondition(() =>
         {
-            var s = GetQueryState<List<int>>(client, ["stream-no-abort"]);
+            var s = GetQueryState<IReadOnlyList<int>>(client, ["stream-no-abort"]);
             return s?.Data?.Count == 2;
         });
 
-        state = GetQueryState<List<int>>(client, ["stream-no-abort"]);
+        state = GetQueryState<IReadOnlyList<int>>(client, ["stream-no-abort"]);
         Assert.Equal(FetchStatus.Fetching, state!.FetchStatus);
         Assert.Equal([0, 1], state.Data);
 
@@ -570,10 +570,10 @@ public sealed class StreamedQueryTests
 
         // Act — ImmediateStream may complete before we can check pending, so
         // just wait for completion.
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
         // Assert
-        var data = observer.GetCurrentResult().Data;
+        var data = observer.CurrentResult.Data;
         Assert.NotNull(data);
         Assert.True(data[0]);
         Assert.True(data[1]);
@@ -607,10 +607,10 @@ public sealed class StreamedQueryTests
         var subscription = observer.Subscribe(_ => { });
 
         // Act
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
         // Assert — initial values are preserved, streamed values are added
-        var data = observer.GetCurrentResult().Data;
+        var data = observer.CurrentResult.Data;
         Assert.NotNull(data);
         Assert.True(data[10]);
         Assert.True(data[11]);
@@ -653,10 +653,10 @@ public sealed class StreamedQueryTests
         var subscription = observer.Subscribe(_ => { });
 
         // Act — wait for initial fetch to complete
-        await WaitForCondition(() => observer.GetCurrentResult().FetchStatus == FetchStatus.Idle);
+        await WaitForCondition(() => observer.CurrentResult.FetchStatus == FetchStatus.Idle);
 
         Assert.Equal([1, 2, 3], reducerChunks);
-        Assert.Equal([1, 2, 3], observer.GetCurrentResult().Data);
+        Assert.Equal([1, 2, 3], observer.CurrentResult.Data);
 
         // Act — refetch
         _ = observer.RefetchAsync();
@@ -668,7 +668,7 @@ public sealed class StreamedQueryTests
 
         // Assert — reducer called exactly once per chunk, per fetch
         Assert.Equal([1, 2, 3, 1, 2, 3], reducerChunks);
-        Assert.Equal([1, 2, 3], observer.GetCurrentResult().Data);
+        Assert.Equal([1, 2, 3], observer.CurrentResult.Data);
 
         subscription.Dispose();
     }
@@ -706,7 +706,7 @@ public sealed class StreamedQueryTests
     private static QueryState<TData>? GetQueryState<TData>(QueryClient client, QueryKey queryKey)
     {
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
-        return client.GetQueryCache().Get<TData>(hash)?.State;
+        return client.QueryCache.Get<TData>(hash)?.State;
     }
 
     #endregion

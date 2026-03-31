@@ -14,7 +14,7 @@ namespace RabstackQuery;
 public static class StreamedQuery
 {
     /// <summary>
-    /// Creates a query function that streams chunks into a <see cref="List{T}"/>.
+    /// Creates a query function that streams chunks into an <see cref="IReadOnlyList{T}"/>.
     /// Each chunk is appended to the list via <see cref="QueryClient.SetQueryData{TData}(QueryKey, Func{TData?, TData})"/>,
     /// causing observer notifications with partial data while the fetch is in progress.
     /// </summary>
@@ -30,8 +30,10 @@ public static class StreamedQuery
     /// </param>
     /// <returns>
     /// A query function suitable for use as <c>QueryFn</c> in query options.
+    /// The returned data is <see cref="IReadOnlyList{T}"/> to prevent callers
+    /// from mutating cached data directly.
     /// </returns>
-    public static Func<QueryFunctionContext, Task<List<TChunk>>> Create<TChunk>(
+    public static Func<QueryFunctionContext, Task<IReadOnlyList<TChunk>>> Create<TChunk>(
         Func<QueryFunctionContext, IAsyncEnumerable<TChunk>> streamFn,
         StreamRefetchMode refetchMode = StreamRefetchMode.Reset)
     {
@@ -40,7 +42,7 @@ public static class StreamedQuery
         // Delegate to the reducer overload with a list-append reducer.
         // Each iteration creates a new list to maintain immutability, matching
         // TanStack's addToEnd() which returns a new array.
-        return Create<TChunk, List<TChunk>>(
+        return Create<TChunk, IReadOnlyList<TChunk>>(
             streamFn,
             static (prev, chunk) =>
             {
@@ -101,7 +103,7 @@ public static class StreamedQuery
             // TanStack uses client.getQueryCache().find({ queryKey, exact: true })
             // — a filter-based lookup, not a hash computation. Using Find() here
             // avoids coupling to a specific IQueryKeyHasher implementation.
-            var query = client.GetQueryCache()
+            var query = client.QueryCache
                 .Find(new QueryFilters { QueryKey = queryKey }) as Query<TData>;
             var isRefetch = query is { State.Data: not null };
 

@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for the new <see cref="QueryOptions{TData}"/> type: construction,
@@ -88,7 +88,7 @@ public sealed class QueryOptionsTests
     public void ToFetchQueryOptions_MapsRetryDelay_Meta_NetworkMode()
     {
         Func<int, Exception, TimeSpan> retryDelay = (count, _) => TimeSpan.FromSeconds(count);
-        var meta = new QueryMeta(new Dictionary<string, object?> { ["source"] = "test" });
+        var meta = new Meta(new Dictionary<string, object?> { ["source"] = "test" });
         var options = new QueryOptions<string>
         {
             QueryKey = ["test"],
@@ -109,7 +109,7 @@ public sealed class QueryOptionsTests
     public void ToObserverOptions_MapsAllProperties()
     {
         Func<int, Exception, TimeSpan> retryDelay = (count, _) => TimeSpan.FromSeconds(count);
-        var meta = new QueryMeta(new Dictionary<string, object?> { ["key"] = "value" });
+        var meta = new Meta(new Dictionary<string, object?> { ["key"] = "value" });
         var options = new QueryOptions<string>
         {
             QueryKey = ["test"],
@@ -127,7 +127,7 @@ public sealed class QueryOptionsTests
         Assert.Equal<QueryKey>(["test"], observer.QueryKey);
         Assert.NotNull(observer.QueryFn);
         Assert.Equal(TimeSpan.FromSeconds(30), observer.StaleTime);
-        Assert.Equal(TimeSpan.FromMinutes(10), observer.CacheTime);
+        Assert.Equal(TimeSpan.FromMinutes(10), observer.GcTime);
         Assert.Equal(2, observer.Retry);
         Assert.Same(retryDelay, observer.RetryDelay);
         Assert.Equal(NetworkMode.OfflineFirst, observer.NetworkMode);
@@ -146,7 +146,7 @@ public sealed class QueryOptionsTests
         var observer = options.ToObserverOptions();
 
         Assert.Equal(TimeSpan.Zero, observer.StaleTime);
-        Assert.Equal(TimeSpan.FromMinutes(5), observer.CacheTime);
+        Assert.Equal(TimeSpan.FromMinutes(5), observer.GcTime);
         Assert.Null(observer.Retry);
         Assert.Null(observer.RetryDelay);
         Assert.Null(observer.Meta);
@@ -155,7 +155,7 @@ public sealed class QueryOptionsTests
     [Fact]
     public void ToObserverOptions_WithSelect_MapsProperties()
     {
-        var meta = new QueryMeta(new Dictionary<string, object?> { ["key"] = "value" });
+        var meta = new Meta(new Dictionary<string, object?> { ["key"] = "value" });
         var options = new QueryOptions<string>
         {
             QueryKey = ["test"],
@@ -167,13 +167,13 @@ public sealed class QueryOptionsTests
             Meta = meta,
         };
 
-        var observer = options.ToObserverOptions<int>(s => s.Length);
+        var observer = options.ToObserverOptions(s => s.Length);
 
         Assert.Equal<QueryKey>(["test"], observer.QueryKey);
         Assert.NotNull(observer.Select);
         Assert.Equal(11, observer.Select!("hello world"));
         Assert.Equal(TimeSpan.FromSeconds(15), observer.StaleTime);
-        Assert.Equal(TimeSpan.FromMinutes(3), observer.CacheTime);
+        Assert.Equal(TimeSpan.FromMinutes(3), observer.GcTime);
         Assert.Equal(1, observer.Retry);
         Assert.Equal(NetworkMode.Always, observer.NetworkMode);
         Assert.Same(meta, observer.Meta);

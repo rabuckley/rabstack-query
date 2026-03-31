@@ -5,6 +5,6 @@ namespace RabstackQuery;
 /// Sets <see cref="FetchStatus.Fetching"/>. Mirrors TanStack's
 /// <c>{ type: 'continue' }</c> action from query.ts:623–627.
 /// </summary>
-public sealed class ContinueAction : DispatchAction
+internal sealed class ContinueAction : DispatchAction
 {
 }

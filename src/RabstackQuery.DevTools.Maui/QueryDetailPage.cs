@@ -1,5 +1,7 @@
 using RabstackQuery.DevTools;
 
+using static RabstackQuery.DevTools.Maui.DevToolsTracing;
+
 namespace RabstackQuery.DevTools.Maui;
 
 /// <summary>
@@ -82,6 +84,8 @@ internal sealed class QueryDetailPage : ContentPage
         actionsLayout.Add(CreateActionButton("Refetch", async btn =>
         {
             btn.IsEnabled = false;
+            using var activity = StartQueryAction(
+                DevToolsActionType.Refetch, item.QueryHash, item.QueryKeyDisplay);
             try
             {
                 var query = observer.FindQueryByHash(item.QueryHash);
@@ -91,27 +95,79 @@ internal sealed class QueryDetailPage : ContentPage
             finally { btn.IsEnabled = true; }
         }));
 
-        actionsLayout.Add(CreateActionButton("Invalidate", _ =>
+        actionsLayout.Add(CreateActionButton("Invalidate", async _ =>
         {
             var query = observer.FindQueryByHash(item.QueryHash);
-            query?.Invalidate();
+            if (query?.QueryKey is not { } key) return;
+
+            using var activity = StartQueryAction(
+                DevToolsActionType.Invalidate, item.QueryHash, item.QueryKeyDisplay);
+
+            await queryClient.InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = key });
         }));
 
         actionsLayout.Add(CreateActionButton("Reset", _ =>
         {
             var query = observer.FindQueryByHash(item.QueryHash);
-            query?.Reset();
+            if (query?.QueryKey is not { } key) return;
+
+            using var activity = StartQueryAction(
+                DevToolsActionType.Reset, item.QueryHash, item.QueryKeyDisplay);
+
+            queryClient.ResetQueries(new QueryFilters { QueryKey = key });
         }));
 
         actionsLayout.Add(CreateActionButton("Remove", _ =>
         {
             var query = observer.FindQueryByHash(item.QueryHash);
-            if (query is not null)
-            {
-                queryClient.GetQueryCache().Remove(query);
-                Navigation.PopAsync();
-            }
+            if (query?.QueryKey is not { } key) return;
+
+            using var activity = StartQueryAction(
+                DevToolsActionType.Remove, item.QueryHash, item.QueryKeyDisplay);
+
+            queryClient.RemoveQueries(new QueryFilters { QueryKey = key });
+            Navigation.PopAsync();
         }));
+
+        var isTriggeredLoading = item.IsDevToolsTriggered && item.Status is QueryStatus.Pending;
+        var triggerLoadingBtn = CreateActionButton(
+            isTriggeredLoading ? "Restore Loading" : "Trigger Loading",
+            async btn =>
+            {
+                btn.IsEnabled = false;
+                using var activity = StartQueryAction(
+                    isTriggeredLoading ? DevToolsActionType.RestoreLoading : DevToolsActionType.TriggerLoading,
+                    item.QueryHash, item.QueryKeyDisplay);
+                try
+                {
+                    if (isTriggeredLoading)
+                        await observer.Restore(item.QueryHash);
+                    else
+                        observer.TriggerLoading(item.QueryHash);
+                }
+                finally { btn.IsEnabled = true; }
+            });
+        actionsLayout.Add(triggerLoadingBtn);
+
+        var isTriggeredError = item.IsDevToolsTriggered && item.Status is QueryStatus.Errored;
+        var triggerErrorBtn = CreateActionButton(
+            isTriggeredError ? "Restore Error" : "Trigger Error",
+            async btn =>
+            {
+                btn.IsEnabled = false;
+                using var activity = StartQueryAction(
+                    isTriggeredError ? DevToolsActionType.RestoreError : DevToolsActionType.TriggerError,
+                    item.QueryHash, item.QueryKeyDisplay);
+                try
+                {
+                    if (isTriggeredError)
+                        await observer.Restore(item.QueryHash);
+                    else
+                        observer.TriggerError(item.QueryHash, new Exception("Triggered from devtools"));
+                }
+                finally { btn.IsEnabled = true; }
+            });
+        actionsLayout.Add(triggerErrorBtn);
 
         stack.Add(actionsLayout);
 

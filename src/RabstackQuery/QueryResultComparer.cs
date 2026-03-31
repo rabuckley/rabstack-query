@@ -14,7 +14,7 @@ internal static class QueryResultComparer
     public static bool HasChangedProperty<TData>(
         IQueryResult<TData> prev,
         IQueryResult<TData> curr,
-        IReadOnlySet<string> props)
+        IEnumerable<string> props)
     {
         foreach (var prop in props)
         {

@@ -3,6 +3,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RabstackQuery;
 
+/// <summary>
+/// Executes an async function with configurable retry count, exponential backoff,
+/// and automatic pause/resume based on network connectivity and window focus.
+/// </summary>
 public sealed class Retryer<TData> : IDisposable
 {
     private readonly RetryerOptions<TData> _options;

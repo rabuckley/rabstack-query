@@ -106,7 +106,7 @@ internal sealed class QueryMetrics
             "rabstackquery.query.fetch_deduplicated_total", "{queries}",
             "Fetches skipped because an identical fetch was already in-flight");
 
-        QueryFetchDuration = meter.CreateHistogram<double>(
+        QueryFetchDuration = meter.CreateHistogram(
             "rabstackquery.query.fetch_duration", "s",
             "Wall-clock duration of fetches (success and error, excludes cancelled)",
             advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = FetchDurationBuckets });
@@ -145,7 +145,7 @@ internal sealed class QueryMetrics
             "rabstackquery.mutation.cancelled_total", "{mutations}",
             "Mutations cancelled via CancellationToken");
 
-        MutationDuration = meter.CreateHistogram<double>(
+        MutationDuration = meter.CreateHistogram(
             "rabstackquery.mutation.duration", "s",
             "Wall-clock duration from Execute() start to completion",
             advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = FetchDurationBuckets });

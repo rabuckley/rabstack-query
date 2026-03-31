@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+  id-token: write        # OIDC token for NuGet trusted publishing
+  attestations: write    # build provenance attestations
+
 jobs:
   publish:
     # macOS can build all MAUI TFMs (android, ios, maccatalyst) plus
@@ -11,10 +16,11 @@ jobs:
     # excluded on non-Windows by the DevTools.Maui csproj.
     runs-on: macos-26
     if: startsWith(github.event.release.tag_name, 'v')
+    environment: nuget-org
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           dotnet-version: 10.0.x
 
@@ -28,5 +34,16 @@ jobs:
       - name: Pack
         run: dotnet pack RabstackQuery.slnx -c Release -p:Version=${{ steps.version.outputs.version }} -o ./nupkgs
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@b3e506e8c389afc651c5bacf2b8f2a1ea0557215 # v4.1.0
+        with:
+          subject-path: './nupkgs/*.nupkg'
+
+      - name: NuGet login (OIDC trusted publishing)
+        uses: NuGet/login@d22cc5f58ff5b88bf9bd452535b4335137e24544 # v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to NuGet
-        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

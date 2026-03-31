@@ -12,6 +12,7 @@ namespace RabstackQuery;
 public sealed class InfiniteQueryObserver<TData, TPageParam>
     : Subscribable<InfiniteQueryObserverListener<TData, TPageParam>>
 {
+    private readonly QueryClient _client;
     private readonly QueryObserver<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>> _inner;
     private readonly InfiniteQueryObserverOptions<TData, TPageParam> _options;
     private IDisposable? _innerSubscription;
@@ -20,6 +21,9 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
         QueryClient client,
         InfiniteQueryObserverOptions<TData, TPageParam> options)
     {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
+        _client = client;
         _options = options;
 
         // Build the fetch function via InfiniteQueryBehavior. We need the query
@@ -106,12 +110,9 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     }
 
     /// <summary>
-    /// Gets the current result with infinite-query-specific computed properties.
+    /// The current result with infinite-query-specific computed properties.
     /// </summary>
-    public IInfiniteQueryResult<TData, TPageParam> GetCurrentResult()
-    {
-        return WrapResult(_inner.GetCurrentResult());
-    }
+    public IInfiniteQueryResult<TData, TPageParam> CurrentResult => WrapResult(_inner.CurrentResult);
 
     private IInfiniteQueryResult<TData, TPageParam> WrapResult(
         IQueryResult<InfiniteData<TData, TPageParam>> innerResult)
@@ -188,7 +189,7 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     {
         base.OnSubscribe();
 
-        if (Listeners.Count == 1)
+        if (ListenerCount == 1)
         {
             // Subscribe to the inner observer to receive result changes
             _innerSubscription = _inner.Subscribe(OnInnerResultChanged);
@@ -199,7 +200,7 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     {
         base.OnUnsubscribe();
 
-        if (Listeners.Count == 0)
+        if (ListenerCount == 0)
         {
             _innerSubscription?.Dispose();
             _innerSubscription = null;
@@ -210,9 +211,10 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     {
         var wrappedResult = WrapResult(innerResult);
 
-        NotifyManager.Instance.Batch(() =>
+        var snapshot = GetListenerSnapshot();
+        _client.NotifyManager.Batch(() =>
         {
-            foreach (var listener in Listeners)
+            foreach (var listener in snapshot)
             {
                 listener(wrappedResult);
             }

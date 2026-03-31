@@ -4,6 +4,7 @@ using Microsoft.JSInterop;
 using RabstackQuery.DevTools;
 
 using static RabstackQuery.DevTools.Blazor.Components.StatusBadges;
+using static RabstackQuery.DevTools.Blazor.DevToolsTracing;
 
 namespace RabstackQuery.DevTools.Blazor.Components;
 
@@ -187,15 +188,20 @@ public partial class DevToolsPanel : ComponentBase, IDisposable
 
     private void ClearCache()
     {
+        using var activity = StartGlobalAction(
+            _selectedTab == 0 ? DevToolsActionType.ClearQueryCache : DevToolsActionType.ClearMutationCache);
+
         if (_selectedTab == 0)
-            QueryClient.GetQueryCache().Clear();
+            QueryClient.QueryCache.Clear();
         else
-            QueryClient.GetMutationCache().Clear();
+            QueryClient.MutationCache.Clear();
     }
 
     private void ToggleOnline()
     {
         _isOffline = !_isOffline;
+
+        using var activity = StartGlobalAction(DevToolsActionType.ToggleOnline);
         QueryClient.OnlineManager.SetOnline(!_isOffline);
     }
 
@@ -220,11 +226,16 @@ public partial class DevToolsPanel : ComponentBase, IDisposable
         {
             _filteredQueries = FilterAndSortQueries();
 
-            if (_selectedQueryHash is not null &&
-                !_filteredQueries.Any(q => q.QueryHash == _selectedQueryHash))
+            if (_selectedQueryHash is not null)
             {
-                _selectedQueryHash = null;
-                _selectedQueryItem = null;
+                var freshItem = _filteredQueries.FirstOrDefault(q => q.QueryHash == _selectedQueryHash);
+                if (freshItem is not null)
+                    _selectedQueryItem = freshItem;
+                else
+                {
+                    _selectedQueryHash = null;
+                    _selectedQueryItem = null;
+                }
             }
         }
         else

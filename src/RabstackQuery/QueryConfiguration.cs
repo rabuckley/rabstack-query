@@ -1,5 +1,9 @@
 namespace RabstackQuery;
 
+/// <summary>
+/// Cache-level configuration for a query, including garbage collection time,
+/// retry policy, network mode, and initial data seeding.
+/// </summary>
 public sealed class QueryConfiguration<TData>
 {
     public TimeSpan GcTime { get; set; }
@@ -79,5 +83,5 @@ public sealed class QueryConfiguration<TData>
     /// <summary>
     /// Optional metadata for this query.
     /// </summary>
-    public QueryMeta? Meta { get; set; }
+    public Meta? Meta { get; set; }
 }

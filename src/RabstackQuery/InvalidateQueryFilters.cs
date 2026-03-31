@@ -1,7 +1,7 @@
 namespace RabstackQuery;
 
 /// <summary>
-/// Extended filters for <see cref="QueryClient.InvalidateQueries"/> that add
+/// Extended filters for <see cref="QueryClient.InvalidateQueriesAsync"/> that add
 /// control over which invalidated queries are automatically refetched.
 /// Mirrors TanStack's <c>InvalidateQueryFilters</c>.
 /// </summary>

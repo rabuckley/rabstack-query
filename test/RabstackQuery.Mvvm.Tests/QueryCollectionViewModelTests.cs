@@ -200,7 +200,7 @@ public sealed class QueryCollectionViewModelTests
         Assert.Equal("item-1", vm.Items[0]);
 
         // Act — trigger refetch
-        await client.InvalidateQueries(["refetch-update"]);
+        await client.InvalidateQueriesAsync(["refetch-update"]);
         await WaitForAsync(() => fetchCount >= 2 && vm.Items.Count > 0 && vm.Items[0] == "item-2");
 
         // Assert
@@ -379,7 +379,7 @@ public sealed class QueryCollectionViewModelTests
 
         // Act — dispose and then invalidate
         vm.Dispose();
-        await client.InvalidateQueries(["dispose-updates"]);
+        await client.InvalidateQueriesAsync(["dispose-updates"]);
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert — items should remain unchanged after disposal
@@ -403,7 +403,7 @@ public sealed class QueryCollectionViewModelTests
         vm.Dispose();
 
         var exception = await Record.ExceptionAsync(() =>
-            client.InvalidateQueries(["dispose-safe"]));
+            client.InvalidateQueriesAsync(["dispose-safe"]));
 
         // Assert
         Assert.Null(exception);
@@ -529,7 +529,7 @@ public sealed class QueryCollectionViewModelTests
         var itemsBeforeInvalidation = vm.Items.ToList();
 
         // Trigger a notification from a background thread
-        await Task.Run(() => client.InvalidateQueries(["ghost-cvm"]),
+        await Task.Run(() => client.InvalidateQueriesAsync(["ghost-cvm"]),
             TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 

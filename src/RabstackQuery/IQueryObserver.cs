@@ -3,7 +3,7 @@ namespace RabstackQuery;
 /// <summary>
 /// Interface for query observers to enable polymorphic notifications across different TData/TQueryData types.
 /// </summary>
-public interface IQueryObserver
+internal interface IQueryObserver
 {
     void OnQueryUpdate(DispatchAction action);
     bool ShouldFetchOnWindowFocus();
@@ -20,7 +20,7 @@ public interface IQueryObserver
     /// <summary>
     /// Whether this observer's resolved stale time is "static" (never stale).
     /// Used by <see cref="Query{TData}.IsStatic"/> to determine whether the
-    /// query should be skipped during <c>RefetchQueries</c>, matching TanStack's
+    /// query should be skipped during <c>RefetchQueriesAsync</c>, matching TanStack's
     /// <c>resolveStaleTime(observer.options.staleTime, this) === 'static'</c>.
     /// </summary>
     bool IsStaleTimeStatic { get; }

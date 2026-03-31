@@ -96,7 +96,7 @@ public static class ServiceCollectionExtensions
 
         if (options.DefaultOptions is not null)
         {
-            client.SetDefaultOptions(options.DefaultOptions);
+            client.DefaultOptions = options.DefaultOptions;
         }
 
         if (options.QueryDefaults is not null)

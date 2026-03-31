@@ -11,7 +11,7 @@ namespace RabstackQuery.Mvvm;
 /// properties. Follows the same composition approach as
 /// <see cref="InfiniteQueryObserver{TData,TPageParam}"/>.
 /// </summary>
-public partial class InfiniteQueryViewModel<TData, TPageParam> : ObservableObject, IDisposable
+public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : ObservableObject, IDisposable
 {
     private readonly QueryClient _client;
     private readonly ILogger _logger;
@@ -85,7 +85,7 @@ public partial class InfiniteQueryViewModel<TData, TPageParam> : ObservableObjec
         _observer = new InfiniteQueryObserver<TData, TPageParam>(client, options);
 
         _subscription = _observer.Subscribe(OnResultChanged);
-        UpdateFromResult(_observer.GetCurrentResult());
+        UpdateFromResult(_observer.CurrentResult);
         _logger.InfiniteQueryViewModelSubscribed(_queryKeyDisplay);
     }
 
@@ -167,7 +167,7 @@ public partial class InfiniteQueryViewModel<TData, TPageParam> : ObservableObjec
     {
         try
         {
-            var query = _observer.GetCurrentResult();
+            var query = _observer.CurrentResult;
             await query.RefetchAsync();
         }
         catch (OperationCanceledException) { throw; }

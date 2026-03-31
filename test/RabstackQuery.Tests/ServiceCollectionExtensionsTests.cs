@@ -1,9 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class ServiceCollectionExtensionsTests
 {
@@ -103,7 +102,7 @@ public class ServiceCollectionExtensionsTests
         var client = scope.ServiceProvider.GetRequiredService<QueryClient>();
 
         // Act
-        var defaults = client.GetDefaultOptions();
+        var defaults = client.DefaultOptions;
 
         // Assert
         Assert.NotNull(defaults);
@@ -130,8 +129,8 @@ public class ServiceCollectionExtensionsTests
         var client = scope.ServiceProvider.GetRequiredService<QueryClient>();
 
         // Act — build a query matching the prefix
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["products", "shoes"] });
 
         // Assert
@@ -300,7 +299,7 @@ public class ServiceCollectionExtensionsTests
         var client = scope.ServiceProvider.GetRequiredService<QueryClient>();
 
         // Assert — first registration wins
-        Assert.Equal(1, client.GetDefaultOptions()?.Retry);
+        Assert.Equal(1, client.DefaultOptions?.Retry);
     }
 
     [Fact]
@@ -313,7 +312,7 @@ public class ServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         var scope = provider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<QueryClient>();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Populate the cache
         client.SetQueryData(["products", 1], "Widget");
@@ -345,7 +344,7 @@ public class ServiceCollectionExtensionsTests
 
         // Assert — the mutation cache should have the config (we verify it exists
         // by checking the cache is non-null; the callback itself is tested elsewhere)
-        Assert.NotNull(client.GetMutationCache());
+        Assert.NotNull(client.MutationCache);
     }
 
     [Fact]

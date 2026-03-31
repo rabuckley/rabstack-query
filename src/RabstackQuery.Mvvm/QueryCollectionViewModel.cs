@@ -21,7 +21,7 @@ namespace RabstackQuery.Mvvm;
 /// </remarks>
 /// <typeparam name="TData">The item type in the ObservableCollection.</typeparam>
 /// <typeparam name="TQueryFnData">The item type stored in the cache (source type).</typeparam>
-public partial class QueryCollectionViewModel<TData, TQueryFnData> : ObservableObject, IDisposable
+public sealed partial class QueryCollectionViewModel<TData, TQueryFnData> : ObservableObject, IDisposable
 {
     private readonly Action<IEnumerable<TQueryFnData>?, ObservableCollection<TData>> _update;
     private readonly ILogger _logger;

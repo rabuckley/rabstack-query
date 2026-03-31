@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class QueryCancellationTests
 {
@@ -7,9 +7,9 @@ public class QueryCancellationTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
 
         var fetchStarted = new TaskCompletionSource();
@@ -38,7 +38,7 @@ public class QueryCancellationTests
         var client = CreateQueryClient();
         client.SetQueryData(["todos"], "original");
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = cache.Get<string>(
             DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]))!;
 
@@ -76,7 +76,7 @@ public class QueryCancellationTests
         var client = CreateQueryClient();
         client.SetQueryData(["todos"], "original");
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = cache.Get<string>(
             DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]))!;
 
@@ -105,9 +105,9 @@ public class QueryCancellationTests
     public async Task Cancel_NoActiveRetryer_IsNoOp()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["idle"], GcTime = TimeSpan.FromMinutes(5) });
 
         // Act — cancelling when nothing is in flight should be safe
@@ -122,13 +122,13 @@ public class QueryCancellationTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var query1 = cache.Build<string, string>(client,
+        var query1 = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
-        var query2 = cache.Build<string, string>(client,
+        var query2 = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 2], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["users"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
 
         var started1 = new TaskCompletionSource();
@@ -167,7 +167,7 @@ public class QueryCancellationTests
         var client = CreateQueryClient();
         client.SetQueryData(["todos"], "existing");
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = cache.Get<string>(
             DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]))!;
 
@@ -206,11 +206,11 @@ public class QueryCancellationTests
 
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var fetchStarted = new TaskCompletionSource();
         var fetchGate = new TaskCompletionSource<string>();
 
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["signal-not-consumed"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
 
         // Query function ignores the context (discards _) — signal NOT consumed.
@@ -254,7 +254,7 @@ public class QueryCancellationTests
         var client = CreateQueryClient();
         client.SetQueryData(["signal-consumed"], "original-data");
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = cache.Get<string>(
             DefaultQueryKeyHasher.Instance.HashQueryKey(["signal-consumed"]))!;
 
@@ -295,10 +295,10 @@ public class QueryCancellationTests
         // RemoveObserver racing with fetch completion should not corrupt state.
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var fetchGate = new TaskCompletionSource();
 
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["race-test"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
 
         query.SetQueryFn(async ctx =>

@@ -4,7 +4,7 @@ namespace RabstackQuery;
 /// Options for <see cref="QueryObserver{TData,TQueryData}.RefetchAsync"/>.
 /// Mirrors TanStack's <c>RefetchOptions</c> interface.
 /// </summary>
-public class RefetchOptions
+public sealed record RefetchOptions
 {
     /// <summary>
     /// When true, errors from the fetch are thrown to the caller.

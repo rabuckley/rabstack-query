@@ -274,15 +274,12 @@ public sealed class QueryOptionsUsageTests
         string? successData = null;
 
         using var vm = client.UseMutation<string, int>(
-            async (vars, ctx, ct) => $"result-{vars}",
-            new MutationCallbacks<string, int>
+            mutationFn: async (vars, ctx, ct) => $"result-{vars}",
+            onSuccess: (data, vars, ctx) =>
             {
-                OnSuccess = (data, vars, ctx) =>
-                {
-                    onSuccessCalled = true;
-                    successData = data;
-                    return Task.CompletedTask;
-                },
+                onSuccessCalled = true;
+                successData = data;
+                return Task.CompletedTask;
             });
 
         vm.MutateCommand.Execute(5);
@@ -300,15 +297,12 @@ public sealed class QueryOptionsUsageTests
         Exception? capturedError = null;
 
         using var vm = client.UseMutation<string, int>(
-            (vars, ctx, ct) => throw new InvalidOperationException("boom"),
-            new MutationCallbacks<string, int>
+            mutationFn: (vars, ctx, ct) => throw new InvalidOperationException("boom"),
+            onError: (err, vars, ctx) =>
             {
-                OnError = (err, vars, ctx) =>
-                {
-                    onErrorCalled = true;
-                    capturedError = err;
-                    return Task.CompletedTask;
-                },
+                onErrorCalled = true;
+                capturedError = err;
+                return Task.CompletedTask;
             });
 
         vm.MutateCommand.Execute(1);
@@ -326,14 +320,11 @@ public sealed class QueryOptionsUsageTests
         var onSettledCalled = false;
 
         using var vm = client.UseMutation<string, int>(
-            async (vars, ctx, ct) => "done",
-            new MutationCallbacks<string, int>
+            mutationFn: async (vars, ctx, ct) => "done",
+            onSettled: (data, error, vars, ctx) =>
             {
-                OnSettled = (data, error, vars, ctx) =>
-                {
-                    onSettledCalled = true;
-                    return Task.CompletedTask;
-                },
+                onSettledCalled = true;
+                return Task.CompletedTask;
             });
 
         vm.MutateCommand.Execute(0);

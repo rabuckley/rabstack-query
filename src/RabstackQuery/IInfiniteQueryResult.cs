@@ -47,8 +47,14 @@ public interface IInfiniteQueryResult<TData, TPageParam> : IQueryResult<Infinite
     /// </summary>
     Task FetchNextPageAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Zero-argument overload for binary-stable interface evolution.</summary>
+    Task FetchNextPageAsync() => FetchNextPageAsync(default);
+
     /// <summary>
     /// Fetches the previous page.
     /// </summary>
     Task FetchPreviousPageAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Zero-argument overload for binary-stable interface evolution.</summary>
+    Task FetchPreviousPageAsync() => FetchPreviousPageAsync(default);
 }

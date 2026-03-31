@@ -10,9 +10,9 @@ namespace RabstackQuery;
 /// </summary>
 public sealed class DehydratedState
 {
-    public required List<DehydratedQuery> Queries { get; init; }
+    public required IReadOnlyList<DehydratedQuery> Queries { get; init; }
 
-    public required List<DehydratedMutation> Mutations { get; init; }
+    public required IReadOnlyList<DehydratedMutation> Mutations { get; init; }
 }
 
 // ── Options ─────────────────────────────────────────────────────────────

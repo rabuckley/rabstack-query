@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Deterministic time tests using <see cref="FakeTimeProvider"/> to verify that
@@ -22,7 +22,7 @@ public sealed class TimeProviderTests
         TimeSpan? gcTime = null,
         int retry = 3)
     {
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
         var options = new QueryConfiguration<TData>
         {
@@ -31,7 +31,7 @@ public sealed class TimeProviderTests
             GcTime = gcTime ?? QueryTimeDefaults.GcTime,
             Retry = retry,
         };
-        return cache.Build<TData, TData>(client, options);
+        return cache.GetOrCreate<TData, TData>(client, options);
     }
 
     // ── GC Timer ──────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ public sealed class TimeProviderTests
         // Arrange
         var timeProvider = new FakeTimeProvider();
         var client = CreateQueryClient(timeProvider);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = BuildQuery<string>(client, ["gc-test"], gcTime: TimeSpan.FromMilliseconds(10_000));
 
         Assert.Single(cache.GetAll());
@@ -64,7 +64,7 @@ public sealed class TimeProviderTests
         // Arrange
         var timeProvider = new FakeTimeProvider();
         var client = CreateQueryClient(timeProvider);
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var query = BuildQuery<string>(client, ["gc-observer"], gcTime: TimeSpan.FromMilliseconds(1_000));
 
         // Add an observer to keep the query alive
@@ -113,18 +113,18 @@ public sealed class TimeProviderTests
         await fetchComplete.Task;
 
         // Assert — data is fresh immediately after fetch
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsSuccess);
         Assert.False(result.IsStale);
 
         // Act — advance time just under StaleTime
         timeProvider.Advance(TimeSpan.FromMilliseconds(4_999));
-        result = observer.GetCurrentResult();
+        result = observer.CurrentResult;
         Assert.False(result.IsStale);
 
         // Act — advance to exactly StaleTime boundary (>= means stale at 5000ms)
         timeProvider.Advance(TimeSpan.FromMilliseconds(1));
-        result = observer.GetCurrentResult();
+        result = observer.CurrentResult;
 
         // Assert — data is now stale at the exact boundary
         Assert.True(result.IsStale);
@@ -143,7 +143,7 @@ public sealed class TimeProviderTests
 
         // The data was set at `start`. FetchQuery with StaleTime=10_000
         // should consider it fresh.
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["stale-clock"]);
         var query = cache.Get<string>(hash);
         Assert.NotNull(query);
@@ -163,7 +163,7 @@ public sealed class TimeProviderTests
             QueryFn = _ => Task.FromResult("refreshed")
         };
         var observer = new QueryObserver<string, string>(client, observerOptions);
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.IsStale);
     }
 
@@ -224,7 +224,7 @@ public sealed class TimeProviderTests
 
         // Assert
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["manual-set"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         var expectedMs = start.AddMinutes(5).ToUnixTimeMilliseconds();
         Assert.Equal(expectedMs, query!.State!.DataUpdatedAt);
     }
@@ -237,12 +237,12 @@ public sealed class TimeProviderTests
         var timeProvider = new FakeTimeProvider(start);
         var client = CreateQueryClient(timeProvider);
 
-        var mutationCache = client.GetMutationCache();
+        var mutationCache = client.MutationCache;
         var options = new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = (vars, ctx, ct) => Task.FromResult($"result-{vars}")
         };
-        var mutation = mutationCache.Build(client, options);
+        var mutation = mutationCache.GetOrCreate(client, options);
 
         // Act — advance 30 seconds then execute
         timeProvider.Advance(TimeSpan.FromSeconds(30));
@@ -352,14 +352,14 @@ public sealed class TimeProviderTests
         // Advance 10 seconds before creating query with initial data
         timeProvider.Advance(TimeSpan.FromSeconds(10));
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var options = new QueryConfiguration<string>
         {
             QueryKey = ["initial-data"],
             GcTime = QueryTimeDefaults.GcTime,
             InitialData = "seeded"
         };
-        var query = cache.Build<string, string>(client, options);
+        var query = cache.GetOrCreate<string, string>(client, options);
 
         // Assert — DataUpdatedAt should use the fake clock
         var expectedMs = start.AddSeconds(10).ToUnixTimeMilliseconds();
@@ -388,7 +388,7 @@ public sealed class TimeProviderTests
         var observer = new QueryObserver<string, string>(client, observerOptions);
 
         // Act
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — never-fetched data should always be stale
         Assert.True(result.IsStale);
@@ -404,14 +404,14 @@ public sealed class TimeProviderTests
         var timeProvider = new FakeTimeProvider(start);
         var client = CreateQueryClient(timeProvider);
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         var options = new QueryConfiguration<string>
         {
             QueryKey = ["reset-timestamp"],
             GcTime = QueryTimeDefaults.GcTime,
             InitialData = "original"
         };
-        var query = cache.Build<string, string>(client, options);
+        var query = cache.GetOrCreate<string, string>(client, options);
 
         // Verify initial timestamp is at `start`
         Assert.Equal(start.ToUnixTimeMilliseconds(), query.State!.DataUpdatedAt);
@@ -455,18 +455,18 @@ public sealed class TimeProviderTests
         await fetchComplete.Task;
 
         // Assert — data should be fresh (1-hour stale time, no time elapsed)
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.False(result.IsStale);
 
         // Act — call Invalidate() directly on the query, mirroring the first
         // half of TanStack's invalidateQueries (queryClient.ts:298-300).
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["invalidated-stale"]);
-        var query = client.GetQueryCache().Get<string>(queryHash)!;
+        var query = client.QueryCache.Get<string>(queryHash)!;
         query.Invalidate();
 
         // Assert — QueryResult.IsStale should now report true despite stale
         // time not having elapsed, because the query is invalidated.
-        result = observer.GetCurrentResult();
+        result = observer.CurrentResult;
         Assert.True(result.IsStale);
     }
 
@@ -503,7 +503,7 @@ public sealed class TimeProviderTests
         Assert.Equal(1, fetchCount);
 
         // Invalidate the query
-        await client.InvalidateQueries(["invalidated-fetch"]);
+        await client.InvalidateQueriesAsync(["invalidated-fetch"]);
 
         // Despite StaleTime not elapsed, FetchQueryAsync should refetch
         // because the query is invalidated

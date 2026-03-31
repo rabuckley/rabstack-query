@@ -1,4 +1,6 @@
-namespace RabstackQuery.Tests;
+using System.Collections.Concurrent;
+
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for <see cref="QueriesObserver{TData}"/>.
@@ -82,7 +84,7 @@ public sealed class QueriesObserverTests
         ]);
 
         // The initial state is captured before subscribing (both idle/pending).
-        results.Add(observer.GetCurrentResult());
+        results.Add(observer.CurrentResult);
 
         var subscription = observer.Subscribe(result =>
         {
@@ -104,7 +106,7 @@ public sealed class QueriesObserverTests
         await resultAdded.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Manually update query 2's data to simulate a cache write
-        client.SetQueryData<int>(["q2-b"], 3);
+        client.SetQueryData(["q2-b"], 3);
         await resultAdded.WaitAsync(TimeSpan.FromSeconds(5));
 
         subscription.Dispose();
@@ -165,7 +167,7 @@ public sealed class QueriesObserverTests
             new QueryObserverOptions<int> { QueryKey = ["q3-b"], QueryFn = async _ => await tcs2.Task },
         ]);
 
-        results.Add(observer.GetCurrentResult());
+        results.Add(observer.CurrentResult);
         var subscription = observer.Subscribe(result =>
         {
             results.Add(result);
@@ -184,7 +186,7 @@ public sealed class QueriesObserverTests
         ]);
 
         // Assert — q3-a has no active observers; q3-b still has one
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         Assert.Null(cache.Find(new QueryFilters { QueryKey = ["q3-a"], Type = QueryTypeFilter.Active }));
         Assert.NotNull(cache.Find(new QueryFilters { QueryKey = ["q3-b"], Type = QueryTypeFilter.Active }));
 
@@ -219,7 +221,7 @@ public sealed class QueriesObserverTests
             new QueryObserverOptions<int> { QueryKey = ["q4-b"], QueryFn = async _ => 2 },
         ]);
 
-        results.Add(observer.GetCurrentResult());
+        results.Add(observer.CurrentResult);
         // Fetches complete synchronously (no async work in query functions).
         var subscription = observer.Subscribe(result => results.Add(result));
 
@@ -257,7 +259,7 @@ public sealed class QueriesObserverTests
             new QueryObserverOptions<int> { QueryKey = ["q5-b"], QueryFn = async _ => 2 },
         ]);
 
-        results.Add(observer.GetCurrentResult());
+        results.Add(observer.CurrentResult);
         // Fetches complete synchronously.
         var subscription = observer.Subscribe(result => results.Add(result));
 
@@ -454,8 +456,8 @@ public sealed class QueriesObserverTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["q9-a"], 1);
-        client.SetQueryData<int>(["q9-b"], 2);
+        client.SetQueryData(["q9-a"], 1);
+        client.SetQueryData(["q9-b"], 2);
 
         var results = new List<IReadOnlyList<IQueryResult<int>>>();
         var observer = new QueriesObserver<int>(client,
@@ -464,7 +466,7 @@ public sealed class QueriesObserverTests
             new QueryObserverOptions<int> { QueryKey = ["q9-b"], QueryFn = async _ => 2 },
         ]);
 
-        results.Add(observer.GetCurrentResult());
+        results.Add(observer.CurrentResult);
         var subscription = observer.Subscribe(r => results.Add(r));
 
         var countBeforeUpdate = results.Count;
@@ -587,7 +589,7 @@ public sealed class QueriesObserverTests
             results => (results.Select(r => r.Status.ToString()).ToList(), results);
 
         // Pre-populate cache for q12-a so its status will be Success
-        client.SetQueryData<int>(["q12-a"], 99);
+        client.SetQueryData(["q12-a"], 99);
 
         var observer = new QueriesObserver<int>(client,
         [
@@ -626,8 +628,8 @@ public sealed class QueriesObserverTests
     {
         // Arrange — pre-populate cache so observers start with data
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["c1"], 10);
-        client.SetQueryData<int>(["c2"], 20);
+        client.SetQueryData(["c1"], 10);
+        client.SetQueryData(["c2"], 20);
 
         var combineCallCount = 0;
         var notifications = new List<IReadOnlyList<IQueryResult<int>>>();
@@ -644,7 +646,7 @@ public sealed class QueriesObserverTests
         // Act — trigger a SetQueryData update, which dispatches SuccessAction
         // synchronously and should invoke the combine function in Notify().
         var sub = observer.Subscribe(result => notifications.Add(result));
-        client.SetQueryData<int>(["c1"], 100);
+        client.SetQueryData(["c1"], 100);
         sub.Dispose();
 
         // Assert — combine was called at least once, and outer listener received notifications
@@ -662,7 +664,7 @@ public sealed class QueriesObserverTests
     {
         // Arrange — pre-populate cache
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["cs1"], 1);
+        client.SetQueryData(["cs1"], 1);
         var cachedResult = "constant";
         var notifyCount = 0;
 
@@ -682,7 +684,7 @@ public sealed class QueriesObserverTests
         // Act — trigger a data update. The combine output doesn't change
         // (still returns the same "constant" reference), so the outer listener
         // should NOT receive an additional notification.
-        client.SetQueryData<int>(["cs1"], 999);
+        client.SetQueryData(["cs1"], 999);
 
         // Assert — no additional notifications because combine returned the same
         // reference, even though the underlying data changed.
@@ -705,8 +707,8 @@ public sealed class QueriesObserverTests
     {
         // Arrange — pre-populate cache
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["tr1"], 1);
-        client.SetQueryData<int>(["tr2"], 2);
+        client.SetQueryData(["tr1"], 1);
+        client.SetQueryData(["tr2"], 2);
         var notifyCount = 0;
 
         // Combine only accesses Data on the first result, but the synchronized
@@ -737,7 +739,7 @@ public sealed class QueriesObserverTests
 
         // Act — update tr1's Data. Combine accesses Data, so it runs and
         // produces a new result (3 instead of 1). Notification fires.
-        client.SetQueryData<int>(["tr1"], 3);
+        client.SetQueryData(["tr1"], 3);
         Assert.True(notifyCount > countAfterSubscribe, "Data change should notify");
 
         sub.Dispose();
@@ -760,8 +762,8 @@ public sealed class QueriesObserverTests
     {
         // Arrange — pre-populate cache so observers start with data
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["sync-tr1"], 1);
-        client.SetQueryData<int>(["sync-tr2"], 2);
+        client.SetQueryData(["sync-tr1"], 1);
+        client.SetQueryData(["sync-tr2"], 2);
 
         var queries = new List<QueryObserverOptions<int>>
         {
@@ -804,7 +806,7 @@ public sealed class QueriesObserverTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["gt1"], 42);
+        client.SetQueryData(["gt1"], 42);
 
         Func<IReadOnlyList<IQueryResult<int>>, int> combine =
             results => results.Sum(r => r.Data);
@@ -843,8 +845,8 @@ public sealed class QueriesObserverTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.SetQueryData<int>(["sc1"], 1);
-        client.SetQueryData<int>(["sc2"], 2);
+        client.SetQueryData(["sc1"], 1);
+        client.SetQueryData(["sc2"], 2);
 
         var observer = new QueriesObserver<int, int>(client,
         [
@@ -861,6 +863,406 @@ public sealed class QueriesObserverTests
 
         // Assert — queries were updated
         Assert.Equal(2, observer.GetObservers().Count);
-        Assert.Equal(2, observer.GetCurrentResult().Count);
+        Assert.Equal(2, observer.CurrentResult.Count);
     }
+
+    // ── Thread-safety regression tests ──────────────────────────────────────────
+
+    /// <summary>
+    /// Reproduces a race in <see cref="Subscribable{TListener}"/>: the backing
+    /// <c>HashSet&lt;TListener&gt;</c> is iterated during notification delivery
+    /// while another thread adds or removes listeners via Subscribe/Dispose.
+    /// HashSet is not thread-safe for concurrent read+write, so this manifests
+    /// as <see cref="InvalidOperationException"/> ("Collection was modified") or
+    /// silent corruption.
+    ///
+    /// The test hammers subscribe/dispose on many threads while a tight
+    /// <see cref="QueryClient.SetQueryData{TData}(QueryKey, TData)"/> loop
+    /// forces notification delivery, which iterates the listener set.
+    /// </summary>
+    [Fact(Timeout = 30_000)]
+    public async Task Listeners_Should_Not_Corrupt_Under_Concurrent_Subscribe_And_Notify()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["race-listeners"], 0);
+
+        var observer = new QueriesObserver<int>(client,
+        [
+            new QueryObserverOptions<int>
+            {
+                QueryKey = ["race-listeners"],
+                QueryFn = async _ => 0,
+            },
+        ]);
+
+        // One long-lived subscription so notifications always flow through
+        // the foreach-over-Listeners path.
+        var anchor = observer.Subscribe(_ => { });
+
+        var exceptions = new ConcurrentBag<Exception>();
+        var subscribeIterations = 0L;
+        var notifyIterations = 0L;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+        // Several threads rapidly subscribe and dispose, mutating the HashSet.
+        var subscriberTasks = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    var sub = observer.Subscribe(_ => { });
+                    sub.Dispose();
+                    Interlocked.Increment(ref subscribeIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    exceptions.Add(ex);
+                }
+            }
+        })).ToArray();
+
+        // One thread triggers notifications, iterating the listener set.
+        var notifierTask = Task.Run(() =>
+        {
+            var i = 0;
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    client.SetQueryData(["race-listeners"], ++i);
+                    Interlocked.Increment(ref notifyIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    exceptions.Add(ex);
+                }
+            }
+        });
+
+        await Task.WhenAll([.. subscriberTasks, notifierTask]);
+        anchor.Dispose();
+
+        Assert.Empty(exceptions);
+        Assert.True(Volatile.Read(ref subscribeIterations) > 1000,
+            "Subscribe loop didn't run enough iterations to exercise the race window");
+        Assert.True(Volatile.Read(ref notifyIterations) > 1000,
+            "Notify loop didn't run enough iterations to exercise the race window");
+    }
+
+    /// <summary>
+    /// Reproduces a race between <c>SetQueries</c> and <c>OnUpdate</c> on the
+    /// combine memoization state (<c>_combinedResult</c>, <c>_hasCombinedResult</c>,
+    /// <c>_lastCombineInput</c>, <c>_observerMatches</c>).
+    ///
+    /// <c>SetQueries</c> writes these fields and calls <c>Notify()</c> without
+    /// acquiring <c>_resultLock</c>. Concurrently, a query fetch completion triggers
+    /// <c>OnUpdate→Notify()</c>. Both <c>Notify</c> calls race on the combine fields,
+    /// reading stale or torn memoization state. The failure modes are exceptions from
+    /// index-out-of-range (when <c>_observerMatches</c> and <c>_result</c> have
+    /// mismatched lengths) or corrupted combine output.
+    /// </summary>
+    [Fact(Timeout = 30_000)]
+    public async Task Combine_Should_Not_Corrupt_Under_Concurrent_SetQueries_And_Notify()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["cr-a"], 1);
+        client.SetQueryData(["cr-b"], 2);
+
+        Func<IReadOnlyList<IQueryResult<int>>, int> combine =
+            results => results.Where(r => r.IsSuccess).Sum(r => r.Data);
+
+        var observer = new QueriesObserver<int, int>(client,
+        [
+            new QueryObserverOptions<int> { QueryKey = ["cr-a"], QueryFn = async _ => 1 },
+            new QueryObserverOptions<int> { QueryKey = ["cr-b"], QueryFn = async _ => 2 },
+        ], combine);
+
+        var exceptions = new ConcurrentBag<Exception>();
+        var notifyIterations = 0L;
+        var setQueriesIterations = 0L;
+        var sub = observer.Subscribe(_ => { });
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+        // Thread 1: rapidly SetQueryData, which triggers OnUpdate → Notify
+        // on the Dispatch thread (same thread here since Batch is synchronous).
+        var notifyTask = Task.Run(() =>
+        {
+            var i = 0;
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    client.SetQueryData(["cr-a"], ++i);
+                    Interlocked.Increment(ref notifyIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { exceptions.Add(ex); }
+            }
+        });
+
+        // Thread 2: rapidly SetQueries to add/remove a query, which writes
+        // _result, _observerMatches, and calls Notify — all without _stateLock.
+        var setQueriesTask = Task.Run(() =>
+        {
+            var two = new QueryObserverOptions<int>[]
+            {
+                new() { QueryKey = ["cr-a"], QueryFn = async _ => 1 },
+                new() { QueryKey = ["cr-b"], QueryFn = async _ => 2 },
+            };
+            var one = new QueryObserverOptions<int>[]
+            {
+                new() { QueryKey = ["cr-a"], QueryFn = async _ => 1 },
+            };
+            var toggle = false;
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    observer.SetQueries(toggle ? two : one, combine);
+                    toggle = !toggle;
+                    Interlocked.Increment(ref setQueriesIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { exceptions.Add(ex); }
+            }
+        });
+
+        await Task.WhenAll(notifyTask, setQueriesTask);
+        sub.Dispose();
+
+        Assert.Empty(exceptions);
+        Assert.True(Volatile.Read(ref notifyIterations) > 1000,
+            "Notify loop didn't run enough iterations to exercise the race window");
+        Assert.True(Volatile.Read(ref setQueriesIterations) > 1000,
+            "SetQueries loop didn't run enough iterations to exercise the race window");
+    }
+
+    // ── Integration thread-safety tests (real production code paths) ──────────
+
+    /// <summary>
+    /// Exercises the real production trigger for Bug #1 (Subscribable listener
+    /// corruption):
+    ///
+    ///   RefetchInterval timer fires on ThreadPool
+    ///   → ExecuteFetch (no SynchronizationContext)
+    ///   → FetchCore → Dispatch → QueryObserver.NotifyListeners
+    ///   → iterates Subscribable._listeners
+    ///
+    /// Concurrently, multiple threads call Subscribe/Dispose on the same
+    /// QueriesObserver, mutating _listeners via the QueriesObserver's inner
+    /// subscription to the QueryObserver.
+    ///
+    /// Pre-fix, the backing HashSet was iterated without synchronization while
+    /// another thread Added/Removed entries, causing InvalidOperationException
+    /// ("Collection was modified") or silent corruption.
+    /// </summary>
+    [Fact(Timeout = 30_000)]
+    public async Task RefetchInterval_Should_Not_Corrupt_Listeners_Under_Concurrent_Subscribe()
+    {
+        var client = CreateQueryClient();
+        var fetchCount = 0L;
+
+        // Short refetch interval so timer callbacks fire frequently on the
+        // ThreadPool, driving notifications through the real Dispatch path.
+        var observer = new QueriesObserver<int>(client,
+        [
+            new QueryObserverOptions<int>
+            {
+                QueryKey = ["ri-listener-race"],
+                QueryFn = async _ =>
+                {
+                    Interlocked.Increment(ref fetchCount);
+                    return 42;
+                },
+                RefetchInterval = TimeSpan.FromMilliseconds(5),
+            },
+        ]);
+
+        // Anchor subscription keeps the refetch interval timer alive.
+        var anchor = observer.Subscribe(_ => { });
+
+        var exceptions = new ConcurrentBag<Exception>();
+        var subscribeIterations = 0L;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+        // Wait for initial fetch + at least one refetch so the timer is active.
+        while (Volatile.Read(ref fetchCount) < 2 && !cts.IsCancellationRequested)
+            await Task.Delay(10, cts.Token);
+
+        // Several threads rapidly subscribe and dispose on the QueriesObserver
+        // while the refetch interval timer fires notifications on the ThreadPool.
+        var subscriberTasks = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    var sub = observer.Subscribe(_ => { });
+                    sub.Dispose();
+                    Interlocked.Increment(ref subscribeIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    exceptions.Add(ex);
+                }
+            }
+        })).ToArray();
+
+        await Task.WhenAll(subscriberTasks);
+        anchor.Dispose();
+
+        Assert.Empty(exceptions);
+        Assert.True(Volatile.Read(ref fetchCount) > 10,
+            $"Refetch interval fired only {Volatile.Read(ref fetchCount)} times — " +
+            "timer may not have started; race window was not exercised");
+        Assert.True(Volatile.Read(ref subscribeIterations) > 100,
+            $"Subscribe loop ran only {Volatile.Read(ref subscribeIterations)} iterations");
+    }
+
+    /// <summary>
+    /// Exercises Bug #2 and #3 (QueriesObserver state races) through the real
+    /// production notification path:
+    ///
+    ///   RefetchInterval timers fire on ThreadPool → fetch completions call
+    ///   Dispatch → QueryObserver.NotifyListeners → QueriesObserver.OnUpdate
+    ///   reads/writes _observers and _result
+    ///
+    /// To ensure the race window is reliably hit, a second thread drives
+    /// additional notifications via SetQueryData (the same Dispatch → OnUpdate
+    /// path, just initiated synchronously rather than via timer). A third thread
+    /// calls SetQueries (simulating UI navigation), writing _observers, _result,
+    /// and _observerMatches.
+    ///
+    /// The refetch intervals prove that the timer → ThreadPool → Dispatch path
+    /// participates in the race; the SetQueryData thread amplifies contention to
+    /// make the race deterministically triggerable.
+    ///
+    /// Pre-fix, OnUpdate's non-atomic read-modify-write on _result raced with
+    /// SetQueries' writes — causing IndexOutOfRangeException (mismatched
+    /// _observers/_result lengths) or lost updates.
+    /// </summary>
+    [Fact(Timeout = 30_000)]
+    public async Task RefetchInterval_Should_Not_Corrupt_State_Under_Concurrent_SetQueries()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["ri-state-a"], 1);
+        client.SetQueryData(["ri-state-b"], 2);
+
+        var fetchCountA = 0L;
+        var fetchCountB = 0L;
+
+        Func<IReadOnlyList<IQueryResult<int>>, int> combine =
+            results => results.Where(r => r.IsSuccess).Sum(r => r.Data);
+
+        var observer = new QueriesObserver<int, int>(client,
+        [
+            new QueryObserverOptions<int>
+            {
+                QueryKey = ["ri-state-a"],
+                QueryFn = async _ => { Interlocked.Increment(ref fetchCountA); return 1; },
+                RefetchInterval = TimeSpan.FromMilliseconds(5),
+            },
+            new QueryObserverOptions<int>
+            {
+                QueryKey = ["ri-state-b"],
+                QueryFn = async _ => { Interlocked.Increment(ref fetchCountB); return 2; },
+                RefetchInterval = TimeSpan.FromMilliseconds(7),
+            },
+        ], combine);
+
+        var exceptions = new ConcurrentBag<Exception>();
+        var notifyIterations = 0L;
+        var setQueriesIterations = 0L;
+        var sub = observer.Subscribe(_ => { });
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+        // Wait for both queries to refetch at least once so timers are active.
+        while ((Volatile.Read(ref fetchCountA) < 2 || Volatile.Read(ref fetchCountB) < 2)
+            && !cts.IsCancellationRequested)
+            await Task.Delay(10, cts.Token);
+
+        // Thread 1: SetQueryData drives OnUpdate → Notify through the same
+        // Dispatch path as timer-initiated fetches, amplifying contention.
+        var notifyTask = Task.Run(() =>
+        {
+            var i = 0;
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    client.SetQueryData(["ri-state-a"], ++i);
+                    Interlocked.Increment(ref notifyIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    exceptions.Add(ex);
+                }
+            }
+        });
+
+        // Thread 2: Rapidly toggle between one and two queries while timer-
+        // and SetQueryData-initiated notifications fire concurrently.
+        var setQueriesTask = Task.Run(() =>
+        {
+            var two = new QueryObserverOptions<int>[]
+            {
+                new()
+                {
+                    QueryKey = ["ri-state-a"],
+                    QueryFn = async _ => { Interlocked.Increment(ref fetchCountA); return 1; },
+                    RefetchInterval = TimeSpan.FromMilliseconds(5),
+                },
+                new()
+                {
+                    QueryKey = ["ri-state-b"],
+                    QueryFn = async _ => { Interlocked.Increment(ref fetchCountB); return 2; },
+                    RefetchInterval = TimeSpan.FromMilliseconds(7),
+                },
+            };
+            var one = new QueryObserverOptions<int>[]
+            {
+                new()
+                {
+                    QueryKey = ["ri-state-a"],
+                    QueryFn = async _ => { Interlocked.Increment(ref fetchCountA); return 1; },
+                    RefetchInterval = TimeSpan.FromMilliseconds(5),
+                },
+            };
+            var toggle = false;
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    observer.SetQueries(toggle ? two : one, combine);
+                    toggle = !toggle;
+                    Interlocked.Increment(ref setQueriesIterations);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    exceptions.Add(ex);
+                }
+            }
+        });
+
+        await Task.WhenAll(notifyTask, setQueriesTask);
+        sub.Dispose();
+
+        var totalFetches = Volatile.Read(ref fetchCountA) + Volatile.Read(ref fetchCountB);
+        Assert.Empty(exceptions);
+        Assert.True(totalFetches > 20,
+            $"Refetch intervals fired only {totalFetches} times total — " +
+            "timers may not have started; race window was not exercised");
+        Assert.True(Volatile.Read(ref notifyIterations) > 100,
+            $"Notify loop ran only {Volatile.Read(ref notifyIterations)} iterations");
+        Assert.True(Volatile.Read(ref setQueriesIterations) > 100,
+            $"SetQueries loop ran only {Volatile.Read(ref setQueriesIterations)} iterations");
+    }
+
 }

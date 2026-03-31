@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for MutationObserver functionality.
@@ -39,7 +39,7 @@ public sealed class MutationObserverTests
         // Assert - subscription2 should still be active
         Assert.False(subscription1Called); // subscription1 was disposed before mutation
         Assert.True(subscription2Called); // subscription2 should still receive updates
-        Assert.True(observer.HasListeners()); // Observer should still have listeners
+        Assert.True(observer.HasListeners); // Observer should still have listeners
 
         subscription2.Dispose();
     }
@@ -58,7 +58,7 @@ public sealed class MutationObserverTests
 
         // Execute mutation and verify success state
         await observer.MutateAsync("test");
-        var resultBeforeReset = observer.GetCurrentResult();
+        var resultBeforeReset = observer.CurrentResult;
         Assert.True(resultBeforeReset.IsSuccess);
         Assert.Equal("TEST", resultBeforeReset.Data);
 
@@ -66,7 +66,7 @@ public sealed class MutationObserverTests
         observer.Reset();
 
         // Assert - result should be idle state
-        var resultAfterReset = observer.GetCurrentResult();
+        var resultAfterReset = observer.CurrentResult;
         Assert.True(resultAfterReset.IsIdle);
         Assert.False(resultAfterReset.IsSuccess);
         Assert.Null(resultAfterReset.Data);
@@ -222,7 +222,7 @@ public sealed class MutationObserverTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            Meta = new MutationMeta(new Dictionary<string, object?> { ["initialKey"] = "initialValue" }),
+            Meta = new Meta(new Dictionary<string, object?> { ["initialKey"] = "initialValue" }),
             MutationFn = async (input, context, ct) =>
             {
                 mutationStarted.Release();
@@ -240,12 +240,12 @@ public sealed class MutationObserverTests
         // Change meta while mutation is pending
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
-            Meta = new MutationMeta(new Dictionary<string, object?> { ["initialKey"] = "updatedValue" }),
+            Meta = new Meta(new Dictionary<string, object?> { ["initialKey"] = "updatedValue" }),
             MutationFn = async (input, context, ct) => input.ToUpper()
         });
 
         // Assert — the pending mutation's meta was updated in-place
-        var pendingMutation = client.GetMutationCache().FindAll().First();
+        var pendingMutation = client.MutationCache.FindAll().First();
         Assert.NotNull(pendingMutation.Meta);
         Assert.Equal("updatedValue", pendingMutation.Meta["initialKey"]);
 
@@ -275,13 +275,19 @@ public sealed class MutationObserverTests
         // Act
         await observer.MutateAsync("test");
 
-        // Assert - should have received notifications after mutation completes
-        Assert.NotEmpty(notifiedResults);
+        // Assert - should have received notifications for each state transition.
+        // MutationState is now immutable, so each notification captures the state
+        // at the time of dispatch rather than sharing a mutable reference that
+        // always reflects the latest state.
+        Assert.True(notifiedResults.Count >= 2);
 
-        // All notifications should reflect the final success state
-        // (MutationObserver notifies after completion, not during pending state)
-        Assert.All(notifiedResults, r => Assert.True(r.IsSuccess));
-        Assert.All(notifiedResults, r => Assert.Equal("TEST", r.Data));
+        // First notification is the Pending dispatch
+        Assert.True(notifiedResults[0].IsPending);
+
+        // Final notification reflects success
+        var last = notifiedResults[^1];
+        Assert.True(last.IsSuccess);
+        Assert.Equal("TEST", last.Data);
 
         subscription.Dispose();
     }
@@ -300,11 +306,11 @@ public sealed class MutationObserverTests
 
         // Act - execute first mutation
         await observer.MutateAsync("first");
-        var firstResult = observer.GetCurrentResult();
+        var firstResult = observer.CurrentResult;
 
         // Act - execute second mutation
         await observer.MutateAsync("second");
-        var secondResult = observer.GetCurrentResult();
+        var secondResult = observer.CurrentResult;
 
         // Assert - first mutation result
         Assert.True(firstResult.IsSuccess);
@@ -315,7 +321,7 @@ public sealed class MutationObserverTests
         Assert.Equal("SECOND", secondResult.Data);
 
         // Assert - current result reflects latest mutation
-        var currentResult = observer.GetCurrentResult();
+        var currentResult = observer.CurrentResult;
         Assert.Equal("SECOND", currentResult.Data);
     }
 
@@ -341,7 +347,7 @@ public sealed class MutationObserverTests
             // Expected exception
         }
 
-        var errorResult = observer.GetCurrentResult();
+        var errorResult = observer.CurrentResult;
         Assert.True(errorResult.IsError);
         Assert.NotNull(errorResult.Error);
 
@@ -349,7 +355,7 @@ public sealed class MutationObserverTests
         observer.Reset();
 
         // Assert - should be back to idle state
-        var idleResult = observer.GetCurrentResult();
+        var idleResult = observer.CurrentResult;
         Assert.True(idleResult.IsIdle);
         Assert.False(idleResult.IsError);
         Assert.Null(idleResult.Error);
@@ -370,7 +376,7 @@ public sealed class MutationObserverTests
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act - get result before any mutation
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert - should be idle
         Assert.True(result.IsIdle);
@@ -405,7 +411,7 @@ public sealed class MutationObserverTests
             // Expected exception
         }
 
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert
         Assert.True(result.IsError);
@@ -578,7 +584,7 @@ public sealed class MutationObserverTests
 
         // Act — complete a mutation, then change the key
         await observer.MutateAsync("input");
-        var resultBeforeSetOptions = observer.GetCurrentResult();
+        var resultBeforeSetOptions = observer.CurrentResult;
         Assert.Equal(MutationStatus.Success, resultBeforeSetOptions.Status);
         Assert.Equal("INPUT", resultBeforeSetOptions.Data);
 
@@ -589,7 +595,7 @@ public sealed class MutationObserverTests
         });
 
         // Assert — observer is reset to idle
-        var resultAfterSetOptions = observer.GetCurrentResult();
+        var resultAfterSetOptions = observer.CurrentResult;
         Assert.True(resultAfterSetOptions.IsIdle);
     }
 
@@ -623,7 +629,7 @@ public sealed class MutationObserverTests
         });
 
         // Assert — the original mutation in the cache is untouched
-        var cachedMutation = client.GetMutationCache().Find(
+        var cachedMutation = client.MutationCache.Find(
             new MutationFilters { MutationKey = ["existing", "1"], Exact = true });
         Assert.NotNull(cachedMutation);
         Assert.Equal(MutationStatus.Success, cachedMutation.CurrentStatus);
@@ -646,7 +652,7 @@ public sealed class MutationObserverTests
         var observer = new MutationObserver<string, Exception, string, object?>(client,
             new MutationOptions<string, Exception, string, object?>
             {
-                Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 1 }),
+                Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
                 MutationFn = async (input, context, ct) => input.ToUpper()
             });
 
@@ -657,12 +663,12 @@ public sealed class MutationObserverTests
         // Act — change meta after success
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
-            Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 2 }),
+            Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
             MutationFn = async (input, context, ct) => input.ToUpper()
         });
 
         // Assert — the completed mutation still has the original meta
-        var cachedMutation = client.GetMutationCache().FindAll().First();
+        var cachedMutation = client.MutationCache.FindAll().First();
         Assert.Equal(MutationStatus.Success, cachedMutation.CurrentStatus);
         Assert.NotNull(cachedMutation.Meta);
         Assert.Equal(1, cachedMutation.Meta["a"]);
@@ -682,7 +688,7 @@ public sealed class MutationObserverTests
         var observer = new MutationObserver<string, Exception, string, object?>(client,
             new MutationOptions<string, Exception, string, object?>
             {
-                Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 1 }),
+                Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
                 MutationFn = async (input, context, ct) =>
                     throw new InvalidOperationException("err")
             });
@@ -695,13 +701,13 @@ public sealed class MutationObserverTests
         // Act — change meta after error
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
-            Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 2 }),
+            Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
             MutationFn = async (input, context, ct) =>
                 throw new InvalidOperationException("err")
         });
 
         // Assert — the errored mutation still has the original meta
-        var cachedMutation = client.GetMutationCache().FindAll().First();
+        var cachedMutation = client.MutationCache.FindAll().First();
         Assert.Equal(MutationStatus.Error, cachedMutation.CurrentStatus);
         Assert.NotNull(cachedMutation.Meta);
         Assert.Equal(1, cachedMutation.Meta["a"]);
@@ -724,7 +730,7 @@ public sealed class MutationObserverTests
         var observer = new MutationObserver<string, Exception, string, object?>(client,
             new MutationOptions<string, Exception, string, object?>
             {
-                Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 1 }),
+                Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
                 MutationFn = mutationFn
             });
 
@@ -736,7 +742,7 @@ public sealed class MutationObserverTests
         // Change meta to a=2 before second mutation
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
-            Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 2 }),
+            Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
             MutationFn = mutationFn
         });
 
@@ -744,7 +750,7 @@ public sealed class MutationObserverTests
         await observer.MutateAsync("input");
 
         // Assert — two mutations in cache with different meta
-        var mutations = client.GetMutationCache().FindAll().ToList();
+        var mutations = client.MutationCache.FindAll().ToList();
         Assert.Equal(2, mutations.Count);
 
         var first = mutations[0];
@@ -776,7 +782,7 @@ public sealed class MutationObserverTests
         var observer = new MutationObserver<string, Exception, string, object?>(client,
             new MutationOptions<string, Exception, string, object?>
             {
-                Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 1 }),
+                Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
                 MutationFn = async (input, context, ct) =>
                 {
                     mutationStarted.Release();
@@ -791,7 +797,7 @@ public sealed class MutationObserverTests
         await mutationStarted.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Verify the pending mutation has original meta
-        var pendingMutation = client.GetMutationCache().FindAll().First();
+        var pendingMutation = client.MutationCache.FindAll().First();
         Assert.Equal(MutationStatus.Pending, pendingMutation.CurrentStatus);
         Assert.NotNull(pendingMutation.Meta);
         Assert.Equal(1, pendingMutation.Meta["a"]);
@@ -799,7 +805,7 @@ public sealed class MutationObserverTests
         // Change meta while mutation is pending
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
-            Meta = new MutationMeta(new Dictionary<string, object?> { ["a"] = 2 }),
+            Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
             MutationFn = async (input, context, ct) => input.ToUpper()
         });
 
@@ -868,7 +874,7 @@ public sealed class MutationObserverTests
         await firstStarted.WaitAsync(TimeSpan.FromSeconds(5));
 
         // B should be Pending+Paused while A runs
-        var mutationB = client.GetMutationCache().FindAll().Last();
+        var mutationB = client.MutationCache.FindAll().Last();
         Assert.Equal(MutationStatus.Pending, mutationB.CurrentStatus);
         Assert.True(((Mutation<string, Exception, string, object?>)mutationB).State.IsPaused);
 

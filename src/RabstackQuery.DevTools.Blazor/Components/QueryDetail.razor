@@ -32,22 +32,38 @@
         <div class="rq-detail__section">
             <div class="rq-detail__section-header">Actions</div>
             <div class="rq-detail__section-body">
+                @{
+                    var isFetching = Item.DisplayStatus is QueryDisplayStatus.Fetching;
+                    var isPending = Item.Status is QueryStatus.Pending;
+                }
                 <div class="rq-detail__actions">
-                    <button class="rq-action" disabled="@_isRefetching" @onclick="HandleRefetch">
+                    <button class="rq-action" disabled="@(isFetching || _isRefetching)" @onclick="HandleRefetch">
                         <span class="rq-action__dot" style="background: @DevToolsColorValues.Fetching;"></span>
-                        @(_isRefetching ? "Refetching\u2026" : "Refetch")
+                        Refetch
                     </button>
-                    <button class="rq-action" @onclick="HandleInvalidate">
+                    <button class="rq-action" disabled="@isPending" @onclick="HandleInvalidate">
                         <span class="rq-action__dot" style="background: @DevToolsColorValues.Stale;"></span>
                         Invalidate
                     </button>
-                    <button class="rq-action" @onclick="HandleReset">
+                    <button class="rq-action" disabled="@isPending" @onclick="HandleReset">
                         <span class="rq-action__dot" style="background: @DevToolsColorValues.Inactive;"></span>
                         Reset
                     </button>
-                    <button class="rq-action rq-action--danger" @onclick="HandleRemove">
+                    <button class="rq-action rq-action--danger" disabled="@isFetching" @onclick="HandleRemove">
                         <span class="rq-action__dot" style="background: @DevToolsColorValues.Error;"></span>
                         Remove
+                    </button>
+                    @{
+                        var isTriggeredLoading = Item.IsDevToolsTriggered && Item.Status is QueryStatus.Pending;
+                        var isTriggeredError = Item.IsDevToolsTriggered && Item.Status is QueryStatus.Errored;
+                    }
+                    <button class="rq-action" disabled="@(isPending && !isTriggeredLoading)" @onclick="HandleTriggerLoading">
+                        <span class="rq-action__dot" style="background: @DevToolsColorValues.Fetching;"></span>
+                        @(isTriggeredLoading ? "Restore Loading" : "Trigger Loading")
+                    </button>
+                    <button class="rq-action" disabled="@(isPending && !isTriggeredError)" @onclick="HandleTriggerError">
+                        <span class="rq-action__dot" style="background: @DevToolsColorValues.Error;"></span>
+                        @(isTriggeredError ? "Restore Error" : "Trigger Error")
                     </button>
                 </div>
             </div>

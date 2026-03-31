@@ -31,7 +31,7 @@ public sealed class InfiniteQueryObserverTests
         var observer = new InfiniteQueryObserver<string, int>(client, options);
 
         // Act — get result before first fetch completes
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — should be in pending state with no data
         Assert.Equal(QueryStatus.Pending, result.Status);
@@ -69,7 +69,7 @@ public sealed class InfiniteQueryObserverTests
         await resultTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — initial page at 5: has both next and previous
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.True(result.HasNextPage);
         Assert.True(result.HasPreviousPage);
 
@@ -124,7 +124,7 @@ public sealed class InfiniteQueryObserverTests
         await fetchingNextPageSeen.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — should be fetching next page
-        var midResult = observer.GetCurrentResult();
+        var midResult = observer.CurrentResult;
         Assert.True(midResult.IsFetchingNextPage);
         Assert.False(midResult.IsFetchingPreviousPage);
 
@@ -133,7 +133,7 @@ public sealed class InfiniteQueryObserverTests
         await fetchTask;
 
         // After completion
-        var finalResult = observer.GetCurrentResult();
+        var finalResult = observer.CurrentResult;
         Assert.False(finalResult.IsFetchingNextPage);
 
         // No explicit disposal needed — subscription disposal (or lack of subscription)
@@ -169,7 +169,7 @@ public sealed class InfiniteQueryObserverTests
         await resultTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — data should be uppercased by the Select transform
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Equal("PAGE-0", result.Data!.Pages[0]);
 
         // No explicit disposal needed — subscription disposal (or lack of subscription)
@@ -204,7 +204,7 @@ public sealed class InfiniteQueryObserverTests
         var observer = new InfiniteQueryObserver<string, int>(client, options);
 
         // Act — get result before any fetch
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
 
         // Assert — no data yet, so page param functions should not be called
         // for HasNextPage/HasPreviousPage computation
@@ -364,12 +364,12 @@ public sealed class InfiniteQueryObserverTests
         });
 
         // Act — invalidate triggers a refetch of all pages
-        await client.InvalidateQueries(["refetch-on-invalidate"]);
+        await client.InvalidateQueriesAsync(["refetch-on-invalidate"]);
 
         await refetchDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — should have re-fetched both pages (2 more fetches)
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Equal(2, result.Data!.Pages.Count);
         Assert.True(fetchCount > beforeRefetch);
 
@@ -418,7 +418,7 @@ public sealed class InfiniteQueryObserverTests
 
         // Assert — IsFetchingNextPage should be true, but IsRefetching should be false
         // because a directional page fetch is not a refetch.
-        var midResult = observer.GetCurrentResult();
+        var midResult = observer.CurrentResult;
         Assert.True(midResult.IsFetchingNextPage);
         Assert.False(midResult.IsRefetching);
 
@@ -469,15 +469,15 @@ public sealed class InfiniteQueryObserverTests
         // Fetch 2 more pages
         await observer.FetchNextPageAsync();
         await observer.FetchNextPageAsync();
-        Assert.Equal(3, observer.GetCurrentResult().Data!.Pages.Count);
+        Assert.Equal(3, observer.CurrentResult.Data!.Pages.Count);
 
         // Act — refetch with GetNextPageParam returning None after page 0
         fetchRound = 1;
-        var refetchResult = observer.GetCurrentResult();
+        var refetchResult = observer.CurrentResult;
         await refetchResult.RefetchAsync();
 
         // Assert — pages should have shrunk to just 1
-        var result = observer.GetCurrentResult();
+        var result = observer.CurrentResult;
         Assert.Single(result.Data!.Pages);
 
         // No explicit disposal needed — subscription disposal (or lack of subscription)

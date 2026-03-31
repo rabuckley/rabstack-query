@@ -1,23 +1,23 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class QueryFiltersTests
 {
     [Fact]
-    public async Task InvalidateQueries_WithPartialKey_InvalidatesMatchingQueries()
+    public async Task InvalidateQueriesAsync_WithPartialKey_InvalidatesMatchingQueries()
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var todo1 = cache.Build<string, string>(client,
+        var todo1 = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMinutes(5) });
-        var todo2 = cache.Build<string, string>(client,
+        var todo2 = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 2], GcTime = TimeSpan.FromMinutes(5) });
-        var users = cache.Build<string, string>(client,
+        var users = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["users"], GcTime = TimeSpan.FromMinutes(5) });
 
         // Act — invalidate all "todos" queries via prefix match
-        await client.InvalidateQueries(new InvalidateQueryFilters { QueryKey = ["todos"] });
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = ["todos"] });
 
         // Assert
         Assert.True(todo1.State!.IsInvalidated);
@@ -26,18 +26,18 @@ public class QueryFiltersTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Exact_OnlyInvalidatesExactMatch()
+    public async Task InvalidateQueriesAsync_Exact_OnlyInvalidatesExactMatch()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var todosAll = cache.Build<string, string>(client,
+        var todosAll = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
-        var todos1 = cache.Build<string, string>(client,
+        var todos1 = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMinutes(5) });
 
         // Act
-        await client.InvalidateQueries(new InvalidateQueryFilters { QueryKey = ["todos"], Exact = true });
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = ["todos"], Exact = true });
 
         // Assert
         Assert.True(todosAll.State!.IsInvalidated);
@@ -45,17 +45,17 @@ public class QueryFiltersTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_NullFilters_InvalidatesAll()
+    public async Task InvalidateQueriesAsync_NullFilters_InvalidatesAll()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var todo = cache.Build<string, string>(client,
+        var todo = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
-        var user = cache.Build<string, string>(client,
+        var user = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["users"], GcTime = TimeSpan.FromMinutes(5) });
 
-        await client.InvalidateQueries();
+        await client.InvalidateQueriesAsync();
 
         Assert.True(todo.State!.IsInvalidated);
         Assert.True(user.State!.IsInvalidated);
@@ -65,13 +65,13 @@ public class QueryFiltersTests
     public void RemoveQueries_RemovesMatchingFromCache()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMinutes(5) });
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 2], GcTime = TimeSpan.FromMinutes(5) });
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["users"], GcTime = TimeSpan.FromMinutes(5) });
 
         // Act
@@ -87,10 +87,10 @@ public class QueryFiltersTests
     public void ResetQueries_ResetsMatchingToInitialState()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Build a query with initial data so it starts as Succeeded
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string>
             {
                 QueryKey = ["todos"],
@@ -113,13 +113,13 @@ public class QueryFiltersTests
     public void FindAll_ReturnsQueriesMatchingFilters()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMinutes(5) });
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 2], GcTime = TimeSpan.FromMinutes(5) });
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["users"], GcTime = TimeSpan.FromMinutes(5) });
 
         var result = cache.FindAll(new QueryFilters { QueryKey = ["todos"] }).ToList();
@@ -131,11 +131,11 @@ public class QueryFiltersTests
     public void Find_ReturnsFirstExactMatch()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos", 1], GcTime = TimeSpan.FromMinutes(5) });
 
         var result = cache.Find(new QueryFilters { QueryKey = ["todos"] });
@@ -150,9 +150,9 @@ public class QueryFiltersTests
     public void IsFetching_ReturnsZero_WhenNothingFetching()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        cache.Build<string, string>(client,
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
 
         Assert.Equal(0, client.IsFetching());

@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class TypeErgonomicsTests
 {
@@ -16,16 +16,14 @@ public class TypeErgonomicsTests
     }
 
     [Fact]
-    public void MutateOptions_TwoParamAlias_IsAssignableToFourParam()
+    public void MutateOptions_FourParamConstruction_Works()
     {
-        var twoParam = new MutateOptions<string, int>
+        var options = new MutateOptions<string, Exception, int, object?>
         {
             OnSuccess = async (data, variables, context, fnCtx) => { }
         };
 
-        MutateOptions<string, Exception, int, object?> fourParam = twoParam;
-
-        Assert.NotNull(fourParam.OnSuccess);
+        Assert.NotNull(options.OnSuccess);
     }
 
     [Fact]
@@ -92,13 +90,13 @@ public class TypeErgonomicsTests
     }
 
     [Fact]
-    public void MutationOptions_Create_InfersType()
+    public void MutationDefinition_Create_InfersType()
     {
-        var options = MutationOptions.Create<string, int>(
+        var def = MutationDefinition.Create<string, int>(
             async (variables, ctx, ct) => variables.ToString());
 
-        Assert.IsType<MutationOptions<string, int>>(options);
-        Assert.NotNull(options.MutationFn);
+        Assert.IsType<MutationDefinition<string, int>>(def);
+        Assert.NotNull(def.MutationFn);
     }
 
     [Fact]

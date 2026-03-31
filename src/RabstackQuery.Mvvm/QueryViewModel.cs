@@ -106,7 +106,7 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
         _observer = new QueryObserver<TData, TQueryData>(client, options);
 
         _subscription = _observer.Subscribe(OnResultChanged);
-        UpdateFromResult(_observer.GetCurrentResult());
+        UpdateFromResult(_observer.CurrentResult);
         _logger.QueryViewModelSubscribed(_queryKeyDisplay);
     }
 

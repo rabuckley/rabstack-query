@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class MutationDefaultsTests
 {
@@ -7,19 +7,20 @@ public class MutationDefaultsTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 3,
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 3,
+            });
 
         // Act — build a mutation that matches the prefix
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build<string, Exception, string, object?>(client,
+        var cache = client.MutationCache;
+
+        var mutation = cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationKey = ["todos", "create"],
-                MutationFn = (_, _, _) => Task.FromResult("ok"),
+                MutationKey = ["todos", "create"], MutationFn = (_, _, _) => Task.FromResult("ok"),
             });
 
         // Assert — cannot directly inspect options on Mutation, but we can verify
@@ -36,11 +37,12 @@ public class MutationDefaultsTests
     public void SetMutationDefaults_DoesNotApply_ToNonMatchingMutations()
     {
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 3,
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 3,
+            });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
@@ -55,17 +57,17 @@ public class MutationDefaultsTests
     public void SetMutationDefaults_PerMutationOverrides_KeyDefaults()
     {
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 3,
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 3,
+            });
 
         // Per-mutation Retry should win over key defaults
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
-            MutationKey = ["todos", "create"],
-            Retry = 5,
+            MutationKey = ["todos", "create"], Retry = 5,
         });
 
         Assert.Equal(5, defaulted.Retry);
@@ -77,19 +79,18 @@ public class MutationDefaultsTests
         var client = CreateQueryClient();
 
         // Register a broad default first
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 2,
-            GcTime = TimeSpan.FromMilliseconds(10_000),
-        });
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 2, GcTime = TimeSpan.FromMilliseconds(10_000),
+            });
 
         // Register a more specific default that overrides Retry but not GcTime
-        client.SetMutationDefaults(["todos", "create"], new MutationDefaults
-        {
-            MutationKey = ["todos", "create"],
-            Retry = 5,
-        });
+        client.SetMutationDefaults(["todos", "create"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos", "create"], Retry = 5,
+            });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
@@ -107,18 +108,18 @@ public class MutationDefaultsTests
     {
         var client = CreateQueryClient();
 
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 2,
-        });
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 2,
+            });
 
         // Replace with new defaults for the same key
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 5,
-        });
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 5,
+            });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
@@ -134,11 +135,12 @@ public class MutationDefaultsTests
         var client = CreateQueryClient();
 
         Func<int, Exception, TimeSpan> customDelay = (count, _) => TimeSpan.FromMilliseconds(count * 500);
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            RetryDelay = customDelay,
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], RetryDelay = customDelay,
+            });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
@@ -152,11 +154,12 @@ public class MutationDefaultsTests
     public void SetMutationDefaults_AppliesNetworkMode()
     {
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            NetworkMode = NetworkMode.Always,
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], NetworkMode = NetworkMode.Always,
+            });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
@@ -170,11 +173,12 @@ public class MutationDefaultsTests
     public void SetMutationDefaults_AppliesGcTime()
     {
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            GcTime = TimeSpan.FromMilliseconds(10_000),
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], GcTime = TimeSpan.FromMilliseconds(10_000),
+            });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
         {
@@ -198,12 +202,12 @@ public class MutationDefaultsTests
     public void GetMutationDefaults_ReturnsMergedDefaults_WhenMatching()
     {
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 3,
-            GcTime = TimeSpan.FromMilliseconds(10_000),
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 3, GcTime = TimeSpan.FromMilliseconds(10_000),
+            });
 
         var result = client.GetMutationDefaults(["todos", "create"]);
 
@@ -217,11 +221,12 @@ public class MutationDefaultsTests
     {
         // Applying defaults twice should produce the same result
         var client = CreateQueryClient();
-        client.SetMutationDefaults(["todos"], new MutationDefaults
-        {
-            MutationKey = ["todos"],
-            Retry = 3,
-        });
+
+        client.SetMutationDefaults(["todos"],
+            new MutationDefaults
+            {
+                MutationKey = ["todos"], Retry = 3,
+            });
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
@@ -247,9 +252,7 @@ public class MutationDefaultsTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationKey = ["todos"],
-            OnMutate = onMutate,
-            MutationFn = (vars, _, ct) => Task.FromResult("ok"),
+            MutationKey = ["todos"], OnMutate = onMutate, MutationFn = (vars, _, ct) => Task.FromResult("ok"),
         };
 
         var defaulted = client.DefaultMutationOptions(options);

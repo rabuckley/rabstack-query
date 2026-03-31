@@ -1,10 +1,15 @@
 namespace RabstackQuery;
 
 /// <summary>
-/// Filters for matching queries in bulk operations like <c>InvalidateQueries</c>,
-/// <c>RefetchQueries</c>, <c>RemoveQueries</c>, etc.
+/// Filters for matching queries in bulk operations like <c>InvalidateQueriesAsync</c>,
+/// <c>RefetchQueriesAsync</c>, <c>RemoveQueries</c>, etc.
 /// All specified filters are combined with AND logic.
 /// </summary>
+/// <remarks>
+/// Subclassed by <see cref="InvalidateQueryFilters"/> to add a
+/// <see cref="InvalidateQueryFilters.RefetchType"/> option for invalidation.
+/// All properties are init-only; instances are immutable after construction.
+/// </remarks>
 public class QueryFilters
 {
     /// <summary>

@@ -5,9 +5,20 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RabstackQuery;
 
+/// <summary>
+/// Non-generic base class for queries. Allows the <see cref="QueryCache"/> to store
+/// queries without knowing their data type parameter.
+/// </summary>
+/// <remarks>
+/// <para>The only concrete subclass is the internal <c>Query&lt;TData&gt;</c>.
+/// This class is not designed for subclassing outside of RabstackQuery.</para>
+/// <para><b>Threading:</b> query state mutations and observer notifications are not
+/// inherently thread-safe. Callers must ensure queries are accessed from a single
+/// context (typically the UI/synchronization context).</para>
+/// </remarks>
 public abstract class Query : Removable
 {
-    protected Query(TimeProvider timeProvider) : base(timeProvider) { }
+    internal Query(TimeProvider timeProvider) : base(timeProvider) { }
 
     public string? QueryHash { get; protected init; }
 
@@ -55,14 +66,14 @@ public abstract class Query : Removable
     /// Whether this query is disabled — no active observers and either never
     /// fetched data or has no query function. Mirrors TanStack's
     /// <c>query.isDisabled()</c>, used to skip disabled queries during
-    /// <c>RefetchQueries</c>.
+    /// <c>RefetchQueriesAsync</c>.
     /// </summary>
     public abstract bool IsDisabled();
 
     /// <summary>
     /// Whether any observer has static stale time (never stale, not even after
     /// invalidation). Mirrors TanStack's <c>query.isStatic()</c>, used to skip
-    /// static queries during <c>RefetchQueries</c>.
+    /// static queries during <c>RefetchQueriesAsync</c>.
     /// </summary>
     public abstract bool IsStatic();
 
@@ -74,7 +85,10 @@ public abstract class Query : Removable
     /// <summary>
     /// Cancels any in-flight fetch for this query.
     /// </summary>
-    public abstract Task Cancel(CancelOptions? options = null);
+    public abstract Task Cancel(CancelOptions? options);
+
+    /// <summary>Zero-argument overload for binary-stable API evolution.</summary>
+    public Task Cancel() => Cancel(null);
 
     /// <summary>
     /// Called when the app regains window focus. Delegates to observers to decide
@@ -89,7 +103,7 @@ public abstract class Query : Removable
     public abstract void OnOnline();
 
     /// <summary>Optional metadata associated with this query.</summary>
-    public abstract QueryMeta? Meta { get; }
+    public abstract Meta? Meta { get; }
 
     /// <summary>
     /// Unix millisecond timestamp of the last successful data update.
@@ -102,7 +116,7 @@ public abstract class Query : Removable
     /// Whether this query is a hydrated placeholder (<c>Query&lt;object&gt;</c>)
     /// that has not yet been upgraded to a properly-typed query. Placeholders
     /// are created during <see cref="QueryClient.Hydrate"/> and upgraded when
-    /// <see cref="QueryCache.Build{TData, TQueryData}"/> is called for the same hash.
+    /// <see cref="QueryCache.GetOrCreate{TData, TQueryData}"/> is called for the same hash.
     /// </summary>
     internal bool IsHydratedPlaceholder { get; private protected init; }
 
@@ -110,6 +124,15 @@ public abstract class Query : Removable
     /// Produces a type-erased snapshot of this query's state for serialization.
     /// </summary>
     internal abstract DehydratedQuery Dehydrate(long dehydratedAt);
+
+    /// <summary>
+    /// Double-dispatch: passes the typed <c>Query&lt;TData&gt;</c> to the operation,
+    /// recovering the generic type that is erased on this non-generic base class.
+    /// This is the C# equivalent of TypeScript's structural typing — callers that
+    /// hold a <see cref="Query"/> reference can execute typed logic without knowing
+    /// <c>TData</c> at the call site.
+    /// </summary>
+    internal abstract TResult Accept<TResult>(IQueryOperation<TResult> operation);
 
     /// <summary>
     /// Applies dehydrated state to this query. Used when hydrating into an
@@ -139,27 +162,38 @@ public sealed class Query<TData> : Query
     private readonly List<IQueryObserver> _observers = [];
     private Func<QueryFunctionContext, Task<TData>>? _queryFn;
 
+    internal Func<QueryFunctionContext, Task<TData>>? QueryFn => _queryFn;
+
     // Tracks whether the query function accessed QueryFunctionContext.CancellationToken
     // during the current fetch. When true, RemoveObserver performs a hard cancel (with
     // state revert) instead of a soft CancelRetry. Mirrors TanStack's
     // #abortSignalConsumed flag (query.ts:177).
+    // Kept separate from FetchOperation because it's written mid-flight by the query
+    // function callback — bundling would capture a stale reference after an atomic swap.
     private volatile bool _abortSignalConsumed;
 
-    // Cancellation support: the active retryer and the state before the current fetch.
-    // Volatile: read from event threads (OnFocus, OnOnline, Cancel) and written from
-    // async continuations (FetchCore finally). Without volatile, writes may not be
-    // visible cross-thread. Follows the same pattern as Retryer._isRetryCancelled.
-    private volatile Retryer<TData>? _retryer;
-    private volatile QueryState<TData>? _preFetchState;
+    // Bundles the active retryer and pre-fetch state snapshot into a single volatile
+    // reference. Superseding a fetch becomes one atomic swap instead of coordinating
+    // two separate volatile fields. The identity check `_activeFetch?.Retryer == retryer`
+    // replaces the previous `_retryer == retryer` pattern.
+    private volatile FetchOperation? _activeFetch;
 
     // Fetch deduplication: when a fetch is in-flight, subsequent Fetch() calls
     // return this same Task instead of starting a new fetch. This mirrors
     // TanStack's pattern of returning `this.#retryer.promise` (query.ts:404).
-    // Volatile for the same cross-thread visibility reason as _retryer.
+    // Kept separate from FetchOperation because the task IS FetchCore — creating
+    // the bundle inside FetchCore would require a self-reference to the task.
     private volatile Task? _currentFetchTask;
 
-    public void AddObserver(IQueryObserver observer)
+    private sealed class FetchOperation
     {
+        public required Retryer<TData> Retryer { get; init; }
+        public required QueryState<TData> PreFetchState { get; init; }
+    }
+
+    internal void AddObserver(IQueryObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
         lock (_observerLock)
         {
             if (!_observers.Contains(observer))
@@ -177,11 +211,14 @@ public sealed class Query<TData> : Query
         _cache.Notify(new QueryCacheObserverAddedEvent { Query = this, Observer = observer });
     }
 
-    public void RemoveObserver(IQueryObserver observer)
+    internal void RemoveObserver(IQueryObserver observer)
     {
         lock (_observerLock)
         {
-            if (!_observers.Remove(observer)) return;
+            if (!_observers.Remove(observer))
+            {
+                return;
+            }
 
             // TanStack query.ts:358–369 — when the last observer leaves, decide
             // how to handle the in-flight fetch based on whether the query function
@@ -198,8 +235,7 @@ public sealed class Query<TData> : Query
                 }
                 else
                 {
-                    var retryer = _retryer;
-                    retryer?.CancelRetry();
+                    _activeFetch?.Retryer.CancelRetry();
                 }
 
                 ScheduleGc();
@@ -213,12 +249,12 @@ public sealed class Query<TData> : Query
         _client = config.Client;
         _logger = _client.LoggerFactory.CreateLogger<Query<TData>>();
         _metrics = config.Metrics;
-        _cache = _client.GetQueryCache();
+        _cache = _client.QueryCache;
         QueryKey = config.QueryKey;
         QueryHash = config.QueryHash;
         IsHydratedPlaceholder = config.IsHydratedPlaceholder;
 
-        _onRetryerFail = (count, error) => Dispatch(new FailedAction<TData> { FailureCount = count, Error = error });
+        _onRetryerFail = (count, error) => Dispatch(new FailedAction { FailureCount = count, Error = error });
         _onRetryerPause = () => Dispatch(new PauseAction());
         _onRetryerContinue = () => Dispatch(new ContinueAction());
 
@@ -237,7 +273,7 @@ public sealed class Query<TData> : Query
     private volatile QueryState<TData>? _state;
     public QueryState<TData>? State { get => _state; private set => _state = value; }
 
-    public override QueryMeta? Meta => Options?.Meta;
+    public override Meta? Meta => Options?.Meta;
 
     internal override long DataUpdatedAt => State?.DataUpdatedAt ?? 0;
 
@@ -259,7 +295,10 @@ public sealed class Query<TData> : Query
             {
                 foreach (var o in _observers)
                 {
-                    if (o.IsCurrentResultStale) return true;
+                    if (o.IsCurrentResultStale)
+                    {
+                        return true;
+                    }
                 }
 
                 return false;
@@ -268,8 +307,16 @@ public sealed class Query<TData> : Query
 
         // No observers: fall back to simple state checks.
         // Mirrors TanStack's `return this.state.data === undefined || this.state.isInvalidated`.
-        if (State is null) return true;
-        if (State.Data is null) return true;
+        if (State is null)
+        {
+            return true;
+        }
+
+        if (State.Data is null)
+        {
+            return true;
+        }
+
         return State.IsInvalidated;
     }
 
@@ -289,7 +336,9 @@ public sealed class Query<TData> : Query
         lock (_observerLock)
         {
             if (_observers.Count > 0)
+            {
                 return !IsActiveCore();
+            }
         }
 
         // No observers: disabled if there's no query function or the query has
@@ -307,7 +356,10 @@ public sealed class Query<TData> : Query
     {
         foreach (var o in _observers)
         {
-            if (o.IsEnabled) return true;
+            if (o.IsEnabled)
+            {
+                return true;
+            }
         }
 
         return false;
@@ -320,11 +372,17 @@ public sealed class Query<TData> : Query
         // not considered static.
         lock (_observerLock)
         {
-            if (_observers.Count == 0) return false;
+            if (_observers.Count == 0)
+            {
+                return false;
+            }
 
             foreach (var o in _observers)
             {
-                if (o.IsStaleTimeStatic) return true;
+                if (o.IsStaleTimeStatic)
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -338,10 +396,10 @@ public sealed class Query<TData> : Query
         // TanStack calls destroy() then setState(#initialState). destroy() clears
         // the GC timer and cancels any in-flight fetch.
         Destroy();
-        var retryer = _retryer;
-        retryer?.Cancel();
+        var op = _activeFetch;
+        op?.Retryer.Cancel();
+        _activeFetch = null;
         _currentFetchTask = null;
-        _preFetchState = null;
 
         // Recalculate initial state from Options. This reinvokes InitialDataFactory
         // (if set) to get fresh data, and uses the current clock for timestamps.
@@ -355,11 +413,10 @@ public sealed class Query<TData> : Query
         ScheduleGc();
     }
 
-    public override Task Cancel(CancelOptions? options = null)
+    public override Task Cancel(CancelOptions? options)
     {
         _logger.QueryCancelled(QueryHash, options?.Revert ?? false);
-        var retryer = _retryer;
-        var preFetchState = _preFetchState;
+        var op = _activeFetch;
 
         // Dispatch state revert BEFORE cancelling the retryer.
         //
@@ -373,12 +430,12 @@ public sealed class Query<TData> : Query
         // entire FetchCore success path can execute during this Cancel()
         // call. Dispatching the revert first ensures the success overwrites
         // the revert (correct ordering), not the reverse.
-        if (options?.Revert is true && preFetchState is not null)
+        if (options?.Revert is true && op is not null)
         {
-            Dispatch(new SetStateAction<TData> { State = preFetchState, Options = null });
+            Dispatch(new SetStateAction<TData> { State = op.PreFetchState, Options = null });
         }
 
-        retryer?.Cancel();
+        op?.Retryer.Cancel();
 
         return Task.CompletedTask;
     }
@@ -420,8 +477,7 @@ public sealed class Query<TData> : Query
         }
 
         // TanStack query.ts:331 — resume paused retryer when focus returns.
-        var retryer = _retryer;
-        retryer?.Continue();
+        _activeFetch?.Retryer.Continue();
     }
 
     /// <summary>
@@ -452,8 +508,7 @@ public sealed class Query<TData> : Query
         }
 
         // TanStack query.ts:340 — resume paused retryer when connectivity returns.
-        var retryer = _retryer;
-        retryer?.Continue();
+        _activeFetch?.Retryer.Continue();
     }
 
     /// <summary>
@@ -552,7 +607,7 @@ public sealed class Query<TData> : Query
 
     /// <summary>
     /// Fetches with an explicit <paramref name="cancelRefetch"/> flag. Used by
-    /// <see cref="QueryClient.RefetchQueries(QueryFilters?, RefetchOptions?, CancellationToken)"/>
+    /// <see cref="QueryClient.RefetchQueriesAsync(QueryFilters?, RefetchOptions?, CancellationToken)"/>
     /// to thread through the caller's <see cref="RefetchOptions.CancelRefetch"/> setting.
     /// </summary>
     internal override Task Fetch(bool cancelRefetch, CancellationToken cancellationToken = default)
@@ -573,13 +628,13 @@ public sealed class Query<TData> : Query
         // or deduplicate (cancelRefetch=false). Mirrors TanStack query.ts:390–405.
         // Capture volatile fields to locals to prevent torn reads — another thread
         // may null these between the null check and the dereference.
-        var retryer = _retryer;
+        var op = _activeFetch;
         var fetchTask = _currentFetchTask;
         var state = State;
         if (state is not null
             && state.FetchStatus is not FetchStatus.Idle
-            && retryer is not null
-            && !retryer.IsCancelled
+            && op is not null
+            && !op.Retryer.IsCancelled
             && fetchTask is not null)
         {
             // TanStack query.ts:397–405 — when the query already has data and
@@ -596,14 +651,14 @@ public sealed class Query<TData> : Query
                 // StreamedQuery catches OperationCanceledException and returns
                 // partial data), it overwrites the new fetch's state.
                 //
-                // Null _retryer BEFORE cancelling so the old FetchCore can
-                // detect it's been superseded (_retryer != its local retryer)
-                // even if its completion runs inline during retryer.Cancel().
-                // For non-refetch cancels (e.g., unsubscribe), _retryer is
+                // Null _activeFetch BEFORE cancelling so the old FetchCore can
+                // detect it's been superseded via the identity check, even if
+                // its completion runs inline during retryer.Cancel().
+                // For non-refetch cancels (e.g., unsubscribe), _activeFetch is
                 // NOT nulled, so partial data is preserved — matching TanStack.
                 _logger.QueryCancelled(QueryHash, false);
-                _retryer = null;
-                retryer.Cancel();
+                _activeFetch = null;
+                op.Retryer.Cancel();
                 // Fall through to start new fetch
             }
             else
@@ -611,7 +666,7 @@ public sealed class Query<TData> : Query
                 // TanStack query.ts:400–404 — when deduplicating, undo any
                 // cancelRetry from a previous RemoveObserver so the in-flight
                 // fetch can continue retrying.
-                retryer.ContinueRetry();
+                op.Retryer.ContinueRetry();
 
                 _logger.QueryFetchDeduplicated(QueryHash);
                 _metrics?.QueryFetchDeduplicatedTotal?.Add(1, QueryMetrics.QueryHashTag(QueryHash));
@@ -632,7 +687,7 @@ public sealed class Query<TData> : Query
         }
 
         // Capture state before fetch so Cancel(revert: true) can restore it
-        _preFetchState = State;
+        var preFetchState = State!;
 
         // Reset the signal-consumed flag for this fetch. The flag is set when
         // the query function accesses QueryFunctionContext.CancellationToken.
@@ -676,12 +731,12 @@ public sealed class Query<TData> : Query
         var retryer = new Retryer<TData>(retryerOptions);
 
         // ORDERING CONSTRAINT: State must be written (via Dispatch above) before
-        // this volatile write. FetchInternal's dedup path reads _retryer with
+        // this volatile write. FetchInternal's dedup path reads _activeFetch with
         // acquire semantics, which pairs with this release to guarantee visibility
         // of the State write (FetchStatus = Fetching). If these writes were
-        // reordered, the dedup check could see a non-null _retryer but stale
+        // reordered, the dedup check could see a non-null _activeFetch but stale
         // State.FetchStatus == Idle, incorrectly starting a duplicate fetch.
-        _retryer = retryer;
+        _activeFetch = new FetchOperation { Retryer = retryer, PreFetchState = preFetchState };
 
         // Link external cancellation to retryer
         using var registration = cancellationToken.Register(() => retryer.Cancel());
@@ -710,7 +765,7 @@ public sealed class Query<TData> : Query
             // For non-refetch cancels (e.g., unsubscribe), _retryer still
             // references this retryer, so partial data is dispatched normally
             // — matching TanStack's behavior.
-            if (retryer.IsCancelled && _retryer != retryer)
+            if (retryer.IsCancelled && _activeFetch?.Retryer != retryer)
             {
                 _metrics?.QueryFetchCancelledTotal?.Add(1, queryHashTag);
                 _logger.QueryFetchCancelled(QueryHash);
@@ -741,7 +796,7 @@ public sealed class Query<TData> : Query
             _metrics?.QueryFetchDuration?.Record(sw!.Elapsed.TotalSeconds, queryHashTag);
 
             _logger.QueryFetchFailed(QueryHash, State?.FetchFailureCount ?? 0, ex);
-            Dispatch(new ErrorAction<TData> { Error = ex });
+            Dispatch(new ErrorAction { Error = ex });
             throw;
         }
         finally
@@ -749,20 +804,13 @@ public sealed class Query<TData> : Query
             retryer.Dispose();
 
             // Only clear shared fields if they still reference THIS fetch's
-            // retryer. A refetch replaces _retryer before starting the new
-            // FetchCore, so a mismatch means another fetch has taken over —
+            // operation. A refetch replaces _activeFetch before starting the
+            // new FetchCore, so a mismatch means another fetch has taken over —
             // blindly nulling would clobber the new fetch's references.
-            if (_retryer == retryer)
+            if (_activeFetch?.Retryer == retryer)
             {
-                _retryer = null;
+                _activeFetch = null;
                 _currentFetchTask = null;
-
-                // Clear pre-fetch snapshot so that Cancel(revert: true) is a
-                // no-op when no fetch is in flight. Without this, a stale
-                // _preFetchState from the initial load (Data=null) causes
-                // CancelQueriesAsync to wipe cached data even after the query
-                // has long since succeeded.
-                _preFetchState = null;
             }
 
             // If all observers left during this fetch (via RemoveObserver →
@@ -809,6 +857,9 @@ public sealed class Query<TData> : Query
             Dispatch(new InvalidateAction());
         }
     }
+
+    internal override TResult Accept<TResult>(IQueryOperation<TResult> operation)
+        => operation.Execute(this);
 
     internal override DehydratedQuery Dehydrate(long dehydratedAt)
     {
@@ -877,9 +928,9 @@ public sealed class Query<TData> : Query
     {
         if (disposing)
         {
-            var retryer = _retryer;
-            _retryer = null;
-            retryer?.Dispose();
+            var op = _activeFetch;
+            _activeFetch = null;
+            op?.Retryer.Dispose();
         }
 
         base.Dispose(disposing);
@@ -894,36 +945,25 @@ public sealed class Query<TData> : Query
             return action switch
             {
                 SetStateAction<TData> setStateAction => setStateAction.State,
+
                 // TanStack query.ts:628–633 + fetchState():690–708 — set initial
                 // fetch status based on network availability.
-                FetchAction fetchAction => new QueryState<TData>
+                FetchAction fetchAction => state with
                 {
-                    Data = state.Data,
-                    DataUpdateCount = state.DataUpdateCount,
-                    DataUpdatedAt = state.DataUpdatedAt,
-                    Error = state.Error,
-                    ErrorUpdateCount = state.ErrorUpdateCount,
-                    ErrorUpdatedAt = state.ErrorUpdatedAt,
-                    FetchFailureCount = state.FetchFailureCount,
-                    FetchFailureReason = state.FetchFailureReason,
                     FetchMeta = fetchAction.Meta,
                     IsInvalidated = false,
-                    Status = state.Status,
                     FetchStatus = NetworkModeHelper.CanFetch(Options.NetworkMode, _client.OnlineManager)
                         ? FetchStatus.Fetching
                         : FetchStatus.Paused
                 },
-                ErrorAction<TData> errorAction => new QueryState<TData>
+
+                ErrorAction errorAction => state with
                 {
-                    Data = state.Data,
-                    DataUpdateCount = state.DataUpdateCount,
-                    DataUpdatedAt = state.DataUpdatedAt,
                     Error = errorAction.Error,
                     ErrorUpdateCount = state.ErrorUpdateCount + 1,
                     ErrorUpdatedAt = GetUtcNowMs(),
                     FetchFailureCount = state.FetchFailureCount + 1,
                     FetchFailureReason = errorAction.Error,
-                    FetchMeta = state.FetchMeta,
                     // Flag existing data as invalidated on background error so the
                     // query is considered stale. "No data" is always stale anyway, so
                     // setting unconditionally is correct. Matches TanStack query.ts.
@@ -931,75 +971,30 @@ public sealed class Query<TData> : Query
                     Status = QueryStatus.Errored,
                     FetchStatus = FetchStatus.Idle
                 },
-                FailedAction<TData> failedAction => new QueryState<TData>
+
+                FailedAction failedAction => state with
                 {
-                    Data = state.Data,
-                    DataUpdateCount = state.DataUpdateCount,
-                    DataUpdatedAt = state.DataUpdatedAt,
                     Error = failedAction.Error,
-                    ErrorUpdateCount = state.ErrorUpdateCount,
-                    ErrorUpdatedAt = state.ErrorUpdatedAt,
                     FetchFailureCount = failedAction.FailureCount,
                     FetchFailureReason = failedAction.Error,
-                    FetchMeta = state.FetchMeta,
-                    IsInvalidated = state.IsInvalidated,
-                    Status = state.Status,
                     FetchStatus = FetchStatus.Fetching // Keep fetching while retrying
                 },
-                InvalidateAction => new QueryState<TData>
-                {
-                    Data = state.Data,
-                    DataUpdateCount = state.DataUpdateCount,
-                    DataUpdatedAt = state.DataUpdatedAt,
-                    Error = state.Error,
-                    ErrorUpdateCount = state.ErrorUpdateCount,
-                    ErrorUpdatedAt = state.ErrorUpdatedAt,
-                    FetchFailureCount = state.FetchFailureCount,
-                    FetchFailureReason = state.FetchFailureReason,
-                    FetchMeta = state.FetchMeta,
-                    IsInvalidated = true,
-                    Status = state.Status,
-                    FetchStatus = state.FetchStatus
-                },
+
+                InvalidateAction => state with { IsInvalidated = true },
+
                 // TanStack query.ts:620–622 — retryer entered pause (offline/unfocused).
-                PauseAction => new QueryState<TData>
-                {
-                    Data = state.Data,
-                    DataUpdateCount = state.DataUpdateCount,
-                    DataUpdatedAt = state.DataUpdatedAt,
-                    Error = state.Error,
-                    ErrorUpdateCount = state.ErrorUpdateCount,
-                    ErrorUpdatedAt = state.ErrorUpdatedAt,
-                    FetchFailureCount = state.FetchFailureCount,
-                    FetchFailureReason = state.FetchFailureReason,
-                    FetchMeta = state.FetchMeta,
-                    IsInvalidated = state.IsInvalidated,
-                    Status = state.Status,
-                    FetchStatus = FetchStatus.Paused
-                },
+                PauseAction => state with { FetchStatus = FetchStatus.Paused },
+
                 // TanStack query.ts:623–627 — retryer resumed from pause.
-                ContinueAction => new QueryState<TData>
-                {
-                    Data = state.Data,
-                    DataUpdateCount = state.DataUpdateCount,
-                    DataUpdatedAt = state.DataUpdatedAt,
-                    Error = state.Error,
-                    ErrorUpdateCount = state.ErrorUpdateCount,
-                    ErrorUpdatedAt = state.ErrorUpdatedAt,
-                    FetchFailureCount = state.FetchFailureCount,
-                    FetchFailureReason = state.FetchFailureReason,
-                    FetchMeta = state.FetchMeta,
-                    IsInvalidated = state.IsInvalidated,
-                    Status = state.Status,
-                    FetchStatus = FetchStatus.Fetching
-                },
+                ContinueAction => state with { FetchStatus = FetchStatus.Fetching },
+
                 _ => throw new InvalidOperationException($"Unknown action type: {action.GetType().Name}"),
             };
         }
 
         State = Reducer(State!);
 
-        NotifyManager.Instance.Batch(() =>
+        _client.NotifyManager.Batch(() =>
         {
             // Snapshot the observer list under the lock, then iterate outside it.
             // This prevents holding the lock during OnQueryUpdate callbacks, which

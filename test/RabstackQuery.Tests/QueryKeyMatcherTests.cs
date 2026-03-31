@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 public class QueryKeyMatcherTests
 {
@@ -112,8 +112,8 @@ public class QueryKeyMatcherTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
 
         var filters = new QueryFilters();
@@ -126,8 +126,8 @@ public class QueryKeyMatcherTests
     public void MatchQuery_TypeFilterActive_ExcludesNoObserverQuery()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
 
         var filters = new QueryFilters { Type = QueryTypeFilter.Active };
@@ -140,8 +140,8 @@ public class QueryKeyMatcherTests
     public void MatchQuery_TypeFilterInactive_IncludesNoObserverQuery()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
 
         var filters = new QueryFilters { Type = QueryTypeFilter.Inactive };
@@ -153,10 +153,10 @@ public class QueryKeyMatcherTests
     public void MatchQuery_PredicateFilter()
     {
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
-        cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5) });
-        var query2 = cache.Build<int, int>(client,
+        var query2 = cache.GetOrCreate<int, int>(client,
             new QueryConfiguration<int> { QueryKey = ["users"], GcTime = TimeSpan.FromMinutes(5) });
 
         // Predicate that only matches queries whose key starts with "users"

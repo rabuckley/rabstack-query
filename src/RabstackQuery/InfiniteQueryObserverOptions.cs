@@ -6,7 +6,7 @@ namespace RabstackQuery;
 /// param delegates, initial page param, max pages). Avoids duplicating the
 /// full <see cref="QueryObserverOptions{TData,TQueryData}"/> surface.
 /// </summary>
-public class InfiniteQueryObserverOptions<TData, TPageParam>
+public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
 {
     // ── Infinite-query-specific ─────────────────────────────────────────
 
@@ -60,8 +60,8 @@ public class InfiniteQueryObserverOptions<TData, TPageParam>
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.StaleTime"/>
     public TimeSpan StaleTime { get; init; } = TimeSpan.Zero;
 
-    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.CacheTime"/>
-    public TimeSpan CacheTime { get; init; } = QueryTimeDefaults.GcTime;
+    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.GcTime"/>
+    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.RefetchOnWindowFocus"/>
     public RefetchOnBehavior RefetchOnWindowFocus { get; init; } = RefetchOnBehavior.WhenStale;
@@ -106,7 +106,7 @@ public class InfiniteQueryObserverOptions<TData, TPageParam>
             QueryFn = queryFn,
             Enabled = Enabled,
             StaleTime = StaleTime,
-            CacheTime = CacheTime,
+            GcTime = GcTime,
             RefetchOnWindowFocus = RefetchOnWindowFocus,
             RefetchOnReconnect = RefetchOnReconnect,
             RefetchOnMount = RefetchOnMount,

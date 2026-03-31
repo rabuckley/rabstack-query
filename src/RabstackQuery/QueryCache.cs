@@ -10,6 +10,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     private readonly QueryStore _queries;
     private ILogger _logger;
     private QueryMetrics? _metrics;
+    private INotifyManager _notifyManager = null!;
 
     public QueryCache()
     {
@@ -36,11 +37,24 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         _metrics = metrics;
     }
 
-    public Query<TData> Build<TData, TQueryData>(
+    /// <summary>
+    /// Called by <see cref="QueryClient"/> after construction to wire up the
+    /// per-client notification manager. Same post-construction pattern as
+    /// <see cref="SetLoggerFactory"/>.
+    /// </summary>
+    internal void SetNotifyManager(INotifyManager notifyManager)
+    {
+        _notifyManager = notifyManager;
+    }
+
+    public Query<TData> GetOrCreate<TData, TQueryData>(
         QueryClient client,
         QueryConfiguration<TData> options,
         QueryState<TData>? state = null)
     {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
+
         if (options.QueryKey is null)
         {
             throw new ArgumentException("QueryKey must be provided.", nameof(options));
@@ -60,7 +74,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
             if (existing is { IsHydratedPlaceholder: true })
             {
                 // Upgrade: extract state from placeholder, create typed query.
-                // Not atomic (remove + add) — acceptable because Build is typically
+                // Not atomic (remove + add) — acceptable because GetOrCreate is typically
                 // called on the UI thread in Blazor/MAUI. See ARCHITECTURE.md.
                 var dehydrated = existing.Dehydrate(0);
                 Remove(existing); // emits QueryRemoved — OK, placeholder has no observers
@@ -101,7 +115,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         return query;
     }
 
-    public void Add(Query query)
+    internal void Add(Query query)
     {
         Debug.Assert(query.QueryHash is not null);
 
@@ -113,7 +127,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         }
     }
 
-    public void Remove(Query query)
+    internal void Remove(Query query)
     {
         Debug.Assert(query.QueryHash is not null);
         if (_queries.TryRemove(query.QueryHash, out var removedQuery))
@@ -128,7 +142,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     public void Clear()
     {
         _logger.QueryCacheClear();
-        NotifyManager.Instance.Batch(() =>
+        _notifyManager.Batch(() =>
                                      {
                                          foreach (var query in GetAll()) Remove(query);
                                      });
@@ -144,7 +158,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
             }
 
             // Hydrated placeholders are Query<object> — type mismatch is expected.
-            // Return null so callers (Build, SetQueryData, GetQueryData) can fall
+            // Return null so callers (GetOrCreate, SetQueryData, GetQueryData) can fall
             // through to the create/upgrade path.
             if (query.IsHydratedPlaceholder)
             {
@@ -158,7 +172,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         return null;
     }
 
-    public static string GetFormattedName(Type type)
+    internal static string GetFormattedName(Type type)
     {
         if (!type.IsGenericType)
         {
@@ -201,14 +215,16 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     public IEnumerable<Query> GetAll() => _queries.Values();
 
     /// <summary>
-    /// Returns all queries matching the given filters. When filters is null,
-    /// returns all queries.
+    /// Returns all queries matching the given filters.
     /// </summary>
-    public IEnumerable<Query> FindAll(QueryFilters? filters = null)
+    public IEnumerable<Query> FindAll(QueryFilters? filters)
     {
         if (filters is null) return GetAll();
         return GetAll().Where(q => QueryKeyMatcher.MatchQuery(q, filters));
     }
+
+    /// <summary>Returns all queries.</summary>
+    public IEnumerable<Query> FindAll() => FindAll(null);
 
     /// <summary>
     /// Returns the first query that exactly matches the given filters,
@@ -236,12 +252,13 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     }
 
 
-    public void Notify(QueryCacheNotifyEvent @event)
+    internal void Notify(QueryCacheNotifyEvent @event)
     {
-        NotifyManager.Instance.Batch(() =>
-                                     {
-                                         foreach (var listener in Listeners) listener(@event);
-                                     });
+        var snapshot = GetListenerSnapshot();
+        _notifyManager.Batch(() =>
+        {
+            foreach (var listener in snapshot) listener(@event);
+        });
     }
 
     /// <summary>
@@ -251,7 +268,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     /// </summary>
     public void OnFocus()
     {
-        NotifyManager.Instance.Batch(() =>
+        _notifyManager.Batch(() =>
                                      {
                                          foreach (var query in GetAll())
                                          {
@@ -267,7 +284,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     /// </summary>
     public void OnOnline()
     {
-        NotifyManager.Instance.Batch(() =>
+        _notifyManager.Batch(() =>
                                      {
                                          foreach (var query in GetAll())
                                          {

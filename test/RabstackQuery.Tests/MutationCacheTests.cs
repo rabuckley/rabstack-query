@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for MutationCache: Build, Remove, Clear, GetAll, and GC behavior.
@@ -24,10 +24,10 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Act
-        var mutation = cache.Build(client, DefaultOptions());
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
 
         // Assert
         Assert.NotNull(mutation);
@@ -39,11 +39,11 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Act
-        var mutation1 = cache.Build(client, DefaultOptions());
-        var mutation2 = cache.Build(client, DefaultOptions());
+        var mutation1 = cache.GetOrCreate(client, DefaultOptions());
+        var mutation2 = cache.GetOrCreate(client, DefaultOptions());
 
         // Assert
         Assert.NotEqual(mutation1.MutationId, mutation2.MutationId);
@@ -54,10 +54,10 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        cache.Build(client, DefaultOptions());
-        cache.Build(client, DefaultOptions());
-        cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        cache.GetOrCreate(client, DefaultOptions());
+        cache.GetOrCreate(client, DefaultOptions());
+        cache.GetOrCreate(client, DefaultOptions());
 
         // Act
         var all = cache.GetAll().ToList();
@@ -71,8 +71,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
         Assert.Single(cache.GetAll());
 
         // Act
@@ -87,9 +87,9 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        cache.Build(client, DefaultOptions());
-        cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        cache.GetOrCreate(client, DefaultOptions());
+        cache.GetOrCreate(client, DefaultOptions());
         Assert.Equal(2, cache.GetAll().Count());
 
         // Act
@@ -104,8 +104,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
 
         // Remove it once
         cache.Remove(mutation);
@@ -122,13 +122,13 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
         var options = new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => input,
             GcTime = TimeSpan.FromMilliseconds(50) // 50ms — long enough to assert, short enough to GC in this test
         };
-        cache.Build(client, options);
+        cache.GetOrCreate(client, options);
         Assert.Single(cache.GetAll());
 
         // Act — wait for GC timer (well beyond GcTime)
@@ -143,7 +143,7 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
         QueryKey expectedKey = ["mutations", "create"];
         var options = new MutationOptions<string, Exception, string, object?>
         {
@@ -153,7 +153,7 @@ public sealed class MutationCacheTests
         };
 
         // Act
-        var mutation = cache.Build(client, options);
+        var mutation = cache.GetOrCreate(client, options);
 
         // Assert — mutation was created (options are internal, but we can verify via execution)
         Assert.NotNull(mutation);
@@ -170,7 +170,7 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
         var options = new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => input.ToUpper(),
@@ -246,7 +246,7 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         QueryKey key = ["mutation", "vars"];
         var options = new MutationOptions<string, Exception, string, object?>
@@ -279,7 +279,7 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
 
         // Create mutations with different keys
         var obs1 = new MutationObserver<string, Exception, int, object?>(
@@ -373,7 +373,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, string>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, string>
         {
             MutationFn = async (input, context, ct) => throw new InvalidOperationException("error"),
             MutationKey = key,
@@ -452,7 +452,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, string>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, string>
         {
             MutationFn = async (input, context, ct) => "success-data",
             MutationKey = key,
@@ -512,7 +512,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, string>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, string>
         {
             MutationFn = async (input, context, ct) =>
             {
@@ -569,7 +569,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => throw new InvalidOperationException("error"),
             MutationKey = ["order-test"],
@@ -623,7 +623,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => "data",
             MutationKey = ["order-test"],
@@ -670,7 +670,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => "data",
             MutationKey = ["onmutate-await-test"],
@@ -723,7 +723,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) => "success-data"
         });
@@ -761,7 +761,7 @@ public sealed class MutationCacheTests
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
         var originalException = new ArgumentException("mutation failed");
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = (input, context, ct) => Task.FromException<string>(originalException),
             OnError = async (error, variables, context, functionContext) =>
@@ -800,7 +800,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache(config);
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, context, ct) =>
             {
@@ -822,7 +822,7 @@ public sealed class MutationCacheTests
     #region Subscribe and cache events
 
     /// <summary>
-    /// MutationCache.Build() should fire a MutationCacheAddedEvent to subscribers.
+    /// MutationCache.GetOrCreate() should fire a MutationCacheAddedEvent to subscribers.
     /// Mirrors TanStack's mutationCache.notify({ type: 'added' }) in the add() method.
     /// </summary>
     [Fact]
@@ -830,12 +830,12 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
+        var cache = client.MutationCache;
         var events = new List<MutationCacheNotifyEvent>();
         cache.Subscribe(e => events.Add(e));
 
         // Act
-        var mutation = cache.Build(client, DefaultOptions());
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
 
         // Assert
         var added = Assert.Single(events);
@@ -851,8 +851,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
         var events = new List<MutationCacheNotifyEvent>();
         cache.Subscribe(e => events.Add(e));
 
@@ -874,10 +874,10 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var m1 = cache.Build(client, DefaultOptions());
-        var m2 = cache.Build(client, DefaultOptions());
-        var m3 = cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        var m1 = cache.GetOrCreate(client, DefaultOptions());
+        var m2 = cache.GetOrCreate(client, DefaultOptions());
+        var m3 = cache.GetOrCreate(client, DefaultOptions());
         var events = new List<MutationCacheNotifyEvent>();
         cache.Subscribe(e => events.Add(e));
 
@@ -903,8 +903,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
         var actionTypes = new List<string>();
         cache.Subscribe(e =>
         {
@@ -928,8 +928,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = (_, _, _) => Task.FromException<string>(new InvalidOperationException("fail"))
         });
@@ -958,8 +958,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, DefaultOptions());
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, DefaultOptions());
         var events = new List<MutationCacheNotifyEvent>();
         cache.Subscribe(e => events.Add(e));
 
@@ -988,8 +988,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, _, _) => input.ToUpper()
         });
@@ -1013,8 +1013,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var cache = client.MutationCache;
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = (_, _, _) => Task.FromException<string>(new InvalidOperationException("boom"))
         });
@@ -1040,8 +1040,8 @@ public sealed class MutationCacheTests
     {
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetMutationCache();
-        cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var cache = client.MutationCache;
+        cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             MutationFn = async (input, _, _) => "result"
         });
@@ -1078,12 +1078,12 @@ public sealed class MutationCacheTests
         var cache = new MutationCache();
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation1 = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation1 = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             Scope = new MutationScope("scope1"),
             MutationFn = async (input, context, ct) => "data1"
         });
-        var mutation2 = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation2 = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             Scope = new MutationScope("scope1"),
             MutationFn = async (input, context, ct) => "data2"
@@ -1111,7 +1111,7 @@ public sealed class MutationCacheTests
         var cache = new MutationCache();
         var client = new QueryClient(new QueryCache(), mutationCache: cache);
 
-        var mutation = cache.Build(client, new MutationOptions<string, Exception, string, object?>
+        var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             Scope = new MutationScope("scope1"),
             MutationFn = async (input, context, ct) => "data"

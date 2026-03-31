@@ -63,6 +63,13 @@ public sealed class QueryClient : IDisposable
     /// </summary>
     internal QueryMetrics Metrics { get; }
 
+    /// <summary>
+    /// The <see cref="INotifyManager"/> used to batch observer notifications.
+    /// Each <see cref="QueryClient"/> owns its own instance so that independent
+    /// clients (e.g. separate Blazor Server circuits) do not share batching state.
+    /// </summary>
+    public INotifyManager NotifyManager { get; }
+
     public QueryClient(
         QueryCache queryCache,
         MutationCache? mutationCache = null,
@@ -80,8 +87,11 @@ public sealed class QueryClient : IDisposable
         MeterFactory = meterFactory;
         Metrics = new QueryMetrics(meterFactory);
         _queryCache.SetMetrics(Metrics);
-        _mutationCache = mutationCache ?? new MutationCache(loggerFactory: LoggerFactory);
+        _mutationCache = mutationCache ?? new MutationCache(null, LoggerFactory);
         _mutationCache.SetLoggerFactory(LoggerFactory);
+        NotifyManager = new NotifyManager();
+        _queryCache.SetNotifyManager(NotifyManager);
+        _mutationCache.SetNotifyManager(NotifyManager);
         TimeProvider = timeProvider ?? TimeProvider.System;
         FocusManager = focusManager ?? RabstackQuery.FocusManager.Instance;
         OnlineManager = onlineManager ?? RabstackQuery.OnlineManager.Instance;
@@ -104,7 +114,11 @@ public sealed class QueryClient : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
 
         FocusManager.FocusChanged -= OnFocusChanged;
@@ -120,7 +134,10 @@ public sealed class QueryClient : IDisposable
     private void OnFocusChanged(object? sender, EventArgs e)
     {
         _logger.FocusChanged(FocusManager.IsFocused);
-        if (!FocusManager.IsFocused) return;
+        if (!FocusManager.IsFocused)
+        {
+            return;
+        }
 
         try { ResumePausedMutations(); }
         catch (Exception ex) { _logger.ResumePausedMutationsErrorSwallowed(ex); }
@@ -132,7 +149,10 @@ public sealed class QueryClient : IDisposable
     private void OnOnlineChanged(object? sender, EventArgs e)
     {
         _logger.OnlineChanged(OnlineManager.IsOnline);
-        if (!OnlineManager.IsOnline) return;
+        if (!OnlineManager.IsOnline)
+        {
+            return;
+        }
 
         try { ResumePausedMutations(); }
         catch (Exception ex) { _logger.ResumePausedMutationsErrorSwallowed(ex); }
@@ -148,7 +168,11 @@ public sealed class QueryClient : IDisposable
     public void ResumePausedMutations()
     {
         ThrowIfDisposed();
-        if (!OnlineManager.IsOnline) return;
+        if (!OnlineManager.IsOnline)
+        {
+            return;
+        }
+
         _mutationCache.ResumePausedMutations();
     }
 
@@ -184,7 +208,7 @@ public sealed class QueryClient : IDisposable
             NetworkMode = options.NetworkMode ?? NetworkMode.Online,
         };
 
-        var query = _queryCache.Build<TData, TData>(this, queryOptions);
+        var query = _queryCache.GetOrCreate<TData, TData>(this, queryOptions);
         query.SetQueryFn(options.QueryFn);
 
         // If the cache has fresh data, return it directly.
@@ -312,7 +336,7 @@ public sealed class QueryClient : IDisposable
             Retry = options.Retry ?? 0
         };
 
-        var query = _queryCache.Build<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>>(this, queryOptions);
+        var query = _queryCache.GetOrCreate<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>>(this, queryOptions);
 
         // Build the InfiniteQueryObserverOptions that CreateFetchFn needs to wire
         // up page-fetching logic (QueryFn, InitialPageParam, GetNextPageParam, etc.).
@@ -424,49 +448,27 @@ public sealed class QueryClient : IDisposable
     }
 
     private bool IsDataStale(long dataUpdatedAt, TimeSpan staleTime, bool isInvalidated = false)
-    {
-        // Static = never stale, not even after invalidation.
-        // Mirrors TanStack's `if (staleTime === 'static') return false`.
-        if (staleTime == Timeout.InfiniteTimeSpan) return false;
-
-        if (staleTime == TimeSpan.Zero) return true;
-        if (isInvalidated) return true;
-        if (dataUpdatedAt == 0) return true;
-        var now = TimeProvider.GetUtcNowMs();
-        return (now - dataUpdatedAt) >= staleTime.TotalMilliseconds;
-    }
+        => QueryTimeDefaults.IsStale(dataUpdatedAt, staleTime, isInvalidated, TimeProvider.GetUtcNowMs());
 
     // ── Accessors ──────────────────────────────────────────────────
 
-    public QueryCache GetQueryCache()
+    public QueryCache QueryCache
     {
-        ThrowIfDisposed();
-        return _queryCache;
+        get { ThrowIfDisposed(); return _queryCache; }
     }
 
-    public MutationCache GetMutationCache()
+    public MutationCache MutationCache
     {
-        ThrowIfDisposed();
-        return _mutationCache;
-    }
-
-    /// <summary>
-    /// Sets global default options that apply to all queries.
-    /// </summary>
-    public void SetDefaultOptions(QueryClientDefaultOptions options)
-    {
-        ThrowIfDisposed();
-        _defaultOptions = options;
+        get { ThrowIfDisposed(); return _mutationCache; }
     }
 
     /// <summary>
-    /// Returns the global default options previously set via <see cref="SetDefaultOptions"/>,
-    /// or null if none have been set.
+    /// Global default options that apply to all queries.
     /// </summary>
-    public QueryClientDefaultOptions? GetDefaultOptions()
+    public QueryClientDefaultOptions? DefaultOptions
     {
-        ThrowIfDisposed();
-        return _defaultOptions;
+        get { ThrowIfDisposed(); return _defaultOptions; }
+        set { ThrowIfDisposed(); _defaultOptions = value; }
     }
 
     /// <summary>
@@ -476,6 +478,8 @@ public sealed class QueryClient : IDisposable
     /// </summary>
     public void SetQueryDefaults(QueryKey queryKey, QueryDefaults defaults)
     {
+        ArgumentNullException.ThrowIfNull(queryKey);
+        ArgumentNullException.ThrowIfNull(defaults);
         ThrowIfDisposed();
         // Replace existing defaults for this exact key, or append
         var index = _queryDefaults.FindIndex(d =>
@@ -494,9 +498,13 @@ public sealed class QueryClient : IDisposable
         };
 
         if (index >= 0)
+        {
             _queryDefaults[index] = entry;
+        }
         else
+        {
             _queryDefaults.Add(entry);
+        }
     }
 
     public QueryObserverOptions<TData, TQueryData> DefaultQueryOptions<TData, TQueryData>(
@@ -542,7 +550,7 @@ public sealed class QueryClient : IDisposable
             Select = options.Select,
             StaleTime = resolvedStaleTime,
             StaleTimeFn = options.StaleTimeFn,
-            CacheTime = options.CacheTime,
+            GcTime = options.GcTime,
             QueryFn = options.QueryFn,
             RefetchOnWindowFocus = refetchOnWindowFocus,
             RefetchOnReconnect = refetchOnReconnect,
@@ -563,7 +571,10 @@ public sealed class QueryClient : IDisposable
     public QueryConfiguration<TData> DefaultQueryOptions<TData>(QueryConfiguration<TData> options)
     {
         ThrowIfDisposed();
-        if (options.QueryKey is null) return options;
+        if (options.QueryKey is null)
+        {
+            return options;
+        }
 
         var keyDefaults = GetMergedQueryDefaults(options.QueryKey);
 
@@ -640,7 +651,9 @@ public sealed class QueryClient : IDisposable
         foreach (var defaults in _queryDefaults)
         {
             if (!QueryKeyMatcher.PartialMatchKey(queryKey, defaults.QueryKey))
+            {
                 continue;
+            }
 
             staleTime = defaults.StaleTime ?? staleTime;
             gcTime = defaults.GcTime ?? gcTime;
@@ -673,6 +686,8 @@ public sealed class QueryClient : IDisposable
     /// </summary>
     public void SetMutationDefaults(QueryKey mutationKey, MutationDefaults defaults)
     {
+        ArgumentNullException.ThrowIfNull(mutationKey);
+        ArgumentNullException.ThrowIfNull(defaults);
         ThrowIfDisposed();
         // Replace existing defaults for this exact key, or append
         var index = _mutationDefaults.FindIndex(d =>
@@ -688,9 +703,13 @@ public sealed class QueryClient : IDisposable
         };
 
         if (index >= 0)
+        {
             _mutationDefaults[index] = entry;
+        }
         else
+        {
             _mutationDefaults.Add(entry);
+        }
     }
 
     /// <summary>
@@ -702,7 +721,11 @@ public sealed class QueryClient : IDisposable
     {
         ThrowIfDisposed();
         var merged = GetMergedMutationDefaults(mutationKey);
-        if (merged is null) return null;
+        if (merged is null)
+        {
+            return null;
+        }
+
         return merged;
     }
 
@@ -716,7 +739,10 @@ public sealed class QueryClient : IDisposable
         where TError : Exception
     {
         ThrowIfDisposed();
-        if (options.Defaulted) return options;
+        if (options.Defaulted)
+        {
+            return options;
+        }
 
         var mutationKey = options.MutationKey;
         var keyDefaults = mutationKey is not null ? GetMergedMutationDefaults(mutationKey) : null;
@@ -736,17 +762,9 @@ public sealed class QueryClient : IDisposable
             ? options.NetworkMode
             : keyDefaults?.NetworkMode ?? NetworkMode.Online;
 
-        return new MutationOptions<TData, TError, TVariables, TOnMutateResult>
+        return options with
         {
-            MutationFn = options.MutationFn,
-            MutationKey = options.MutationKey,
-            Meta = options.Meta,
-            Scope = options.Scope,
             NetworkMode = networkMode,
-            OnMutate = options.OnMutate,
-            OnSuccess = options.OnSuccess,
-            OnError = options.OnError,
-            OnSettled = options.OnSettled,
             Retry = retry,
             RetryDelay = retryDelay,
             GcTime = gcTime,
@@ -770,7 +788,9 @@ public sealed class QueryClient : IDisposable
         foreach (var defaults in _mutationDefaults)
         {
             if (!QueryKeyMatcher.PartialMatchKey(mutationKey, defaults.MutationKey))
+            {
                 continue;
+            }
 
             found = true;
             retry = defaults.Retry ?? retry;
@@ -779,7 +799,10 @@ public sealed class QueryClient : IDisposable
             networkMode = defaults.NetworkMode ?? networkMode;
         }
 
-        if (!found) return null;
+        if (!found)
+        {
+            return null;
+        }
 
         return new MutationDefaults
         {
@@ -799,7 +822,7 @@ public sealed class QueryClient : IDisposable
     /// The returned task completes when all triggered refetches finish.
     /// Matches TanStack's async <c>invalidateQueries</c> semantics.
     /// </summary>
-    public async Task InvalidateQueries(
+    public async Task InvalidateQueriesAsync(
         InvalidateQueryFilters? filters = null,
         CancellationToken cancellationToken = default)
     {
@@ -809,7 +832,7 @@ public sealed class QueryClient : IDisposable
         // Batch<Task> starts refetch tasks inside the batch (so invalidation +
         // fetch-start notifications are batched together) and returns the Task
         // to await outside the batch.
-        var refetchTask = NotifyManager.Instance.Batch(() =>
+        var refetchTask = NotifyManager.Batch(() =>
         {
             foreach (var query in _queryCache.FindAll(filters))
             {
@@ -817,7 +840,9 @@ public sealed class QueryClient : IDisposable
             }
 
             if (filters?.RefetchType is InvalidateRefetchType.None)
+            {
                 return Task.CompletedTask;
+            }
 
             // Map InvalidateRefetchType → QueryTypeFilter for the refetch pass.
             // Default: Active (only queries with observers), matching TanStack's
@@ -831,7 +856,7 @@ public sealed class QueryClient : IDisposable
                 _ => QueryTypeFilter.Active
             };
 
-            return RefetchQueries(
+            return RefetchQueriesAsync(
                 new QueryFilters
                 {
                     QueryKey = filters?.QueryKey,
@@ -848,20 +873,26 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>Convenience overload that does a prefix match on the key.</summary>
-    public Task InvalidateQueries(QueryKey queryKey, CancellationToken cancellationToken = default)
+    public Task InvalidateQueriesAsync(QueryKey queryKey, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        return InvalidateQueries(new InvalidateQueryFilters { QueryKey = queryKey }, cancellationToken);
+        return InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = queryKey }, cancellationToken);
     }
+
+    /// <summary>
+    /// Refetches all queries.
+    /// </summary>
+    public Task RefetchQueriesAsync(CancellationToken cancellationToken = default)
+        => RefetchQueriesAsync(filters: null, cancellationToken);
 
     /// <summary>
     /// Refetches all queries matching the given filters.
     /// This immediately triggers a fetch regardless of stale status.
     /// </summary>
-    public Task RefetchQueries(QueryFilters? filters = null, CancellationToken cancellationToken = default)
+    public Task RefetchQueriesAsync(QueryFilters? filters, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        return RefetchQueries(filters, options: null, cancellationToken);
+        return RefetchQueriesAsync(filters, options: null, cancellationToken);
     }
 
     /// <summary>
@@ -869,7 +900,7 @@ public sealed class QueryClient : IDisposable
     /// <see cref="RefetchOptions"/> for <c>CancelRefetch</c> and <c>ThrowOnError</c>.
     /// Mirrors TanStack <c>queryClient.ts:319–338</c>.
     /// </summary>
-    public async Task RefetchQueries(QueryFilters? filters, RefetchOptions? options, CancellationToken cancellationToken = default)
+    public async Task RefetchQueriesAsync(QueryFilters? filters, RefetchOptions? options, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         _logger.RefetchQueries();
@@ -885,18 +916,22 @@ public sealed class QueryClient : IDisposable
 
                 // TanStack queryClient.ts:332–334 — resolve immediately for paused
                 // queries. Their retryer blocks on a TCS until the network is
-                // restored, so awaiting them would hang RefetchQueries indefinitely.
+                // restored, so awaiting them would hang RefetchQueriesAsync indefinitely.
                 // The check works because Retryer.ExecuteAsync fires OnPause
                 // synchronously before its first suspension point, so FetchStatus is
                 // already Paused by the time Fetch() returns the incomplete task.
                 if (q.CurrentFetchStatus is FetchStatus.Paused)
+                {
                     return Task.CompletedTask;
+                }
 
                 // TanStack queryClient.ts:332–337 — when throwOnError is true,
                 // let errors propagate through Task.WhenAll. Otherwise swallow
                 // per-query errors so one failure doesn't abort the batch.
                 if (options?.ThrowOnError is true)
+                {
                     return fetchTask;
+                }
 
                 // Matches TanStack's .catch(noop). Accessing t.Exception marks the
                 // exception as observed, preventing UnobservedTaskException events
@@ -909,20 +944,25 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>Backward-compatible overload that does a prefix match on the key.</summary>
-    public async Task RefetchQueries(QueryKey queryKey, CancellationToken cancellationToken = default)
+    public async Task RefetchQueriesAsync(QueryKey queryKey, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await RefetchQueries(new QueryFilters { QueryKey = queryKey }, cancellationToken);
+        await RefetchQueriesAsync(new QueryFilters { QueryKey = queryKey }, cancellationToken);
     }
+
+    /// <summary>
+    /// Removes all queries from the cache.
+    /// </summary>
+    public void RemoveQueries() => RemoveQueries(null);
 
     /// <summary>
     /// Removes all queries matching the given filters from the cache.
     /// </summary>
-    public void RemoveQueries(QueryFilters? filters = null)
+    public void RemoveQueries(QueryFilters? filters)
     {
         ThrowIfDisposed();
         _logger.RemoveQueries();
-        NotifyManager.Instance.Batch(() =>
+        NotifyManager.Batch(() =>
         {
             foreach (var query in _queryCache.FindAll(filters).ToList())
             {
@@ -932,14 +972,20 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
+    /// Resets all queries to their initial state.
+    /// Active queries (with observers) are refetched after reset.
+    /// </summary>
+    public void ResetQueries() => ResetQueries(null);
+
+    /// <summary>
     /// Resets all queries matching the given filters to their initial state.
     /// Active queries (with observers) are refetched after reset.
     /// </summary>
-    public void ResetQueries(QueryFilters? filters = null)
+    public void ResetQueries(QueryFilters? filters)
     {
         ThrowIfDisposed();
         _logger.ResetQueries();
-        NotifyManager.Instance.Batch(() =>
+        NotifyManager.Batch(() =>
         {
             foreach (var query in _queryCache.FindAll(filters))
             {
@@ -958,14 +1004,25 @@ public sealed class QueryClient : IDisposable
     /// Returns the data for all queries matching the given filters as
     /// (QueryKey, TData) tuples.
     /// </summary>
+    /// <inheritdoc cref="GetQueriesData{TData}(QueryFilters?)"/>
     // TData? in the tuple is unavoidable: QueryState<TData>.Data is TData?
     // and the generic is unconstrained, so the compiler can't narrow it.
-    public IEnumerable<(QueryKey Key, TData? Data)> GetQueriesData<TData>(QueryFilters? filters = null)
+    public IEnumerable<(QueryKey Key, TData? Data)> GetQueriesData<TData>()
+        => GetQueriesData<TData>(null);
+
+    /// <inheritdoc/>
+    // TData? in the tuple is unavoidable: QueryState<TData>.Data is TData?
+    // and the generic is unconstrained, so the compiler can't narrow it.
+    public IEnumerable<(QueryKey Key, TData? Data)> GetQueriesData<TData>(QueryFilters? filters)
     {
         ThrowIfDisposed();
         foreach (var query in _queryCache.FindAll(filters).OfType<Query<TData>>())
         {
-            if (query.QueryKey is not { } key) continue;
+            if (query.QueryKey is not { } key)
+            {
+                continue;
+            }
+
             yield return (key, query.State is not null ? query.State.Data : default);
         }
     }
@@ -975,19 +1032,30 @@ public sealed class QueryClient : IDisposable
     /// </summary>
     public void SetQueriesData<TData>(QueryFilters filters, Func<TData?, TData> updater)
     {
+        ArgumentNullException.ThrowIfNull(filters);
+        ArgumentNullException.ThrowIfNull(updater);
         ThrowIfDisposed();
         foreach (var query in _queryCache.FindAll(filters).OfType<Query<TData>>())
         {
-            if (query.QueryKey is not { } key) continue;
+            if (query.QueryKey is not { } key)
+            {
+                continue;
+            }
+
             var current = query.State is not null ? query.State.Data : default;
             SetQueryData(key, updater(current));
         }
     }
 
     /// <summary>
+    /// Returns the number of queries currently fetching.
+    /// </summary>
+    public int IsFetching() => IsFetching(null);
+
+    /// <summary>
     /// Returns the number of queries currently fetching that match the filters.
     /// </summary>
-    public int IsFetching(QueryFilters? filters = null)
+    public int IsFetching(QueryFilters? filters)
     {
         ThrowIfDisposed();
         var fetchingFilter = new QueryFilters
@@ -1004,9 +1072,14 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
+    /// Returns the number of mutations currently pending.
+    /// </summary>
+    public int IsMutating() => IsMutating(null);
+
+    /// <summary>
     /// Returns the number of mutations currently pending that match the filters.
     /// </summary>
-    public int IsMutating(MutationFilters? filters = null)
+    public int IsMutating(MutationFilters? filters)
     {
         ThrowIfDisposed();
         var pendingFilter = filters is not null
@@ -1046,7 +1119,7 @@ public sealed class QueryClient : IDisposable
     ///         OnError = (error, variables) =>
     ///         {
     ///             // Rollback on error
-    ///             await client.InvalidateQueries(["todos"]);
+    ///             await client.InvalidateQueriesAsync(["todos"]);
     ///         }
     ///     }
     /// );
@@ -1059,6 +1132,7 @@ public sealed class QueryClient : IDisposable
     // require threading the option through QueryConfiguration.
     public void SetQueryData<TData>(QueryKey queryKey, TData data)
     {
+        ArgumentNullException.ThrowIfNull(queryKey);
         ThrowIfDisposed();
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
         _logger.SetQueryData(queryHash, existed: _queryCache.Get<TData>(queryHash) is not null);
@@ -1070,7 +1144,10 @@ public sealed class QueryClient : IDisposable
             // TanStack's setQueryData is a no-op when data is undefined (null in C#).
             // This prevents accidental creation of Succeeded queries with null data
             // and avoids overwriting existing data with null.
-            if (data is null) return;
+            if (data is null)
+            {
+                return;
+            }
 
             var now = TimeProvider.GetUtcNowMs();
 
@@ -1103,7 +1180,10 @@ public sealed class QueryClient : IDisposable
         {
             // TanStack's setQueryData is a no-op when data is undefined for a
             // nonexistent query — it does not create a cache entry with null data.
-            if (data is null) return;
+            if (data is null)
+            {
+                return;
+            }
 
             // Query doesn't exist yet, create it via Build with an explicit initial
             // state. Deliberately omit InitialData on the options — data set through
@@ -1135,12 +1215,14 @@ public sealed class QueryClient : IDisposable
                 FetchStatus = FetchStatus.Idle
             };
 
-            _queryCache.Build<TData, TData>(this, options, initialState);
+            _queryCache.GetOrCreate<TData, TData>(this, options, initialState);
         }
     }
 
     public void SetQueryData<TData>(QueryKey queryKey, Func<TData?, TData> updater)
     {
+        ArgumentNullException.ThrowIfNull(queryKey);
+        ArgumentNullException.ThrowIfNull(updater);
         ThrowIfDisposed();
         var currentData = GetQueryData<TData>(queryKey);
         var newData = updater(currentData);
@@ -1165,6 +1247,7 @@ public sealed class QueryClient : IDisposable
     /// </example>
     public TData GetQueryData<TData>(QueryKey queryKey)
     {
+        ArgumentNullException.ThrowIfNull(queryKey);
         ThrowIfDisposed();
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(queryKey);
 
@@ -1237,10 +1320,21 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
+    /// Cancels in-flight fetches for all queries, reverting state to pre-fetch snapshots.
+    /// </summary>
+    public Task CancelQueriesAsync() => CancelQueriesAsync(null, null);
+
+    /// <summary>
+    /// Cancels in-flight fetches for all queries matching the given filters,
+    /// reverting state to pre-fetch snapshots.
+    /// </summary>
+    public Task CancelQueriesAsync(QueryFilters? filters) => CancelQueriesAsync(filters, null);
+
+    /// <summary>
     /// Cancels in-flight fetches for all queries matching the given filters.
     /// By default, reverts query state to its pre-fetch snapshot.
     /// </summary>
-    public async Task CancelQueriesAsync(QueryFilters? filters = null, CancelOptions? options = null)
+    public async Task CancelQueriesAsync(QueryFilters? filters, CancelOptions? options)
     {
         ThrowIfDisposed();
         _logger.CancelQueries();
@@ -1271,7 +1365,11 @@ public sealed class QueryClient : IDisposable
     /// and error redaction (<see cref="DehydrateOptions.ShouldRedactErrors"/>) are
     /// supported; see <see cref="HydrateOptions.DeserializeData"/> for the reverse path.
     /// </remarks>
-    public DehydratedState Dehydrate(DehydrateOptions? options = null)
+    /// <inheritdoc cref="Dehydrate(DehydrateOptions?)"/>
+    public DehydratedState Dehydrate() => Dehydrate(null);
+
+    /// <inheritdoc/>
+    public DehydratedState Dehydrate(DehydrateOptions? options)
     {
         ThrowIfDisposed();
         // Resolve each property independently so that passing options with only
@@ -1332,16 +1430,18 @@ public sealed class QueryClient : IDisposable
             ? serializeData(state.Data) : state.Data;
 
         var error = state.Error is not null && shouldRedactErrors(state.Error)
-            ? new Exception("redacted") : state.Error;
+            ? new RedactedException() : state.Error;
 
         var failureReason = state.FetchFailureReason is not null && shouldRedactErrors(state.FetchFailureReason)
-            ? new Exception("redacted") : state.FetchFailureReason;
+            ? new RedactedException() : state.FetchFailureReason;
 
         // Short-circuit: nothing changed, return original to avoid allocation.
         if (ReferenceEquals(data, state.Data)
             && ReferenceEquals(error, state.Error)
             && ReferenceEquals(failureReason, state.FetchFailureReason))
+        {
             return original;
+        }
 
         return new DehydratedQuery
         {
@@ -1384,17 +1484,24 @@ public sealed class QueryClient : IDisposable
     /// mutations are batched via <see cref="NotifyManager"/> to coalesce
     /// observer notifications.
     /// </remarks>
-    public void Hydrate(DehydratedState? state, HydrateOptions? options = null)
+    /// <inheritdoc cref="Hydrate(DehydratedState?, HydrateOptions?)"/>
+    public void Hydrate(DehydratedState? state) => Hydrate(state, null);
+
+    /// <inheritdoc/>
+    public void Hydrate(DehydratedState? state, HydrateOptions? options)
     {
         ThrowIfDisposed();
-        if (state is null) return;
+        if (state is null)
+        {
+            return;
+        }
 
         // Resolve each property independently (same pattern as Dehydrate).
         var queryDefaults = options?.Queries ?? _defaultOptions?.Hydrate?.Queries;
         var mutationDefaults = options?.Mutations ?? _defaultOptions?.Hydrate?.Mutations;
         var deserializeData = options?.DeserializeData ?? _defaultOptions?.Hydrate?.DeserializeData;
 
-        NotifyManager.Instance.Batch(() =>
+        NotifyManager.Batch(() =>
         {
             // ── Mutations ────────────────────────────────────────────
             foreach (var dehydratedMutation in state.Mutations)
@@ -1423,7 +1530,7 @@ public sealed class QueryClient : IDisposable
                     MutationFn = mutationDefaults?.MutationFn,
                 };
 
-                _mutationCache.Build(this, mutationOptions, mutationState);
+                _mutationCache.GetOrCreate(this, mutationOptions, mutationState);
             }
 
             // ── Queries ──────────────────────────────────────────────
@@ -1433,7 +1540,9 @@ public sealed class QueryClient : IDisposable
             {
                 var dehydratedData = dehydratedQuery.State.Data;
                 if (dehydratedData is not null && deserializeData is not null)
+                {
                     dehydratedData = deserializeData(dehydratedData);
+                }
 
                 var existing = queryCache.GetByHash(dehydratedQuery.QueryHash);
 

@@ -1,4 +1,4 @@
-namespace RabstackQuery.Tests;
+namespace RabstackQuery;
 
 /// <summary>
 /// Tests for QueryClient refetchQueries, invalidateQueries, resetQueries, and related
@@ -48,7 +48,7 @@ public sealed class QueryClientRefetchTests
     #region refetchQueries
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_All_Queries_When_No_Filters()
+    public async Task RefetchQueriesAsync_Should_Refetch_All_Queries_When_No_Filters()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -95,7 +95,7 @@ public sealed class QueryClientRefetchTests
             initial2.Task.WaitAsync(TimeSpan.FromSeconds(5)));
 
         // Act
-        await client.RefetchQueries(filters: null);
+        await client.RefetchQueriesAsync(filters: null);
         await Task.WhenAll(
             refetch1.Task.WaitAsync(TimeSpan.FromSeconds(5)),
             refetch2.Task.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -109,7 +109,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Only_Refetch_Matching_Key_Prefix()
+    public async Task RefetchQueriesAsync_Should_Only_Refetch_Matching_Key_Prefix()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -156,7 +156,7 @@ public sealed class QueryClientRefetchTests
         var usersCountBefore = usersFetchCount;
 
         // Act — only refetch queries with "todos" prefix
-        await client.RefetchQueries(["todos"]);
+        await client.RefetchQueriesAsync(["todos"]);
         await todosRefetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -168,7 +168,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_Active_Queries_Only_With_TypeFilter()
+    public async Task RefetchQueriesAsync_Should_Refetch_Active_Queries_Only_With_TypeFilter()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -198,7 +198,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["inactive-query"], "inactive-data");
 
         // Act — refetch only active queries
-        await client.RefetchQueries(new QueryFilters { Type = QueryTypeFilter.Active });
+        await client.RefetchQueriesAsync(new QueryFilters { Type = QueryTypeFilter.Active });
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -209,11 +209,11 @@ public sealed class QueryClientRefetchTests
     }
 
     /// <summary>
-    /// RefetchQueries skips disabled queries (no query function or no observers).
+    /// RefetchQueriesAsync skips disabled queries (no query function or no observers).
     /// A query created via SetQueryData with no query function should not crash.
     /// </summary>
     [Fact]
-    public async Task RefetchQueries_Should_Not_Refetch_Inactive_Queries_By_Default()
+    public async Task RefetchQueriesAsync_Should_Not_Refetch_Inactive_Queries_By_Default()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -221,17 +221,17 @@ public sealed class QueryClientRefetchTests
         // Create an inactive query (data only, no observer)
         client.SetQueryData(["inactive"], "data");
 
-        // Act — RefetchQueries without type filter still only refetches queries
+        // Act — RefetchQueriesAsync without type filter still only refetches queries
         // that have a query function
         var exception = await Record.ExceptionAsync(() =>
-            client.RefetchQueries(new QueryFilters { QueryKey = ["inactive"] }));
+            client.RefetchQueriesAsync(new QueryFilters { QueryKey = ["inactive"] }));
 
         // Assert — should not crash
         Assert.Null(exception);
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Not_Refetch_If_All_Observers_Disabled()
+    public async Task RefetchQueriesAsync_Should_Not_Refetch_If_All_Observers_Disabled()
     {
         // TanStack line 1066: disabled queries should not be refetched
         // Arrange
@@ -255,7 +255,7 @@ public sealed class QueryClientRefetchTests
         await Task.Delay(50); // Ensure disabled query doesn't auto-fetch
 
         // Act
-        await client.RefetchQueries(new QueryFilters { QueryKey = ["disabled-query"] });
+        await client.RefetchQueriesAsync(new QueryFilters { QueryKey = ["disabled-query"] });
         await Task.Delay(100);
 
         // Assert — disabled observer means the query is disabled, so no refetch
@@ -265,7 +265,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public void RefetchQueries_Should_Not_Skip_Query_When_Mix_Of_Enabled_And_Disabled_Observers()
+    public void RefetchQueriesAsync_Should_Not_Skip_Query_When_Mix_Of_Enabled_And_Disabled_Observers()
     {
         // TanStack line 1082: a query with at least one enabled observer should
         // be considered active (not disabled or static) and should be eligible for
@@ -276,7 +276,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["mixed-observers"], "seeded");
 
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["mixed-observers"]);
-        var query = client.GetQueryCache().Get<string>(hash)!;
+        var query = client.QueryCache.Get<string>(hash)!;
 
         // Add an enabled observer
         var enabledObserver = new QueryObserver<string, string>(
@@ -312,7 +312,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_All_Stale_Queries()
+    public async Task RefetchQueriesAsync_Should_Refetch_All_Stale_Queries()
     {
         // TanStack line 1160: filter { Stale = true } should refetch stale queries
         // Arrange
@@ -342,7 +342,7 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act — refetch only stale queries
-        await client.RefetchQueries(new QueryFilters { Stale = true });
+        await client.RefetchQueriesAsync(new QueryFilters { Stale = true });
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -352,7 +352,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_Only_Active_Queries()
+    public async Task RefetchQueriesAsync_Should_Refetch_Only_Active_Queries()
     {
         // TanStack line 1256: Type=Active should only refetch queries with observers
         // Arrange
@@ -382,8 +382,8 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Inactive query (no observer, just seeded data with a query function)
-        var cache = client.GetQueryCache();
-        var inactiveQuery = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var inactiveQuery = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["inactive"], GcTime = TimeSpan.FromMinutes(5) });
         inactiveQuery.SetQueryFn(async _ =>
         {
@@ -393,7 +393,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["inactive"], "initial");
 
         // Act — refetch only active queries
-        await client.RefetchQueries(new QueryFilters { Type = QueryTypeFilter.Active });
+        await client.RefetchQueriesAsync(new QueryFilters { Type = QueryTypeFilter.Active });
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -404,7 +404,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_Only_Inactive_Queries()
+    public async Task RefetchQueriesAsync_Should_Refetch_Only_Inactive_Queries()
     {
         // TanStack line 1279: Type=Inactive should only refetch queries without observers
         // Arrange
@@ -433,8 +433,8 @@ public sealed class QueryClientRefetchTests
         var activeCountBefore = activeFetchCount;
 
         // Inactive query
-        var cache = client.GetQueryCache();
-        var inactiveQuery = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var inactiveQuery = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["inactive"], GcTime = TimeSpan.FromMinutes(5) });
         inactiveQuery.SetQueryFn(async _ =>
         {
@@ -444,7 +444,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["inactive"], "initial");
 
         // Act — refetch only inactive queries
-        await client.RefetchQueries(new QueryFilters { Type = QueryTypeFilter.Inactive });
+        await client.RefetchQueriesAsync(new QueryFilters { Type = QueryTypeFilter.Inactive });
 
         // Assert — active should NOT be refetched, inactive should
         Assert.Equal(activeCountBefore, activeFetchCount);
@@ -454,7 +454,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Not_Refetch_Static_Queries()
+    public async Task RefetchQueriesAsync_Should_Not_Refetch_Static_Queries()
     {
         // TanStack line 1355: queries with StaleTime=Infinity are static and should be skipped
         // Arrange
@@ -482,7 +482,7 @@ public sealed class QueryClientRefetchTests
         var countBefore = fetchCount;
 
         // Act
-        await client.RefetchQueries();
+        await client.RefetchQueriesAsync();
         await Task.Delay(100);
 
         // Assert — static queries should not be refetched
@@ -492,7 +492,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Not_Start_Fetch_For_Paused_Queries()
+    public async Task RefetchQueriesAsync_Should_Not_Start_Fetch_For_Paused_Queries()
     {
         // TanStack line 1324: when offline with NetworkMode.Online, the query
         // should pause and not actually execute the query function.
@@ -528,16 +528,16 @@ public sealed class QueryClientRefetchTests
 
         // Verify the query is in a paused fetch state
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["offline-query"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.Equal(FetchStatus.Paused, query!.State!.FetchStatus);
 
         sub.Dispose();
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Complete_When_Paused_Queries_Are_In_Result_Set()
+    public async Task RefetchQueriesAsync_Should_Complete_When_Paused_Queries_Are_In_Result_Set()
     {
-        // Regression: RefetchQueries hung when paused queries were included
+        // Regression: RefetchQueriesAsync hung when paused queries were included
         // because their retryer blocks on a TCS indefinitely. TanStack
         // queryClient.ts:332–334 resolves immediately for paused queries.
         // Arrange
@@ -558,20 +558,20 @@ public sealed class QueryClientRefetchTests
         var sub = observer.Subscribe(_ => { });
         await Task.Delay(100);
 
-        // Act — RefetchQueries must complete, not hang on the paused query's TCS.
+        // Act — RefetchQueriesAsync must complete, not hang on the paused query's TCS.
         // WaitAsync guards against the pre-fix hang.
-        var refetchTask = client.RefetchQueries();
+        var refetchTask = client.RefetchQueriesAsync();
         await refetchTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Assert — if we got here, RefetchQueries completed instead of hanging
+        // Assert — if we got here, RefetchQueriesAsync completed instead of hanging
         sub.Dispose();
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Not_Throw_For_QueryFnLess_Query_With_Observers()
+    public async Task RefetchQueriesAsync_Should_Not_Throw_For_QueryFnLess_Query_With_Observers()
     {
         // Regression: SetQueryData queries that later gain observers (making
-        // them active) have no query function. RefetchQueries must not surface
+        // them active) have no query function. RefetchQueriesAsync must not surface
         // the "Query function is not set" exception to callers.
         // Arrange
         var client = CreateQueryClient();
@@ -590,7 +590,7 @@ public sealed class QueryClientRefetchTests
         var sub = observer.Subscribe(_ => { });
 
         // Act
-        var exception = await Record.ExceptionAsync(() => client.RefetchQueries());
+        var exception = await Record.ExceptionAsync(() => client.RefetchQueriesAsync());
 
         // Assert
         Assert.Null(exception);
@@ -599,7 +599,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_When_Offline_With_NetworkMode_Always()
+    public async Task RefetchQueriesAsync_Should_Refetch_When_Offline_With_NetworkMode_Always()
     {
         // TanStack line 1340: NetworkMode.Always queries should refetch even when offline
         // Arrange
@@ -631,7 +631,7 @@ public sealed class QueryClientRefetchTests
         Assert.True(countAfterInitial >= 1, "NetworkMode.Always should fetch even offline");
 
         // Act — refetch while offline
-        await client.RefetchQueries(new QueryFilters { QueryKey = ["always-network"] });
+        await client.RefetchQueriesAsync(new QueryFilters { QueryKey = ["always-network"] });
         await refetchDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -641,7 +641,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_Should_Refetch_All_Fresh_Active_Queries()
+    public async Task RefetchQueriesAsync_Should_Refetch_All_Fresh_Active_Queries()
     {
         // TanStack line 1137: refetchQueries({type:'active', stale:false}) should
         // only refetch active queries with fresh data. Inactive queries are skipped.
@@ -684,7 +684,7 @@ public sealed class QueryClientRefetchTests
         await Task.Delay(50);
 
         // Act
-        await client.RefetchQueries(new QueryFilters
+        await client.RefetchQueriesAsync(new QueryFilters
         {
             Type = QueryTypeFilter.Active,
             Stale = false
@@ -702,7 +702,7 @@ public sealed class QueryClientRefetchTests
     #region CancelRefetch_and_ThrowOnError
 
     [Fact]
-    public async Task RefetchQueries_CancelRefetchTrue_CancelsInFlightFetch()
+    public async Task RefetchQueriesAsync_CancelRefetchTrue_CancelsInFlightFetch()
     {
         // TanStack ref: queryClient.test.tsx:1541-1562
         // CancelRefetch=true should cancel the in-flight fetch and start a new one.
@@ -719,7 +719,7 @@ public sealed class QueryClientRefetchTests
         // Get the query from cache and set its query function so Fetch() has
         // something to run. The function blocks on a TCS so we can control timing.
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["cancel-test"]);
-        var query = client.GetQueryCache().Get<string>(hash)!;
+        var query = client.QueryCache.Get<string>(hash)!;
         query.SetQueryFn(async ctx =>
         {
             var c = Interlocked.Increment(ref fetchCount);
@@ -738,9 +738,9 @@ public sealed class QueryClientRefetchTests
         await firstFetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, fetchCount);
 
-        // Act — RefetchQueries with CancelRefetch=true should cancel that fetch
+        // Act — RefetchQueriesAsync with CancelRefetch=true should cancel that fetch
         // and start a new one
-        var refetchTask = client.RefetchQueries(
+        var refetchTask = client.RefetchQueriesAsync(
             new QueryFilters { QueryKey = ["cancel-test"] },
             new RefetchOptions { CancelRefetch = true });
 
@@ -755,7 +755,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_CancelRefetchFalse_DeduplicatesInFlightFetch()
+    public async Task RefetchQueriesAsync_CancelRefetchFalse_DeduplicatesInFlightFetch()
     {
         // TanStack ref: queryClient.test.tsx:1564-1586
         // CancelRefetch=false should deduplicate: the original in-flight fetch
@@ -769,7 +769,7 @@ public sealed class QueryClientRefetchTests
         var fetchGate = new TaskCompletionSource<string>();
 
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["dedup-test"]);
-        var query = client.GetQueryCache().Get<string>(hash)!;
+        var query = client.QueryCache.Get<string>(hash)!;
         query.SetQueryFn(async ctx =>
         {
             Interlocked.Increment(ref fetchCount);
@@ -782,8 +782,8 @@ public sealed class QueryClientRefetchTests
         await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, fetchCount);
 
-        // Act — RefetchQueries with CancelRefetch=false should NOT cancel
-        var refetchTask = client.RefetchQueries(
+        // Act — RefetchQueriesAsync with CancelRefetch=false should NOT cancel
+        var refetchTask = client.RefetchQueriesAsync(
             new QueryFilters { QueryKey = ["dedup-test"] },
             new RefetchOptions { CancelRefetch = false });
 
@@ -796,18 +796,18 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_ThrowOnErrorTrue_PropagatesErrors()
+    public async Task RefetchQueriesAsync_ThrowOnErrorTrue_PropagatesErrors()
     {
         // TanStack ref: queryClient.test.tsx:1302-1320
         // ThrowOnError=true should propagate query function errors to the caller
         // via AggregateException from Task.WhenAll.
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Build the query with Retry=0 so failures are immediate, then seed
         // it with data so it counts as non-empty.
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["throw-test"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
         client.SetQueryData(["throw-test"], "seeded");
 
@@ -830,7 +830,7 @@ public sealed class QueryClientRefetchTests
         // directly. The underlying AggregateException is still accessible via the
         // Task.Exception property, but await surfaces the first inner exception.
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.RefetchQueries(
+            client.RefetchQueriesAsync(
                 new QueryFilters { QueryKey = ["throw-test"] },
                 new RefetchOptions { ThrowOnError = true }));
 
@@ -838,15 +838,15 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_ThrowOnErrorFalse_SuppressesErrors()
+    public async Task RefetchQueriesAsync_ThrowOnErrorFalse_SuppressesErrors()
     {
         // Inverse of the ThrowOnError=true test: errors are swallowed by default.
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
         // Build the query with Retry=0 so failures are immediate, then seed data.
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["suppress-test"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
         client.SetQueryData(["suppress-test"], "seeded");
 
@@ -866,7 +866,7 @@ public sealed class QueryClientRefetchTests
 
         // Act — ThrowOnError=false, so no exception should propagate
         var exception = await Record.ExceptionAsync(() =>
-            client.RefetchQueries(
+            client.RefetchQueriesAsync(
                 new QueryFilters { QueryKey = ["suppress-test"] },
                 new RefetchOptions { ThrowOnError = false }));
 
@@ -894,7 +894,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task RefetchQueries_TypeAll_RefetchesBothActiveAndInactive()
+    public async Task RefetchQueriesAsync_TypeAll_RefetchesBothActiveAndInactive()
     {
         // TanStack ref: queryClient.test.tsx:1233-1254
         // Type=All should refetch both active (with observers) and inactive
@@ -926,8 +926,8 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Inactive query — seed data and set a query function, but no observer
-        var cache = client.GetQueryCache();
-        var inactiveQuery = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var inactiveQuery = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["type-all", "inactive"], GcTime = TimeSpan.FromMinutes(5) });
         inactiveQuery.SetQueryFn(async _ =>
         {
@@ -939,7 +939,7 @@ public sealed class QueryClientRefetchTests
         var activeCountBefore = activeFetchCount;
 
         // Act — refetch all queries (both active and inactive)
-        await client.RefetchQueries(new QueryFilters { Type = QueryTypeFilter.All });
+        await client.RefetchQueriesAsync(new QueryFilters { Type = QueryTypeFilter.All });
 
         await activeRefetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -963,7 +963,7 @@ public sealed class QueryClientRefetchTests
         var client = new QueryClient(queryCache, focusManager: focusManager);
 
         // Build the query with Retry=0 so the failing refetch doesn't retry
-        var query = queryCache.Build<string, string>(client,
+        var query = queryCache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["focus-throw"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
 
         var initialFetch = new TaskCompletionSource();
@@ -1011,7 +1011,7 @@ public sealed class QueryClientRefetchTests
     #region invalidateQueries
 
     [Fact]
-    public async Task InvalidateQueries_With_Null_Filters_Should_Invalidate_All()
+    public async Task InvalidateQueriesAsync_With_Null_Filters_Should_Invalidate_All()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1019,18 +1019,18 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["users"], "users-data");
 
         // Act
-        await client.InvalidateQueries(filters: null);
+        await client.InvalidateQueriesAsync(filters: null);
 
         // Assert
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         foreach (var query in cache.GetAll())
         {
-            Assert.True(query.IsStale(), "All queries should be stale after InvalidateQueries(null)");
+            Assert.True(query.IsStale(), "All queries should be stale after InvalidateQueriesAsync(null)");
         }
     }
 
     [Fact]
-    public async Task InvalidateQueries_With_Exact_Match_Should_Only_Invalidate_Exact_Key()
+    public async Task InvalidateQueriesAsync_With_Exact_Match_Should_Only_Invalidate_Exact_Key()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1038,21 +1038,21 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["todos", 1], "child");
 
         // Act — invalidate only the exact ["todos"] key
-        await client.InvalidateQueries(new InvalidateQueryFilters { QueryKey = ["todos"], Exact = true });
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = ["todos"], Exact = true });
 
         // Assert
         var parentHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
         var childHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos", 1]);
 
-        var parentQuery = client.GetQueryCache().Get<string>(parentHash);
-        var childQuery = client.GetQueryCache().Get<string>(childHash);
+        var parentQuery = client.QueryCache.Get<string>(parentHash);
+        var childQuery = client.QueryCache.Get<string>(childHash);
 
         Assert.True(parentQuery!.State!.IsInvalidated, "Exact-match query should be invalidated");
         Assert.False(childQuery!.State!.IsInvalidated, "Child query should NOT be invalidated by exact match");
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Trigger_Refetch_On_Active_Observers_By_Default()
+    public async Task InvalidateQueriesAsync_Should_Trigger_Refetch_On_Active_Observers_By_Default()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1079,7 +1079,7 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act
-        await client.InvalidateQueries(["todos"]);
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert — invalidation triggers refetch on active queries
         Assert.True(fetchCount >= 2);
@@ -1088,24 +1088,24 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Not_Refetch_Inactive_Queries()
+    public async Task InvalidateQueriesAsync_Should_Not_Refetch_Inactive_Queries()
     {
         // Arrange
         var client = CreateQueryClient();
         client.SetQueryData(["todos"], "data");
 
         // Act — invalidate without observers
-        await client.InvalidateQueries(["todos"]);
+        await client.InvalidateQueriesAsync(["todos"]);
 
         // Assert — query should be invalidated but fetch status remains idle
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.True(query!.State!.IsInvalidated);
         Assert.Equal(FetchStatus.Idle, query.State.FetchStatus);
     }
 
     [Fact]
-    public async Task InvalidateQueries_With_RefetchType_None_Should_Not_Refetch()
+    public async Task InvalidateQueriesAsync_With_RefetchType_None_Should_Not_Refetch()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1129,7 +1129,7 @@ public sealed class QueryClientRefetchTests
         var countAfterInitial = fetchCount;
 
         // Act — invalidate with RefetchType.None
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             QueryKey = ["todos"],
             RefetchType = InvalidateRefetchType.None
@@ -1137,7 +1137,7 @@ public sealed class QueryClientRefetchTests
 
         // Assert — query is invalidated but no refetch was triggered
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.True(query!.State!.IsInvalidated);
         Assert.Equal(countAfterInitial, fetchCount);
 
@@ -1145,7 +1145,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_With_RefetchType_Inactive_Should_Refetch_Inactive_Only()
+    public async Task InvalidateQueriesAsync_With_RefetchType_Inactive_Should_Refetch_Inactive_Only()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1169,8 +1169,8 @@ public sealed class QueryClientRefetchTests
         await Task.Delay(50);
 
         // Inactive query (no observer — set data directly)
-        var cache = client.GetQueryCache();
-        var inactiveQuery = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var inactiveQuery = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["inactive"], GcTime = TimeSpan.FromMinutes(5) });
         inactiveQuery.SetQueryFn(async _ =>
         {
@@ -1184,7 +1184,7 @@ public sealed class QueryClientRefetchTests
         var inactiveCountBefore = inactiveFetchCount;
 
         // Act — refetch only inactive queries
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             RefetchType = InvalidateRefetchType.Inactive
         });
@@ -1198,7 +1198,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_With_RefetchType_All_Should_Refetch_All()
+    public async Task InvalidateQueriesAsync_With_RefetchType_All_Should_Refetch_All()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1222,8 +1222,8 @@ public sealed class QueryClientRefetchTests
         await Task.Delay(50);
 
         // Inactive query
-        var cache = client.GetQueryCache();
-        var inactiveQuery = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var inactiveQuery = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["inactive"], GcTime = TimeSpan.FromMinutes(5) });
         inactiveQuery.SetQueryFn(async _ =>
         {
@@ -1236,7 +1236,7 @@ public sealed class QueryClientRefetchTests
         var inactiveCountBefore = inactiveFetchCount;
 
         // Act — refetch all queries
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             RefetchType = InvalidateRefetchType.All
         });
@@ -1251,7 +1251,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Returns_Task_That_Completes_After_Refetches()
+    public async Task InvalidateQueriesAsync_Returns_Task_That_Completes_After_Refetches()
     {
         // Arrange — gate the query function on a TCS so we can verify the
         // returned Task doesn't complete until the refetch finishes.
@@ -1281,14 +1281,14 @@ public sealed class QueryClientRefetchTests
         await Task.Delay(50);
 
         // Act
-        var invalidateTask = client.InvalidateQueries(["gated"]);
+        var invalidateTask = client.InvalidateQueriesAsync(["gated"]);
 
         // Wait for the refetch to actually start
         await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — the task should NOT be complete while the refetch is blocked
         Assert.False(invalidateTask.IsCompleted,
-            "InvalidateQueries should not complete until refetches finish");
+            "InvalidateQueriesAsync should not complete until refetches finish");
 
         // Release the refetch
         tcs.SetResult("refetched");
@@ -1300,7 +1300,7 @@ public sealed class QueryClientRefetchTests
     }
 
     [Fact]
-    public async Task InvalidateQueries_Should_Not_Refetch_Disabled_Inactive_Even_With_RefetchType_All()
+    public async Task InvalidateQueriesAsync_Should_Not_Refetch_Disabled_Inactive_Even_With_RefetchType_All()
     {
         // TanStack line 1501: invalidating with RefetchType=All should still not
         // refetch a disabled, inactive query. The guard `!q.IsDisabled()` at
@@ -1328,7 +1328,7 @@ public sealed class QueryClientRefetchTests
         sub.Dispose();
 
         // Act
-        await client.InvalidateQueries(new InvalidateQueryFilters
+        await client.InvalidateQueriesAsync(new InvalidateQueryFilters
         {
             RefetchType = InvalidateRefetchType.All
         });
@@ -1352,7 +1352,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["todos"], "data");
 
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.Equal(QueryStatus.Succeeded, query!.State!.Status);
 
         // Act
@@ -1408,7 +1408,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["todos"], "data");
         var notified = false;
 
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
         cache.Subscribe(e => { notified = true; });
 
         // Act
@@ -1516,7 +1516,7 @@ public sealed class QueryClientRefetchTests
         client.SetQueryData(["key", 2], 2);
 
         var hash1 = DefaultQueryKeyHasher.Instance.HashQueryKey(["key", 1]);
-        var query1 = client.GetQueryCache().Get<int>(hash1)!;
+        var query1 = client.QueryCache.Get<int>(hash1)!;
 
         // Act — only update queries matching the predicate
         client.SetQueriesData<int>(
@@ -1647,7 +1647,7 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act — simulate focus event
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -1684,7 +1684,7 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act — simulate online event
-        client.GetQueryCache().OnOnline();
+        client.QueryCache.OnOnline();
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -1721,7 +1721,7 @@ public sealed class QueryClientRefetchTests
         var countBefore = fetchCount;
 
         // Act
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
 
         // Negative test: we're asserting nothing happens. A short delay is unavoidable
         // here since there's no signal to await — we just need enough time for any
@@ -1764,7 +1764,7 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert — should still refetch despite fresh data
@@ -1802,7 +1802,7 @@ public sealed class QueryClientRefetchTests
         var countBefore = fetchCount;
 
         // Act
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
 
         // Negative test: asserting no refetch occurs
         await Task.Delay(100);
@@ -1841,7 +1841,7 @@ public sealed class QueryClientRefetchTests
         var countBefore = fetchCount;
 
         // Act
-        client.GetQueryCache().OnOnline();
+        client.QueryCache.OnOnline();
 
         // Negative test: asserting no refetch occurs
         await Task.Delay(100);
@@ -1882,7 +1882,7 @@ public sealed class QueryClientRefetchTests
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Act
-        client.GetQueryCache().OnOnline();
+        client.QueryCache.OnOnline();
         await refetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
@@ -1918,7 +1918,7 @@ public sealed class QueryClientRefetchTests
         var countBefore = fetchCount;
 
         // Act
-        client.GetQueryCache().OnFocus();
+        client.QueryCache.OnFocus();
 
         // Negative test: asserting no refetch occurs
         await Task.Delay(100);
@@ -2001,8 +2001,8 @@ public sealed class QueryClientRefetchTests
         var task2 = observer2.MutateAsync("b");
         await Task.Delay(50);
 
-        Assert.True(observer1.GetCurrentResult().IsPaused);
-        Assert.True(observer2.GetCurrentResult().IsPaused);
+        Assert.True(observer1.CurrentResult.IsPaused);
+        Assert.True(observer2.CurrentResult.IsPaused);
 
         // Go back online — triggers OnOnlineChanged → ResumePausedMutations
         onlineManager.SetOnline(true);
@@ -2013,8 +2013,8 @@ public sealed class QueryClientRefetchTests
         // Assert
         Assert.Equal(1, result1);
         Assert.Equal(2, result2);
-        Assert.True(observer1.GetCurrentResult().IsSuccess);
-        Assert.True(observer2.GetCurrentResult().IsSuccess);
+        Assert.True(observer1.CurrentResult.IsSuccess);
+        Assert.True(observer2.CurrentResult.IsSuccess);
 
         client.Dispose();
     }
@@ -2067,8 +2067,8 @@ public sealed class QueryClientRefetchTests
         var task2 = observer2.MutateAsync("b");
         await Task.Delay(50);
 
-        Assert.True(observer1.GetCurrentResult().IsPaused);
-        Assert.True(observer2.GetCurrentResult().IsPaused);
+        Assert.True(observer1.CurrentResult.IsPaused);
+        Assert.True(observer2.CurrentResult.IsPaused);
 
         // Act — go online, both mutations resume in parallel
         onlineManager.SetOnline(true);
@@ -2151,8 +2151,8 @@ public sealed class QueryClientRefetchTests
         var task2 = observer2.MutateAsync("b");
         await Task.Delay(50);
 
-        Assert.True(observer1.GetCurrentResult().IsPaused);
-        Assert.True(observer2.GetCurrentResult().IsPaused);
+        Assert.True(observer1.CurrentResult.IsPaused);
+        Assert.True(observer2.CurrentResult.IsPaused);
 
         // Act — go online, scoped mutations resume sequentially
         onlineManager.SetOnline(true);
@@ -2194,13 +2194,13 @@ public sealed class QueryClientRefetchTests
         var task = observer.MutateAsync("a");
         await Task.Delay(50);
 
-        Assert.True(observer.GetCurrentResult().IsPaused);
+        Assert.True(observer.CurrentResult.IsPaused);
 
         // Act — manually call ResumePausedMutations while still offline (should be no-op)
         client.ResumePausedMutations();
 
         // Still paused because we are still offline
-        Assert.True(observer.GetCurrentResult().IsPaused);
+        Assert.True(observer.CurrentResult.IsPaused);
 
         // Now actually go online
         onlineManager.SetOnline(true);
@@ -2209,7 +2209,7 @@ public sealed class QueryClientRefetchTests
 
         // Assert
         Assert.Equal(1, result);
-        Assert.True(observer.GetCurrentResult().IsSuccess);
+        Assert.True(observer.CurrentResult.IsSuccess);
 
         client.Dispose();
     }
@@ -2248,7 +2248,7 @@ public sealed class QueryClientRefetchTests
 
         // Assert
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["key"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.Equal("new data + test data", query!.State!.Data);
     }
 
@@ -2257,7 +2257,7 @@ public sealed class QueryClientRefetchTests
     #region cancelQueries
 
     [Fact]
-    public async Task InvalidateQueries_Should_Not_Refetch_Static_Queries()
+    public async Task InvalidateQueriesAsync_Should_Not_Refetch_Static_Queries()
     {
         // TanStack line 1588: invalidating a static query should mark it as invalidated
         // but not trigger a refetch, since static queries are never considered stale.
@@ -2286,12 +2286,12 @@ public sealed class QueryClientRefetchTests
         var countBefore = fetchCount;
 
         // Act
-        await client.InvalidateQueries(["static-invalidate"]);
+        await client.InvalidateQueriesAsync(["static-invalidate"]);
         await Task.Delay(100);
 
         // Assert — query should be invalidated but NOT refetched
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["static-invalidate"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.True(query!.State!.IsInvalidated);
         Assert.Equal(countBefore, fetchCount);
 
@@ -2309,9 +2309,9 @@ public sealed class QueryClientRefetchTests
         // it to that state (Status=Succeeded with InitialData).
         // Arrange
         var client = CreateQueryClient();
-        var cache = client.GetQueryCache();
+        var cache = client.QueryCache;
 
-        var query = cache.Build<string, string>(client,
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string>
             {
                 QueryKey = ["with-initial"],
@@ -2380,7 +2380,7 @@ public sealed class QueryClientRefetchTests
         var fetchStarted = new TaskCompletionSource();
         var tcs = new TaskCompletionSource<string>();
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["key"]);
-        var query = client.GetQueryCache().Get<string>(hash)!;
+        var query = client.QueryCache.Get<string>(hash)!;
 
         // Optimistic update before the second fetch
         client.SetQueryData(["key"], "optimistic");
@@ -2413,8 +2413,8 @@ public sealed class QueryClientRefetchTests
         var fetchStarted = new TaskCompletionSource();
         var tcs = new TaskCompletionSource<string>();
 
-        var cache = client.GetQueryCache();
-        var query = cache.Build<string, string>(client,
+        var cache = client.QueryCache;
+        var query = cache.GetOrCreate<string, string>(client,
             new QueryConfiguration<string> { QueryKey = ["first-cancel"], GcTime = QueryTimeDefaults.GcTime, Retry = 0 });
         query.SetQueryFn(async _ =>
         {
@@ -2447,7 +2447,7 @@ public sealed class QueryClientRefetchTests
         var fetchStarted = new TaskCompletionSource();
         var tcs = new TaskCompletionSource<string>();
         var hash = DefaultQueryKeyHasher.Instance.HashQueryKey(["key"]);
-        var query = client.GetQueryCache().Get<string>(hash);
+        var query = client.QueryCache.Get<string>(hash);
         Assert.NotNull(query);
 
         query!.SetQueryFn(async _ =>
@@ -2501,7 +2501,7 @@ public sealed class QueryClientRefetchTests
         client.Dispose();
 
         // Public methods throw ObjectDisposedException after disposal
-        Assert.Throws<ObjectDisposedException>(() => client.GetQueryCache());
+        Assert.Throws<ObjectDisposedException>(() => client.QueryCache);
 
         // Negative test: brief wait to confirm no additional fetch
         await Task.Delay(100);

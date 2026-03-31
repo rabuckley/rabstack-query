@@ -11,5 +11,6 @@ public sealed class HydrateMutationDefaults
 
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
+    /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.MutationFn"/>
     public Func<object, MutationFunctionContext, CancellationToken, Task<object>>? MutationFn { get; init; }
 }

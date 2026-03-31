@@ -8,30 +8,104 @@ namespace RabstackQuery.Mvvm;
 public static class QueryClientExtensions
 {
     /// <summary>
-    /// Creates a QueryViewModel for observing and binding query state to UI.
+    /// Creates a QueryViewModel with commonly-used options flattened as parameters.
+    /// For advanced options (<c>EnabledFn</c>, <c>StaleTimeFn</c>, <c>StructuralSharing</c>,
+    /// <c>NotifyOnChangeProps</c>, etc.), use the
+    /// <see cref="UseQuery{TData}(QueryClient, QueryObserverOptions{TData})"/> overload.
     /// </summary>
-    /// <typeparam name="TData">The type of data returned by the query.</typeparam>
-    /// <param name="client">The QueryClient instance.</param>
-    /// <param name="queryKey">The query key.</param>
-    /// <param name="queryFn">The async function to fetch data.</param>
-    /// <returns>A QueryViewModel configured with the provided options.</returns>
     /// <example>
     /// <code>
-    /// public TodosViewModel(QueryClient client)
-    /// {
-    ///     TodosQuery = client.UseQuery(
-    ///         ["todos"],
-    ///         async ct => await _api.GetTodos(ct)
-    ///     );
-    /// }
+    /// TodosQuery = client.UseQuery(
+    ///     queryKey: ["todos"],
+    ///     queryFn: async ctx => await api.GetTodosAsync(ctx.CancellationToken),
+    ///     staleTime: TimeSpan.FromMinutes(5),
+    ///     refetchInterval: TimeSpan.FromSeconds(30)
+    /// );
     /// </code>
     /// </example>
-    public static QueryViewModel<TData, TData> UseQuery<TData>(
+    /// <inheritdoc cref="UseQuery{TData}(QueryClient, QueryObserverOptions{TData})"/>
+    public static QueryViewModel<TData> UseQuery<TData>(
         this QueryClient client,
         QueryKey queryKey,
         Func<QueryFunctionContext, Task<TData>> queryFn)
+        =>
+            client.UseQuery(queryKey, queryFn, enabled: true);
+
+    /// <inheritdoc/>
+    public static QueryViewModel<TData> UseQuery<TData>(
+        this QueryClient client,
+        QueryKey queryKey,
+        Func<QueryFunctionContext, Task<TData>> queryFn,
+        bool enabled,
+        TimeSpan? staleTime = null,
+        TimeSpan? refetchInterval = null,
+        bool refetchIntervalInBackground = false,
+        Func<TData?, Query<TData>?, TData?>? placeholderData = null,
+        int? retry = null,
+        Func<int, Exception, TimeSpan>? retryDelay = null)
     {
-        return new QueryViewModel<TData, TData>(client, queryKey, queryFn, select: null);
+        return new QueryViewModel<TData>(client, new QueryObserverOptions<TData>
+        {
+            QueryKey = queryKey,
+            QueryFn = queryFn,
+            Enabled = enabled,
+            StaleTime = staleTime ?? TimeSpan.Zero,
+            RefetchInterval = refetchInterval ?? TimeSpan.Zero,
+            RefetchIntervalInBackground = refetchIntervalInBackground,
+            PlaceholderData = placeholderData,
+            Retry = retry,
+            RetryDelay = retryDelay,
+        });
+    }
+
+    /// <summary>
+    /// Creates a QueryViewModel with a Select transform and commonly-used options
+    /// flattened as parameters. <typeparamref name="TQueryData"/> is the type stored
+    /// in the cache; <typeparamref name="TData"/> is the transformed output.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// TodoCountQuery = client.UseQuery(
+    ///     queryKey: ["todos"],
+    ///     queryFn: async ctx => await api.GetTodosAsync(ctx.CancellationToken),
+    ///     select: todos => todos.Count(),
+    ///     staleTime: TimeSpan.FromSeconds(30)
+    /// );
+    /// </code>
+    /// </example>
+    /// <inheritdoc cref="UseQuery{TData, TQueryData}(QueryClient, QueryObserverOptions{TData, TQueryData})"/>
+    public static QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
+        this QueryClient client,
+        QueryKey queryKey,
+        Func<QueryFunctionContext, Task<TQueryData>> queryFn,
+        Func<TQueryData, TData> select)
+        => client.UseQuery(queryKey, queryFn, select, enabled: true);
+
+    /// <inheritdoc/>
+    public static QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
+        this QueryClient client,
+        QueryKey queryKey,
+        Func<QueryFunctionContext, Task<TQueryData>> queryFn,
+        Func<TQueryData, TData> select,
+        bool enabled,
+        TimeSpan? staleTime = null,
+        TimeSpan? refetchInterval = null,
+        bool refetchIntervalInBackground = false,
+        int? retry = null,
+        Func<int, Exception, TimeSpan>? retryDelay = null)
+    {
+        return new QueryViewModel<TData, TQueryData>(client, new QueryObserverOptions<TData, TQueryData>
+        {
+            QueryKey = queryKey,
+            QueryFn = queryFn,
+            Select = select,
+            Enabled = enabled,
+            StaleTime = staleTime ?? TimeSpan.Zero,
+            RefetchInterval = refetchInterval ?? TimeSpan.Zero,
+            RefetchIntervalInBackground = refetchIntervalInBackground,
+            Retry = retry,
+            RetryDelay = retryDelay,
+        });
     }
 
     /// <summary>
@@ -276,7 +350,7 @@ public static class QueryClientExtensions
     ///         {
     ///             OnSuccess = async (data, variables, onMutateResult, context) =>
     ///             {
-    ///                 await context.Client.InvalidateQueries(["todos"]);
+    ///                 await context.Client.InvalidateQueriesAsync(["todos"]);
     ///             }
     ///         }
     ///     );
@@ -285,11 +359,20 @@ public static class QueryClientExtensions
     /// // XAML: &lt;Button Command="{Binding AddTodoMutation.MutateCommand}" /&gt;
     /// </code>
     /// </example>
+    /// <inheritdoc cref="UseMutation{TData, TError, TVariables, TOnMutateResult}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}}, MutationOptions{TData, TError, TVariables, TOnMutateResult}?)"/>
+    public static MutationViewModel<TData, TError, TVariables, TOnMutateResult> UseMutation<TData, TError, TVariables,
+        TOnMutateResult>(
+        this QueryClient client,
+        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn) where TError : Exception
+        =>
+            client.UseMutation<TData, TError, TVariables, TOnMutateResult>(mutationFn, options: null);
+
+    /// <inheritdoc/>
     public static MutationViewModel<TData, TError, TVariables, TOnMutateResult> UseMutation<TData, TError, TVariables,
         TOnMutateResult>(
         this QueryClient client,
         Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-        MutationOptions<TData, TError, TVariables, TOnMutateResult>? options = null) where TError : Exception
+        MutationOptions<TData, TError, TVariables, TOnMutateResult>? options) where TError : Exception
     {
         return new MutationViewModel<TData, TError, TVariables, TOnMutateResult>(client, mutationFn, options);
     }
@@ -307,11 +390,20 @@ public static class QueryClientExtensions
     /// <param name="mutationFn">The async mutation function.</param>
     /// <param name="options">Optional mutation configuration with lifecycle callbacks.</param>
     /// <returns>A MutationViewModel configured with the provided options.</returns>
+    /// <inheritdoc cref="UseMutation{TData, TVariables, TOnMutateResult}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}}, MutationOptions{TData, Exception, TVariables, TOnMutateResult}?)"/>
+    public static MutationViewModel<TData, Exception, TVariables, TOnMutateResult> UseMutation<TData, TVariables,
+        TOnMutateResult>(
+        this QueryClient client,
+        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
+        =>
+            client.UseMutation<TData, TVariables, TOnMutateResult>(mutationFn, options: null);
+
+    /// <inheritdoc/>
     public static MutationViewModel<TData, Exception, TVariables, TOnMutateResult> UseMutation<TData, TVariables,
         TOnMutateResult>(
         this QueryClient client,
         Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-        MutationOptions<TData, Exception, TVariables, TOnMutateResult>? options = null)
+        MutationOptions<TData, Exception, TVariables, TOnMutateResult>? options)
     {
         return new MutationViewModel<TData, Exception, TVariables, TOnMutateResult>(client, mutationFn, options);
     }
@@ -351,20 +443,66 @@ public static class QueryClientExtensions
     // ── Simplified UseMutation overloads ───────────────────────────────
 
     /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with only 2 generic
-    /// parameters (TError defaults to Exception, TOnMutateResult to object?).
+    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with commonly-used
+    /// lifecycle callbacks flattened as parameters. Callbacks use the simplified 3-param
+    /// signature (no <c>TOnMutateResult</c>). For <c>OnMutate</c>, <c>Scope</c>,
+    /// <c>NetworkMode</c>, or typed errors, use the
+    /// <see cref="UseMutation{TData, TVariables}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}}, MutationOptions{TData, TVariables})"/>
+    /// overload.
     /// </summary>
+    /// <example>
+    /// <code>
+    /// AddTodoMutation = client.UseMutation&lt;Todo, CreateTodoRequest&gt;(
+    ///     mutationFn: async (req, ctx, ct) => await api.CreateTodoAsync(req, ct),
+    ///     onSuccess: async (data, variables, ctx) =>
+    ///     {
+    ///         await ctx.Client.InvalidateQueriesAsync(["todos"]);
+    ///     }
+    /// );
+    /// </code>
+    /// </example>
+    /// <inheritdoc cref="UseMutation{TData, TVariables}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}}, MutationOptions{TData, TVariables})"/>
     public static MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
         this QueryClient client,
         Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
+        =>
+            client.UseMutation<TData, TVariables>(mutationFn, onSuccess: null);
+
+    /// <inheritdoc/>
+    public static MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
+        this QueryClient client,
+        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
+        Func<TData, TVariables, MutationFunctionContext, Task>? onSuccess = null,
+        Func<Exception, TVariables, MutationFunctionContext, Task>? onError = null,
+        Func<TData?, Exception?, TVariables, MutationFunctionContext, Task>? onSettled = null,
+        QueryKey? mutationKey = null,
+        int? retry = null)
     {
-        return new MutationViewModel<TData, TVariables>(client, mutationFn);
+        var options = new MutationCallbacks<TData, TVariables>
+        {
+            OnSuccess = onSuccess, OnError = onError, OnSettled = onSettled,
+        }.ToMutationOptions();
+
+        if (mutationKey is not null)
+            options = options with
+            {
+                MutationKey = mutationKey
+            };
+
+        if (retry is not null)
+            options = options with
+            {
+                Retry = retry
+            };
+
+        return new MutationViewModel<TData, TVariables>(client, mutationFn, options);
     }
 
     /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with 2 generic parameters
-    /// and full <see cref="MutationOptions{TData, TVariables}"/> (TError defaults to Exception,
-    /// TOnMutateResult to object?).
+    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with full
+    /// <see cref="MutationOptions{TData, TVariables}"/>. Use this overload when you need
+    /// <c>OnMutate</c> for optimistic updates, <c>Scope</c>, <c>NetworkMode</c>, or
+    /// the 4-param callback signatures that include <c>TOnMutateResult</c>.
     /// </summary>
     public static MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
         this QueryClient client,
@@ -374,15 +512,45 @@ public static class QueryClientExtensions
         return new MutationViewModel<TData, TVariables>(client, mutationFn, options);
     }
 
+    // ── MutationDefinition ─────────────────────────────────────────────
+
     /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with simplified
-    /// <see cref="MutationCallbacks{TData, TVariables}"/> (3-param callbacks, no OnMutate).
+    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> from a
+    /// <see cref="MutationDefinition{TData, TVariables}"/> definition. All type parameters are
+    /// inferred from the definition object, enabling zero-generic call sites.
     /// </summary>
+    /// <inheritdoc cref="UseMutation{TData, TVariables}(QueryClient, MutationDefinition{TData, TVariables}, MutationCallbacks{TData, TVariables}?)"/>
     public static MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
         this QueryClient client,
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-        MutationCallbacks<TData, TVariables> callbacks)
+        MutationDefinition<TData, TVariables> def)
+        =>
+            client.UseMutation(def, callbacks: null);
+
+    /// <inheritdoc/>
+    public static MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
+        this QueryClient client,
+        MutationDefinition<TData, TVariables> def,
+        MutationCallbacks<TData, TVariables>? callbacks)
     {
-        return new MutationViewModel<TData, TVariables>(client, mutationFn, callbacks.ToMutationOptions());
+        var options = def.ToMutationOptions(callbacks);
+        return new MutationViewModel<TData, TVariables>(client, options.MutationFn!, options);
+    }
+
+    /// <summary>
+    /// Creates a <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/>
+    /// from an <see cref="OptimisticMutationDefinition{TData, TVariables, TOnMutateResult}"/> definition.
+    /// All type parameters are inferred from the definition object.
+    /// </summary>
+    public static MutationViewModel<TData, Exception, TVariables, TOnMutateResult>
+        UseMutation<TData, TVariables, TOnMutateResult>(
+            this QueryClient client,
+            OptimisticMutationDefinition<TData, TVariables, TOnMutateResult> def)
+    {
+        var options = def.ToMutationOptions();
+
+        return new MutationViewModel<TData, Exception, TVariables, TOnMutateResult>(
+            client,
+            options.MutationFn!,
+            options);
     }
 }
