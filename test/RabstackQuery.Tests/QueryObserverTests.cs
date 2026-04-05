@@ -437,6 +437,7 @@ public sealed class QueryObserverTests
         var client = CreateQueryClient();
         var fetchCount = 0;
         var updateCount = 0;
+        var initialFetchCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var observer = new QueryObserver<string, string>(
             client,
@@ -445,9 +446,10 @@ public sealed class QueryObserverTests
                 QueryKey = ["test"],
                 QueryFn = async _ =>
                 {
-                    fetchCount++;
+                    var current = Interlocked.Increment(ref fetchCount);
                     await Task.Delay(10); // Simulate async work
-                    return $"data-v{fetchCount}";
+                    if (current == 1) initialFetchCompleted.TrySetResult();
+                    return $"data-v{current}";
                 },
                 Enabled = true
             }
@@ -455,13 +457,13 @@ public sealed class QueryObserverTests
 
         var subscription = observer.Subscribe(result =>
         {
-            updateCount++;
+            Interlocked.Increment(ref updateCount);
         });
 
-        // Wait for initial fetch to complete
-        await Task.Delay(100);
-        var initialFetchCount = fetchCount;
-        var initialUpdateCount = updateCount;
+        await initialFetchCompleted.Task;
+        await Task.Yield();
+        var initialFetchCount = Volatile.Read(ref fetchCount);
+        var initialUpdateCount = Volatile.Read(ref updateCount);
 
         // Act - invalidate the query with active listeners
         // This should trigger a refetch but NOT cause infinite recursion
@@ -469,8 +471,8 @@ public sealed class QueryObserverTests
 
         // Assert - should have fetched exactly once more, not infinitely
         // If the bug existed, fetchCount would be > 2 due to repeated refetches
-        Assert.Equal(initialFetchCount + 1, fetchCount);
-        Assert.True(updateCount > initialUpdateCount);
+        Assert.Equal(initialFetchCount + 1, Volatile.Read(ref fetchCount));
+        Assert.True(Volatile.Read(ref updateCount) > initialUpdateCount);
 
         subscription.Dispose();
     }
