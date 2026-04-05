@@ -35,7 +35,7 @@ jobs:
         run: dotnet pack RabstackQuery.slnx -c Release -p:Version=${{ steps.version.outputs.version }} -o ./nupkgs
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@b3e506e8c389afc651c5bacf2b8f2a1ea0557215 # v4.1.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: './nupkgs/*.nupkg'
 
