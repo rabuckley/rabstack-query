@@ -1,4 +1,6 @@
-﻿namespace RabstackQuery;
+﻿using System.Diagnostics.CodeAnalysis;
+
+namespace RabstackQuery;
 
 /// <summary>
 /// Snapshot of a query's current state, produced by a <see cref="QueryObserver{TData,TQueryData}"/>.
@@ -52,6 +54,7 @@ public interface IQueryResult<TData>
     /// <summary>
     /// <see langword="true"/> if the query is in an error state.
     /// </summary>
+    [MemberNotNullWhen(true, nameof(Error))]
     public bool IsError { get; }
 
     /// <summary>
@@ -121,6 +124,7 @@ public interface IQueryResult<TData>
     /// <summary>
     /// <see langword="true"/> if the query has successfully fetched data.
     /// </summary>
+    [MemberNotNullWhen(true, nameof(Data))]
     public bool IsSuccess { get; }
 
     /// <summary>

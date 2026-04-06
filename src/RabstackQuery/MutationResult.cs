@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RabstackQuery;
 
 /// <summary>
@@ -21,8 +23,10 @@ public sealed class MutationResult<TData, TError, TVariables, TOnMutateResult> :
 
     public bool IsPending => _state.Status == MutationStatus.Pending;
 
+    [MemberNotNullWhen(true, nameof(Data))]
     public bool IsSuccess => _state.Status == MutationStatus.Success;
 
+    [MemberNotNullWhen(true, nameof(Error))]
     public bool IsError => _state.Status == MutationStatus.Error;
 
     public bool IsPaused => _state.IsPaused;

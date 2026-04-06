@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace RabstackQuery;
 
@@ -56,6 +57,7 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
 
     public int ErrorUpdateCount => _state.ErrorUpdateCount;
 
+    [MemberNotNullWhen(true, nameof(Error))]
     public bool IsError => _state.Status == QueryStatus.Errored;
 
     public bool IsFetched => _state.DataUpdateCount > 0 || _state.ErrorUpdateCount > 0;
@@ -118,6 +120,7 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
         }
     }
 
+    [MemberNotNullWhen(true, nameof(Data))]
     public bool IsSuccess => _state.Status == QueryStatus.Succeeded;
 
     public bool IsEnabled => _options?.Enabled ?? true;

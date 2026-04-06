@@ -2915,7 +2915,7 @@ public sealed class QueryObserverFullTests
         // Assert — error captured in result, not thrown
         Assert.True(result.IsError);
         Assert.IsType<InvalidOperationException>(result.Error);
-        Assert.Equal("suppressed", result.Error!.Message);
+        Assert.Equal("suppressed", result.Error.Message);
     }
 
     /// <summary>
@@ -2941,7 +2941,7 @@ public sealed class QueryObserverFullTests
 
         // Assert
         Assert.True(result.IsError);
-        Assert.Equal("suppressed too", result.Error!.Message);
+        Assert.Equal("suppressed too", result.Error.Message);
     }
 
     /// <summary>

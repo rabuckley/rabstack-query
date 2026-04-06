@@ -31,7 +31,7 @@ public sealed class QueryViewModelTests
         // Assert
         Assert.True(vm.IsError);
         Assert.IsType<InvalidOperationException>(vm.Error);
-        Assert.Equal("fetch failed", vm.Error!.Message);
+        Assert.Equal("fetch failed", vm.Error.Message);
         Assert.False(vm.IsManualRefreshing);
     }
 

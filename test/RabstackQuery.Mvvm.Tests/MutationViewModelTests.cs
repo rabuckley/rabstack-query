@@ -27,7 +27,7 @@ public sealed class MutationViewModelTests
         Assert.True(vm.IsError);
         Assert.Equal(MutationStatus.Error, vm.Status);
         Assert.IsType<InvalidOperationException>(vm.Error);
-        Assert.Equal("Simulated network error", vm.Error!.Message);
+        Assert.Equal("Simulated network error", vm.Error.Message);
     }
 
     [Fact]

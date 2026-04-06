@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RabstackQuery;
 
 /// <summary>
@@ -22,9 +24,11 @@ public interface IMutationResult<TData, TError>
     bool IsPending { get; }
 
     /// <summary><see langword="true"/> if the most recent mutation succeeded.</summary>
+    [MemberNotNullWhen(true, nameof(Data))]
     bool IsSuccess { get; }
 
     /// <summary><see langword="true"/> if the most recent mutation failed.</summary>
+    [MemberNotNullWhen(true, nameof(Error))]
     bool IsError { get; }
 
     /// <summary><see langword="true"/> if the mutation is paused (e.g., waiting for network connectivity).</summary>

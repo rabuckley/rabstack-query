@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -38,9 +40,11 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     public partial bool IsPending { get; set; }
 
     [ObservableProperty]
+    [MemberNotNullWhen(true, nameof(Error))]
     public partial bool IsError { get; set; }
 
     [ObservableProperty]
+    [MemberNotNullWhen(true, nameof(Data))]
     public partial bool IsSuccess { get; set; }
 
     [ObservableProperty]
