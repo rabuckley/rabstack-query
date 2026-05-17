@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace RabstackQuery.Mvvm;
 
-public sealed class PageViewModelTests
+public sealed class PageViewModelTests : SyncContextTestBase
 {
     private static QueryClient CreateClient() => new(new QueryCache());
 

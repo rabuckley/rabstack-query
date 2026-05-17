@@ -8,7 +8,7 @@ namespace RabstackQuery.Mvvm;
 /// Tests for the options-based constructors, SetOptions, and UseQuery/UseQueryCollection
 /// extension overloads added in Phase 1 of the MVVM enhancement.
 /// </summary>
-public sealed class QueryViewModelOptionsTests
+public sealed class QueryViewModelOptionsTests : SyncContextTestBase
 {
     private static QueryClient CreateQueryClient(FakeTimeProvider? timeProvider = null)
     {

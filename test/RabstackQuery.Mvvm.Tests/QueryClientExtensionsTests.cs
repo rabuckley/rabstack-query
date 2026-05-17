@@ -7,7 +7,7 @@ namespace RabstackQuery.Mvvm;
 /// <see cref="QueryViewModelOptionsTests"/>. Focuses on collection simple overloads,
 /// typed collection overloads, infinite query, and mutation overloads.
 /// </summary>
-public sealed class QueryClientExtensionsTests
+public sealed class QueryClientExtensionsTests : SyncContextTestBase
 {
     private record TodoDto(int Id, string Title);
 

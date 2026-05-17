@@ -6,7 +6,7 @@ namespace RabstackQuery.Mvvm;
 /// ViewModel aliases (<see cref="QueryViewModel{TData}"/>,
 /// <see cref="MutationViewModel{TData, TVariables}"/>).
 /// </summary>
-public sealed class QueryOptionsUsageTests
+public sealed class QueryOptionsUsageTests : SyncContextTestBase
 {
     private static QueryClient CreateClient() => new(new QueryCache());
 

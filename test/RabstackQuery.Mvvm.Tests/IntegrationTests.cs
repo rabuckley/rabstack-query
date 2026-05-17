@@ -6,7 +6,7 @@ namespace RabstackQuery.Mvvm;
 /// remain resilient under conditions that are hard to trigger in normal usage but
 /// common in real applications (e.g., navigating away mid-fetch, rapid user actions).
 /// </summary>
-public sealed class IntegrationTests
+public sealed class IntegrationTests : SyncContextTestBase
 {
     private static QueryClient CreateQueryClient()
     {

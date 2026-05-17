@@ -3,7 +3,7 @@ namespace RabstackQuery.Mvvm;
 /// <summary>
 /// Tests for QueryViewModel error handling and state propagation.
 /// </summary>
-public sealed class QueryViewModelTests
+public sealed class QueryViewModelTests : SyncContextTestBase
 {
     private static QueryClient CreateQueryClient()
     {

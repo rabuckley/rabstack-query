@@ -1,78 +1,9 @@
-using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
+using static RabstackQuery.Mvvm.SyncContextTestBase;
 
 namespace RabstackQuery.Mvvm;
 
-/// <summary>
-/// Tests demonstrating thread marshalling bugs in QueryViewModel, MutationViewModel,
-/// and QueryCollectionViewModel.
-///
-/// These tests assert the CORRECT behavior and should FAIL on the current (buggy)
-/// implementation, then PASS once the bugs are fixed.
-///
-/// The core bug: <c>OnResultChanged</c> checks <c>SynchronizationContext.Current</c>
-/// on the callback thread (often a thread pool thread where it's null) instead of
-/// using a SynchronizationContext captured at construction time. This means property
-/// updates are never marshalled to the UI thread — <c>INotifyPropertyChanged</c>
-/// fires on arbitrary background threads, which crashes MAUI and WPF.
-/// </summary>
 public sealed class ThreadMarshallingTests
 {
-    // ── Test Infrastructure ──────────────────────────────────────────
-
-    /// <summary>
-    /// A SynchronizationContext that counts Post calls and executes them
-    /// synchronously. Used to verify that ViewModels correctly marshal
-    /// property updates through the captured SyncContext.
-    /// </summary>
-    private sealed class RecordingSynchronizationContext : SynchronizationContext
-    {
-        private int _postCount;
-
-        public int PostCount => Volatile.Read(ref _postCount);
-
-        public override void Post(SendOrPostCallback d, object? state)
-        {
-            Interlocked.Increment(ref _postCount);
-            d(state);
-        }
-
-        public override void Send(SendOrPostCallback d, object? state) => d(state);
-
-        public void Reset() => Interlocked.Exchange(ref _postCount, 0);
-    }
-
-    /// <summary>
-    /// A SynchronizationContext that queues Post callbacks for deferred execution,
-    /// simulating a real UI dispatcher queue. Used to test the ghost callback
-    /// scenario where a Post is enqueued before Dispose but executes after.
-    /// </summary>
-    private sealed class DeferredSynchronizationContext : SynchronizationContext
-    {
-        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
-
-        public int QueuedCount => _queue.Count;
-
-        public override void Post(SendOrPostCallback d, object? state) =>
-            _queue.Enqueue((d, state));
-
-        public override void Send(SendOrPostCallback d, object? state) => d(state);
-
-        /// <summary>
-        /// Executes all queued callbacks. Returns the number executed.
-        /// </summary>
-        public int DrainQueue()
-        {
-            var count = 0;
-            while (_queue.TryDequeue(out var item))
-            {
-                item.Callback(item.State);
-                count++;
-            }
-            return count;
-        }
-    }
-
     private static QueryClient CreateQueryClient() => new(new QueryCache());
 
     private static async Task WaitForAsync(
@@ -89,32 +20,6 @@ public sealed class ThreadMarshallingTests
             await Task.Delay(pollIntervalMs, TestContext.Current.CancellationToken);
         }
     }
-
-    /// <summary>
-    /// Runs an action with a SynchronizationContext installed on the current thread,
-    /// restoring the previous context afterwards even if the action throws.
-    /// </summary>
-    private static T WithSyncContext<T>(SynchronizationContext context, Func<T> action)
-    {
-        var previous = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(context);
-        try
-        {
-            return action();
-        }
-        finally
-        {
-            SynchronizationContext.SetSynchronizationContext(previous);
-        }
-    }
-
-    // ── Bug #1: SyncContext.Current checked on wrong thread ──────────
-    //
-    // OnResultChanged checks SynchronizationContext.Current on the CALLBACK
-    // thread instead of using a reference captured at construction. When
-    // the callback fires on a thread pool thread (no SyncContext), the
-    // check returns null and Post is never called. Property updates go
-    // directly to the thread pool thread.
 
     [Fact]
     public async Task QueryViewModel_Should_Marshal_BackgroundNotification_Through_CapturedSyncContext()
@@ -153,9 +58,7 @@ public sealed class ThreadMarshallingTests
         // to Post the property updates.
         Assert.True(syncContext.PostCount > 0,
             "Expected OnResultChanged to Post to the captured SynchronizationContext, " +
-            "but Post was never called. OnResultChanged checks " +
-            "SynchronizationContext.Current on the callback thread (null on " +
-            "thread pool) instead of using a context captured at construction.");
+            "but Post was never called.");
 
         vm.Dispose();
     }
@@ -280,18 +183,6 @@ public sealed class ThreadMarshallingTests
         vm.Dispose();
     }
 
-    // ── Bug #2: Ghost callbacks after Dispose ────────────────────────
-    //
-    // When OnResultChanged Posts to a SyncContext, there's a window where
-    // the callback is queued but hasn't executed. If Dispose() runs in
-    // that window, the queued callback executes AFTER disposal, setting
-    // properties on a dead ViewModel.
-    //
-    // NOTE: This bug only manifests after bug #1 is fixed (so that Post
-    // is actually called). With bug #1 present, Post is never called and
-    // the queue stays empty. These tests are written to catch the ghost
-    // callback issue once bug #1 is fixed.
-
     [Fact]
     public async Task QueryViewModel_Deferred_Post_Should_Not_Update_Properties_After_Dispose()
     {
@@ -315,18 +206,12 @@ public sealed class ThreadMarshallingTests
         // Execute any initial callbacks so construction state settles
         syncContext.DrainQueue();
 
-        // Wait for the initial fetch to complete. Because the DeferredSyncContext
-        // queues posts, property updates only happen when we drain. Direct
-        // updates (no SyncContext on callback thread) still go through.
         await WaitForAsync(() => vm.IsSuccess || fetchCount >= 1);
 
         // Drain again to process all pending state
         syncContext.DrainQueue();
         var dataBeforeInvalidation = vm.Data;
 
-        // Act — trigger a notification from a background thread.
-        // If bug #1 is fixed, OnResultChanged will Post to DeferredSyncContext,
-        // queuing the update callback.
         await Task.Run(() => client.InvalidateQueriesAsync(["ghost-qvm"]), TestContext.Current.CancellationToken);
 
         // Give the fire-and-forget refetch time to complete on the thread pool
@@ -340,8 +225,6 @@ public sealed class ThreadMarshallingTests
         // Execute ghost callbacks
         var ghostCount = syncContext.DrainQueue();
 
-        // Assert — once bug #1 is fixed, ghost callbacks will be queued.
-        // The ViewModel should guard against post-Dispose updates.
         if (ghostCount > 0)
         {
             Assert.Equal(dataBeforeInvalidation, vm.Data);
@@ -385,71 +268,65 @@ public sealed class ThreadMarshallingTests
         }
     }
 
-    // ── Bug #3: Constructor race ─────────────────────────────────────
-    //
-    // The constructor does:
-    //
-    //     _subscription = _observer.Subscribe(OnResultChanged);  // fires OnResultChanged synchronously
-    //     UpdateFromResult(_observer.CurrentResult);         // redundant call, creates race window
-    //
-    // Subscribe() triggers OnSubscribe() → RefetchAsync() fire-and-forget.
-    // The synchronous portion of RefetchAsync dispatches FetchAction, which
-    // calls OnResultChanged on the constructor thread. Then the async fetch
-    // completes on a thread pool thread and fires OnResultChanged again.
-    //
-    // If the async completion arrives while the constructor's explicit
-    // UpdateFromResult is still running, two threads write to the same
-    // ViewModel properties simultaneously — a data race.
-    //
-    // This race is extremely difficult to trigger deterministically in a
-    // test because the window is microseconds wide. The test below verifies
-    // the precondition: that async fetch completions DO fire on background
-    // threads, confirming the race window exists when combined with the
-    // constructor's redundant UpdateFromResult call.
-
     [Fact]
-    public async Task QueryViewModel_AsyncFetch_Fires_PropertyChanged_From_NonConstructionThread()
+    public void QueryViewModel_Constructed_Without_SyncContext_Throws()
     {
-        // Arrange — use a TaskCompletionSource to control fetch timing.
-        // Subscribe to PropertyChanged BEFORE releasing the fetch so
-        // we reliably observe events from the background completion.
-        var constructionThreadId = Environment.CurrentManagedThreadId;
-        var propertyChangedThreadIds = new ConcurrentBag<int>();
-        var tcs = new TaskCompletionSource<string>();
-
         var client = CreateQueryClient();
 
-        // The query function blocks on the TCS. No SyncContext is installed,
-        // so _syncContext is null and OnResultChanged will call UpdateFromResult
-        // directly on whatever thread the notification arrives on.
-        var vm = new QueryViewModel<string, string>(
+        var exception = ConstructOnBareThread(() => new QueryViewModel<string, string>(
             client,
-            queryKey: ["constructor-race"],
-            queryFn: _ => tcs.Task);
+            queryKey: ["no-context-query"],
+            queryFn: _ => Task.FromResult("data")));
 
-        vm.PropertyChanged += (_, _) =>
-            propertyChangedThreadIds.Add(Environment.CurrentManagedThreadId);
+        Assert.IsType<InvalidOperationException>(exception);
+    }
 
-        // Act — release the fetch from a dedicated thread. Using `new Thread`
-        // instead of `Task.Run` guarantees a fresh managed thread ID — the
-        // thread pool can reuse the construction thread on low-core CI machines,
-        // which would make the background-thread assertion flaky.
-        var completionThread = new Thread(() => tcs.SetResult("data"));
-        completionThread.Start();
-        completionThread.Join();
-        await WaitForAsync(() => vm.Data == "data");
+    [Fact]
+    public void InfiniteQueryViewModel_Constructed_Without_SyncContext_Throws()
+    {
+        var client = CreateQueryClient();
 
-        // Assert — PropertyChanged fired from a thread pool thread (not
-        // the construction thread). Without a SyncContext, there is nothing
-        // preventing background notifications from writing to ViewModel
-        // properties concurrently with the constructor thread.
-        var backgroundThreadIds = propertyChangedThreadIds
-            .Distinct()
-            .Where(id => id != constructionThreadId)
-            .ToList();
+        var exception = ConstructOnBareThread(() => new InfiniteQueryViewModel<string, int>(
+            client,
+            new InfiniteQueryObserverOptions<string, int>
+            {
+                QueryKey = ["no-context-infinite"],
+                QueryFn = ctx => Task.FromResult($"page-{ctx.PageParam}"),
+                InitialPageParam = 0,
+                GetNextPageParam = static _ => PageParamResult<int>.None,
+            }));
 
-        Assert.NotEmpty(backgroundThreadIds);
+        Assert.IsType<InvalidOperationException>(exception);
+    }
 
-        vm.Dispose();
+    [Fact]
+    public void MutationViewModel_Constructed_Without_SyncContext_Throws()
+    {
+        var client = CreateQueryClient();
+
+        var exception = ConstructOnBareThread(() => new MutationViewModel<string, Exception, string, object?>(
+            client,
+            mutationFn: (input, _, _) => Task.FromResult(input.ToUpper())));
+
+        Assert.IsType<InvalidOperationException>(exception);
+    }
+
+    private static Exception? ConstructOnBareThread(Func<object> construct)
+    {
+        Exception? captured = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                _ = construct();
+            }
+            catch (Exception exception)
+            {
+                captured = exception;
+            }
+        });
+        thread.Start();
+        thread.Join();
+        return captured;
     }
 }

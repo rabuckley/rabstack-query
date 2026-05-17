@@ -121,7 +121,7 @@ var todosCollection = client.UseQueryCollection(
 
 ## Key Behaviors
 
-- **UI Thread Marshaling**: All property changes are dispatched to `SynchronizationContext.Current`, captured at construction time
+- Construct ViewModels on the UI thread with a non-null `SynchronizationContext.Current`. They capture this context and post observer updates through it. Construction without a context throws `InvalidOperationException`.
 - **Disposal Required**: Always call `Dispose()` on ViewModels to unsubscribe from query observers and prevent memory leaks
 - **Command Error Handling**: `RefetchCommand` and `MutateCommand` swallow exceptions by default for safe fire-and-forget binding. Use `InvokeAsync` when you need to handle errors
 

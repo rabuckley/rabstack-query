@@ -3,7 +3,7 @@ namespace RabstackQuery.Mvvm;
 /// <summary>
 /// Tests for MutationViewModel error handling and state propagation.
 /// </summary>
-public sealed class MutationViewModelTests
+public sealed class MutationViewModelTests : SyncContextTestBase
 {
     private static QueryClient CreateQueryClient()
     {

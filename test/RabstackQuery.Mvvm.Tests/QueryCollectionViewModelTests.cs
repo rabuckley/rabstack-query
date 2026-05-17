@@ -9,53 +9,14 @@ namespace RabstackQuery.Mvvm;
 /// Covers the update callback mechanism, error propagation, disposal safety,
 /// RefetchCommand, and status forwarding from the inner QueryViewModel.
 /// </summary>
-public sealed class QueryCollectionViewModelTests
+public sealed class QueryCollectionViewModelTests : SyncContextTestBase
 {
-    // ── Test Infrastructure ──────────────────────────────────────────
-
     private record TodoDto(int Id, string Title);
 
     private class TodoItemViewModel(int id, string title)
     {
         public int Id { get; } = id;
         public string Title { get; set; } = title;
-    }
-
-    private sealed class RecordingSynchronizationContext : SynchronizationContext
-    {
-        private int _postCount;
-        public int PostCount => Volatile.Read(ref _postCount);
-
-        public override void Post(SendOrPostCallback d, object? state)
-        {
-            Interlocked.Increment(ref _postCount);
-            d(state);
-        }
-
-        public override void Send(SendOrPostCallback d, object? state) => d(state);
-        public void Reset() => Interlocked.Exchange(ref _postCount, 0);
-    }
-
-    private sealed class DeferredSynchronizationContext : SynchronizationContext
-    {
-        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
-        public int QueuedCount => _queue.Count;
-
-        public override void Post(SendOrPostCallback d, object? state) =>
-            _queue.Enqueue((d, state));
-
-        public override void Send(SendOrPostCallback d, object? state) => d(state);
-
-        public int DrainQueue()
-        {
-            var count = 0;
-            while (_queue.TryDequeue(out var item))
-            {
-                item.Callback(item.State);
-                count++;
-            }
-            return count;
-        }
     }
 
     private static QueryClient CreateQueryClient() => new(new QueryCache());
@@ -73,14 +34,6 @@ public sealed class QueryCollectionViewModelTests
                     $"Condition was not satisfied within {timeoutMs}ms.");
             await Task.Delay(pollIntervalMs, TestContext.Current.CancellationToken);
         }
-    }
-
-    private static T WithSyncContext<T>(SynchronizationContext context, Func<T> action)
-    {
-        var previous = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(context);
-        try { return action(); }
-        finally { SynchronizationContext.SetSynchronizationContext(previous); }
     }
 
     private static QueryCollectionViewModel<string, string> CreateSimpleCollectionVm(

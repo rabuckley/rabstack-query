@@ -4,7 +4,7 @@ namespace RabstackQuery.Mvvm;
 /// Tests for <see cref="InfiniteQueryViewModel{TData,TPageParam}"/>
 /// covering property change notifications, commands, and disposal.
 /// </summary>
-public sealed class InfiniteQueryViewModelTests
+public sealed class InfiniteQueryViewModelTests : SyncContextTestBase
 {
     private static QueryClient CreateQueryClient()
     {

@@ -16,7 +16,7 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     private readonly QueryClient _client;
     private readonly ILogger _logger;
     private readonly InfiniteQueryObserver<TData, TPageParam> _observer;
-    private readonly SynchronizationContext? _syncContext;
+    private readonly SynchronizationContext _syncContext;
     private readonly string _queryKeyDisplay;
     private IDisposable? _subscription;
 
@@ -68,11 +68,17 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     public partial bool IsFetchPreviousPageError { get; set; }
 
     /// <summary>
-    /// Creates a new InfiniteQueryViewModel with full control over all observer options.
+    /// Initializes a new instance of the <see cref="InfiniteQueryViewModel{TData, TPageParam}"/> class with observer options.
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
     /// <param name="options">The infinite query observer options, including key, query function,
     /// initial page parameter, and page navigation callbacks.</param>
+    /// <exception cref="InvalidOperationException">
+    /// No <see cref="SynchronizationContext"/> is present on the calling thread.
+    /// </exception>
+    /// <remarks>
+    /// Construct on the UI thread; observer updates are posted through its captured context.
+    /// </remarks>
     public InfiniteQueryViewModel(
         QueryClient client,
         InfiniteQueryObserverOptions<TData, TPageParam> options)
@@ -81,7 +87,12 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.InfiniteQueryViewModel");
         _queryKeyDisplay = options.QueryKey.ToString();
-        _syncContext = SynchronizationContext.Current;
+        _syncContext = SynchronizationContext.Current
+            ?? throw new InvalidOperationException(
+                "InfiniteQueryViewModel must be constructed on a thread with a " +
+                "SynchronizationContext (the UI thread) so that property changes can be " +
+                "marshalled to it. It was constructed on a background or thread-pool " +
+                "thread — check for a Task.Run factory or a background DI scope.");
         _observer = new InfiniteQueryObserver<TData, TPageParam>(client, options);
 
         _subscription = _observer.Subscribe(OnResultChanged);
@@ -89,21 +100,12 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         _logger.InfiniteQueryViewModelSubscribed(_queryKeyDisplay);
     }
 
-    private void OnResultChanged(IInfiniteQueryResult<TData, TPageParam> result)
-    {
-        if (_syncContext is { } context)
+    private void OnResultChanged(IInfiniteQueryResult<TData, TPageParam> result) =>
+        _syncContext.Post(_ =>
         {
-            context.Post(_ =>
-            {
-                if (_subscription is null) return; // disposed
-                UpdateFromResult(result);
-            }, null);
-        }
-        else
-        {
+            if (_subscription is null) return;
             UpdateFromResult(result);
-        }
-    }
+        }, null);
 
     private void UpdateFromResult(IInfiniteQueryResult<TData, TPageParam> result)
     {

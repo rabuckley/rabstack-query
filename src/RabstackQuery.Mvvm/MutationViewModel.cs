@@ -24,7 +24,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
 {
     private readonly MutationObserver<TData, TError, TVariables, TOnMutateResult> _observer;
     private readonly ILogger _logger;
-    private readonly SynchronizationContext? _syncContext;
+    private readonly SynchronizationContext _syncContext;
     private IDisposable? _subscription;
 
     [ObservableProperty]
@@ -57,12 +57,17 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     public partial int FailureCount { get; set; }
 
     /// <summary>
-    /// Creates a new MutationViewModel.
-    /// Uses Exception as TError and object? as TOnMutateResult by default.
+    /// Initializes a new instance of the <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/> class.
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
     /// <param name="mutationFn">The async mutation function.</param>
     /// <param name="options">Optional mutation configuration.</param>
+    /// <exception cref="InvalidOperationException">
+    /// No <see cref="SynchronizationContext"/> is present on the calling thread.
+    /// </exception>
+    /// <remarks>
+    /// Construct on the UI thread; observer updates are posted through its captured context.
+    /// </remarks>
     public MutationViewModel(
         QueryClient client,
         Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
@@ -70,7 +75,12 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     {
         ArgumentNullException.ThrowIfNull(client);
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.MutationViewModel");
-        _syncContext = SynchronizationContext.Current;
+        _syncContext = SynchronizationContext.Current
+            ?? throw new InvalidOperationException(
+                "MutationViewModel must be constructed on a thread with a " +
+                "SynchronizationContext (the UI thread) so that property changes can be " +
+                "marshalled to it. It was constructed on a background or thread-pool " +
+                "thread — check for a Task.Run factory or a background DI scope.");
 
         var mutationOptions = (options ?? new MutationOptions<TData, TError, TVariables, TOnMutateResult>())
             with { MutationFn = mutationFn };
@@ -82,21 +92,12 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         _logger.MutationViewModelCreated();
     }
 
-    private void OnResultChanged(IMutationResult<TData, TError> result)
-    {
-        if (_syncContext is { } context)
+    private void OnResultChanged(IMutationResult<TData, TError> result) =>
+        _syncContext.Post(_ =>
         {
-            context.Post(_ =>
-            {
-                if (_subscription is null) return; // disposed
-                UpdateFromResult(result);
-            }, null);
-        }
-        else
-        {
+            if (_subscription is null) return;
             UpdateFromResult(result);
-        }
-    }
+        }, null);
 
     private void UpdateFromResult(IMutationResult<TData, TError> result)
     {

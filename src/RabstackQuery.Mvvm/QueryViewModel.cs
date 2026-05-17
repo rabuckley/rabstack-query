@@ -26,7 +26,7 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     private readonly QueryClient _client;
     private readonly ILogger _logger;
     private readonly QueryObserver<TData, TQueryData> _observer;
-    private readonly SynchronizationContext? _syncContext;
+    private readonly SynchronizationContext _syncContext;
     private readonly string _queryKeyDisplay;
     private IDisposable? _subscription;
 
@@ -92,12 +92,16 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     }
 
     /// <summary>
-    /// Creates a new QueryViewModel with full control over all observer options.
-    /// Use this constructor to configure StaleTime, RefetchInterval, PlaceholderData,
-    /// Enabled, and other options that the simpler constructor leaves at defaults.
+    /// Initializes a new instance of the <see cref="QueryViewModel{TData, TQueryData}"/> class with observer options.
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
     /// <param name="options">The full set of observer options.</param>
+    /// <exception cref="InvalidOperationException">
+    /// No <see cref="SynchronizationContext"/> is present on the calling thread.
+    /// </exception>
+    /// <remarks>
+    /// Construct on the UI thread; observer updates are posted through its captured context.
+    /// </remarks>
     public QueryViewModel(
         QueryClient client,
         QueryObserverOptions<TData, TQueryData> options)
@@ -106,7 +110,12 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.QueryViewModel");
         _queryKeyDisplay = options.QueryKey.ToString();
-        _syncContext = SynchronizationContext.Current;
+        _syncContext = SynchronizationContext.Current
+            ?? throw new InvalidOperationException(
+                "QueryViewModel must be constructed on a thread with a " +
+                "SynchronizationContext (the UI thread) so that property changes can be " +
+                "marshalled to it. It was constructed on a background or thread-pool " +
+                "thread — check for a Task.Run factory or a background DI scope.");
         _observer = new QueryObserver<TData, TQueryData>(client, options);
 
         _subscription = _observer.Subscribe(OnResultChanged);
@@ -129,22 +138,19 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
         _observer.SetOptions(options);
     }
 
-    private void OnResultChanged(IQueryResult<TData> result)
-    {
-        if (_syncContext is { } context)
+    private void OnResultChanged(IQueryResult<TData> result) =>
+        _syncContext.Post(_ =>
         {
-            context.Post(_ =>
-            {
-                if (_subscription is null) return; // disposed
-                UpdateFromResult(result);
-            }, null);
-        }
-        else
-        {
+            if (_subscription is null) return;
             UpdateFromResult(result);
-        }
-    }
+        }, null);
 
+    // Assigns every result-derived property unconditionally. TanStack's auto-tracking
+    // (TrackedQueryResult) records which properties a React component reads *during render*;
+    // MVVM has no render pass — XAML/Blazor bindings are declared statically — so that
+    // gate is inapplicable here. Per-property change suppression is instead delegated to
+    // CommunityToolkit's generated setter, which short-circuits on equality before raising
+    // PropertyChanged. The observer's NotifyOnChangeProps gate still applies upstream.
     private void UpdateFromResult(IQueryResult<TData> result)
     {
         _logger.QueryViewModelResultUpdated(_queryKeyDisplay, result.Status);

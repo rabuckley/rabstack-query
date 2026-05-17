@@ -46,3 +46,9 @@ JavaScript's `getQueryData` works regardless of type because there's no runtime 
 - **No data transformers** — Skip `serializeData`/`deserializeData`. Consumers handle JSON serialization externally.
 
 - **No error redaction** — Skip `shouldRedactErrors`.
+
+## MVVM ViewModel threading
+
+Construct `QueryViewModel`, `InfiniteQueryViewModel`, and `MutationViewModel` on the UI
+thread. They capture `SynchronizationContext.Current`, throw `InvalidOperationException`
+if it is null, and post observer updates through it.
