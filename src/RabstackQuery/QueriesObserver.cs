@@ -31,15 +31,6 @@ namespace RabstackQuery;
 /// output hasn't changed (by reference equality). Mirrors TanStack's
 /// <c>#combineResult</c> / <c>#notify</c> in <c>queriesObserver.ts:172–309</c>.
 /// </para>
-///
-/// <para>
-/// <b>Auto-tracking:</b> when a combine function is present and an observer's
-/// <see cref="QueryObserverOptions{TData,TQueryData}.NotifyOnChangeProps"/> is null,
-/// results are wrapped in <see cref="TrackedQueryResult{TData}"/> before being passed
-/// to combine. Property accesses inside combine are recorded on each observer so that
-/// subsequent notifications are suppressed when only untracked properties change.
-/// Mirrors TanStack's <c>#trackResult</c> (<c>queriesObserver.ts:295–309</c>, PR #7000).
-/// </para>
 /// </summary>
 /// <remarks>
 /// The only intended subclass is <see cref="QueriesObserver{TData}"/>, a convenience
@@ -65,13 +56,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
     private readonly Dictionary<QueryObserver<TData, TData>, IDisposable> _innerSubscriptions
         = new(ReferenceEqualityComparer.Instance);
 
-    // Guards _observers, _result, _observerMatches, _innerSubscriptions,
-    // _combine, and the combine memoization fields. TanStack is single-threaded
-    // so doesn't need this.
-    //
-    // Lock ordering: _listenersLock → _stateLock (never the reverse).
-    // OnSubscribe/OnUnsubscribe run under _listenersLock and acquire _stateLock
-    // for _innerSubscriptions and _observers access.
+    // Acquire _listenersLock before _stateLock, as subscription callbacks do, to avoid deadlock.
     private readonly Lock _stateLock = new();
 
     // ── Combine memoization state ──────────────────────────────────────────────
@@ -84,9 +69,6 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
     private IReadOnlyList<IQueryResult<TData>>? _lastCombineInput;
     private List<string>? _lastQueryHashes;
     private Delegate? _lastCombine;
-
-    // Observer matches from the last SetQueries call, used for trackResult.
-    private List<ObserverMatch> _observerMatches = [];
 
     /// <param name="client">The <see cref="QueryClient"/> that owns the query cache.</param>
     /// <param name="queries">
@@ -159,7 +141,6 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
             _innerSubscriptions.Clear();
             _observers = [];
             _result = [];
-            _observerMatches = [];
             _combinedResult = default;
             _hasCombinedResult = false;
             _lastCombineInput = null;
@@ -285,14 +266,10 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
                 }
             }
 
-            // ── Atomic state write ──────────────────────────────────────────────
-            // _observers, _observerMatches, and _result must be written together
-            // so OnUpdate never sees _observers with a different length than _result.
             lock (_stateLock)
             {
                 if (hasStructuralChange)
                     _observers = newObservers;
-                _observerMatches = newMatches;
                 _result = newResults;
             }
 
@@ -328,21 +305,15 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
     }
 
     /// <summary>
-    /// Computes an optimistic result snapshot and returns both the raw results, a
-    /// delegate to apply <paramref name="combine"/> to those results, and a delegate
-    /// to get tracked results. Mirrors TanStack's three-element tuple return from
-    /// <c>getOptimisticResult</c>.
+    /// Returns an optimistic result snapshot and a delegate that applies <paramref name="combine"/>.
     /// </summary>
     /// <typeparam name="TOptCombined">The type returned by <paramref name="combine"/>.</typeparam>
     /// <returns>
-    /// A tuple of (rawResults, combineDelegate, getTracked).
     /// The combine delegate accepts an optional result list; when <see langword="null"/> is
     /// passed the raw results computed during this call are used as input.
-    /// The getTracked delegate returns results wrapped in <see cref="TrackedQueryResult{TData}"/>.
     /// </returns>
     public (IReadOnlyList<IQueryResult<TData>> RawResults,
-            Func<IReadOnlyList<IQueryResult<TData>>?, TOptCombined> GetCombined,
-            Func<IReadOnlyList<IQueryResult<TData>>> GetTracked)
+            Func<IReadOnlyList<IQueryResult<TData>>?, TOptCombined> GetCombined)
         GetOptimisticResult<TOptCombined>(
             IReadOnlyList<QueryObserverOptions<TData, TData>> queries,
             Func<IReadOnlyList<IQueryResult<TData>>, TOptCombined> combine)
@@ -353,11 +324,9 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
         lock (_stateLock) { observers = _observers; }
         var matches = FindMatchingObservers(queries, observers);
         var results = matches.Select(m => m.Observer.CurrentResult).ToList();
-        // Close over `results` and `matches` so the returned delegates can use them.
         return (
             results,
-            r => combine(r ?? results),
-            () => TrackResult(results, matches));
+            r => combine(r ?? results));
     }
 
     // ── Subscription lifecycle ──────────────────────────────────────────────────
@@ -413,51 +382,6 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
     }
 
     /// <summary>
-    /// Wraps raw results in <see cref="TrackedQueryResult{TData}"/> for observers
-    /// that don't have an explicit <see cref="QueryObserverOptions{TData,TQueryData}.NotifyOnChangeProps"/>.
-    /// Property accesses on the tracked wrapper are synchronized across all observers
-    /// in the group — accessing a property on one tracked result records it on ALL
-    /// observers. Mirrors TanStack's <c>#trackResult</c> (<c>queriesObserver.ts:295–309</c>,
-    /// PR #7000 synchronization).
-    /// </summary>
-    private IReadOnlyList<IQueryResult<TData>> TrackResult(
-        IReadOnlyList<IQueryResult<TData>> results,
-        List<ObserverMatch> matches)
-    {
-        var tracked = new List<IQueryResult<TData>>(results.Count);
-
-        for (var i = 0; i < results.Count; i++)
-        {
-            var result = results[i];
-            var match = i < matches.Count ? matches[i] : null;
-
-            // If the observer has explicit NotifyOnChangeProps, return the raw
-            // result — the observer already handles its own filtering.
-            if (match?.Options.NotifyOnChangeProps is not null)
-            {
-                tracked.Add(result);
-                continue;
-            }
-
-            // Wrap in TrackedQueryResult. The onPropTracked callback synchronizes
-            // by calling TrackProp on ALL observers in the group, ensuring that
-            // accessing `Data` on one observer's tracked result also suppresses
-            // Data-unchanged notifications on sibling observers.
-            var observer = match?.Observer;
-            tracked.Add(observer is not null
-                ? observer.TrackResult(result, prop =>
-                {
-                    // Synchronize across all observers in the group (PR #7000)
-                    foreach (var m in matches)
-                        m.Observer.TrackProp(prop);
-                })
-                : result);
-        }
-
-        return tracked;
-    }
-
-    /// <summary>
     /// Runs the combine function and memoizes the result. Re-runs when:
     /// <list type="bullet">
     /// <item>First call (no previous combined result)</item>
@@ -475,7 +399,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
     /// implement structural sharing inside the combine function itself.
     /// </remarks>
     private TCombinedResult CombineResult(
-        IReadOnlyList<IQueryResult<TData>> trackedResults,
+        IReadOnlyList<IQueryResult<TData>> results,
         Func<IReadOnlyList<IQueryResult<TData>>, TCombinedResult>? combine,
         List<string>? queryHashes = null)
     {
@@ -484,7 +408,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
             // No combine — return the results cast to TCombinedResult. This only
             // works when TCombinedResult is IReadOnlyList<IQueryResult<TData>>,
             // which is the case for the convenience QueriesObserver<TData> subclass.
-            return (TCombinedResult)trackedResults;
+            return (TCombinedResult)results;
         }
 
         // Check if we can reuse the previous combined result. Read memoization
@@ -492,7 +416,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
         lock (_stateLock)
         {
             if (_hasCombinedResult
-                && ReferenceEquals(_lastCombineInput, trackedResults)
+                && ReferenceEquals(_lastCombineInput, results)
                 && ReferenceEquals(_lastCombine, combine)
                 && QueryHashesMatch(queryHashes, _lastQueryHashes))
             {
@@ -502,7 +426,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
 
         // Call the user's combine function outside the lock. Under concurrent
         // Notify, both callers may reach here; last writer wins the memo cache.
-        var result = combine(trackedResults);
+        var result = combine(results);
 
         // TanStack queriesObserver.ts:241-244 — structural sharing on combine output.
         // Use EqualityComparer to detect value-equal results (works for records) and
@@ -518,7 +442,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
 
             _combinedResult = result;
             _hasCombinedResult = true;
-            _lastCombineInput = trackedResults;
+            _lastCombineInput = results;
             _lastCombine = combine;
             _lastQueryHashes = queryHashes;
         }
@@ -542,31 +466,21 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
     {
         if (!HasListeners) return;
 
-        // Snapshot the fields that SetQueries can replace concurrently.
-        // _stateLock serializes this read against both OnUpdate and SetQueries
-        // writes, ensuring _result, _observerMatches, and _combine are from
-        // the same logical state.
         IReadOnlyList<IQueryResult<TData>> resultSnapshot;
-        List<ObserverMatch> matchesSnapshot;
         Func<IReadOnlyList<IQueryResult<TData>>, TCombinedResult>? combineSnapshot;
         TCombinedResult? previousCombined;
         bool hadPreviousCombined;
         lock (_stateLock)
         {
             resultSnapshot = _result;
-            matchesSnapshot = _observerMatches;
             combineSnapshot = _combine;
             previousCombined = _combinedResult;
             hadPreviousCombined = _hasCombinedResult;
         }
 
-        // When a combine function is configured, apply tracking and memoization.
-        // Without combine, skip tracking entirely to avoid polluting observer-level
-        // _trackedProps (which would suppress legitimate per-observer notifications).
         if (combineSnapshot is not null)
         {
-            var trackedResults = TrackResult(resultSnapshot, matchesSnapshot);
-            var newCombined = CombineResult(trackedResults, combineSnapshot);
+            var newCombined = CombineResult(resultSnapshot, combineSnapshot);
 
             // Suppress notification if combined result unchanged (reference equality).
             // Only suppress after the first combine has run.

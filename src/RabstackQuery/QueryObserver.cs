@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
 namespace RabstackQuery;
 
@@ -41,16 +40,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     private ITimer? _refetchIntervalTimer;
     private ITimer? _staleTimeoutTimer;
     private TimeSpan _currentRefetchInterval;
-
-    // Property names recorded by TrackedQueryResult when a consumer accesses
-    // properties through a tracked wrapper. Used by ShouldNotifyListeners as
-    // the implicit set when NotifyOnChangeProps is null (auto-tracking mode).
-    // Mirrors TanStack's `#trackedProps` in queryObserver.ts:69.
-    // Uses ConcurrentDictionary as a thread-safe set — TrackProp is called from
-    // TrackedQueryResult property accessors on arbitrary threads during combine
-    // evaluation, concurrently with ShouldNotifyListeners reads on the dispatch
-    // thread. TanStack is single-threaded so doesn't need this.
-    private readonly ConcurrentDictionary<string, byte> _trackedProps = new();
 
     // Memoization state bundled into an immutable snapshot. Mirrors TanStack's
     // `#currentResultOptions`, `#currentResultState`, and `#lastQueryWithDefinedData`
@@ -95,35 +84,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     /// hash-based observer reuse.
     /// </summary>
     public QueryObserverOptions<TData, TQueryData> Options => _options;
-
-    /// <summary>
-    /// Records a property name as tracked. Called by <see cref="TrackedQueryResult{TData}"/>
-    /// when the consumer accesses a property through a tracked wrapper.
-    /// </summary>
-    internal void TrackProp(string propertyName) => _trackedProps.TryAdd(propertyName, 0);
-
-    /// <summary>
-    /// Wraps the given result in a <see cref="TrackedQueryResult{TData}"/> that records
-    /// which properties the consumer accesses. Used by <see cref="QueriesObserver{TData}"/>
-    /// to enable auto-tracking for combine functions.
-    /// <para>
-    /// Mirrors TanStack's <c>trackResult</c> (<c>queryObserver.ts:263–291</c>).
-    /// </para>
-    /// </summary>
-    /// <param name="result">The result to wrap.</param>
-    /// <param name="onPropTracked">
-    /// Optional additional callback invoked when a property is tracked. Used by
-    /// <see cref="QueriesObserver{TData}"/> to synchronize tracking across all
-    /// observers in a group (TanStack PR #7000).
-    /// </param>
-    internal IQueryResult<TData> TrackResult(IQueryResult<TData> result, Action<string>? onPropTracked = null)
-    {
-        return new TrackedQueryResult<TData>(result, prop =>
-        {
-            TrackProp(prop);
-            onPropTracked?.Invoke(prop);
-        });
-    }
 
     /// <summary>
     /// The underlying query this observer is attached to. Used by
@@ -266,16 +226,9 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
     public void OnQueryUpdate(DispatchAction action)
     {
-        var prevResult = _currentResult;
-
         UpdateResult();
 
-        // Gate notification on NotifyOnChangeProps. Mirrors TanStack's
-        // shouldNotifyListeners closure in queryObserver.ts:662–696.
-        if (ShouldNotifyListeners(prevResult))
-        {
-            NotifyListeners();
-        }
+        NotifyListeners();
 
         // Re-evaluate timers after every state change. This is critical for the
         // RefetchIntervalFn form: the function may return a different interval
@@ -285,44 +238,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         {
             UpdateTimers();
         }
-    }
-
-    /// <summary>
-    /// Determines whether listeners should be notified based on
-    /// <see cref="QueryObserverOptions{TData,TQueryData}.NotifyOnChangeProps"/>
-    /// or auto-tracked properties via <see cref="TrackedQueryResult{TData}"/>.
-    /// Returns <c>true</c> when no filtering is configured and no properties have
-    /// been auto-tracked, or when at least one tracked property changed between
-    /// <paramref name="prevResult"/> and <see cref="_currentResult"/>.
-    /// Mirrors TanStack's <c>shouldNotifyListeners</c> closure
-    /// (<c>queryObserver.ts:662–696</c>).
-    /// </summary>
-    private bool ShouldNotifyListeners(IQueryResult<TData>? prevResult)
-    {
-        // First notification always fires
-        if (prevResult is null) return true;
-
-        var curr = _currentResult;
-        if (curr is null) return true;
-
-        var notifyOnChangeProps = _options.NotifyOnChangeProps;
-
-        // Explicit NotifyOnChangeProps set takes precedence
-        if (notifyOnChangeProps is not null)
-        {
-            // Empty set — never notify
-            if (notifyOnChangeProps.Count == 0) return false;
-
-            return QueryResultComparer.HasChangedProperty(prevResult, curr, notifyOnChangeProps);
-        }
-
-        // No explicit set — fall back to auto-tracked properties.
-        // If nothing has been tracked (no TrackedQueryResult wrapper was used),
-        // always notify (backward compatible).
-        if (_trackedProps.IsEmpty) return true;
-
-        return QueryResultComparer.HasChangedProperty(prevResult, curr,
-            _trackedProps.Keys);
     }
 
     private void UpdateResult()

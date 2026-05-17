@@ -8,21 +8,9 @@ namespace RabstackQuery.Mvvm;
 public static class QueryClientExtensions
 {
     /// <summary>
-    /// Creates a QueryViewModel with commonly-used options flattened as parameters.
-    /// For advanced options (<c>EnabledFn</c>, <c>StaleTimeFn</c>, <c>StructuralSharing</c>,
-    /// <c>NotifyOnChangeProps</c>, etc.), use the
-    /// <see cref="UseQuery{TData}(QueryClient, QueryObserverOptions{TData})"/> overload.
+    /// Creates a query ViewModel. For additional observer options, use
+    /// <see cref="UseQuery{TData}(QueryClient, QueryObserverOptions{TData})"/>.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// TodosQuery = client.UseQuery(
-    ///     queryKey: ["todos"],
-    ///     queryFn: async ctx => await api.GetTodosAsync(ctx.CancellationToken),
-    ///     staleTime: TimeSpan.FromMinutes(5),
-    ///     refetchInterval: TimeSpan.FromSeconds(30)
-    /// );
-    /// </code>
-    /// </example>
     /// <inheritdoc cref="UseQuery{TData}(QueryClient, QueryObserverOptions{TData})"/>
     public static QueryViewModel<TData> UseQuery<TData>(
         this QueryClient client,

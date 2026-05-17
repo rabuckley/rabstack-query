@@ -81,9 +81,6 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.NetworkMode"/>
     public NetworkMode? NetworkMode { get; init; }
 
-    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.NotifyOnChangeProps"/>
-    public IReadOnlySet<string>? NotifyOnChangeProps { get; init; }
-
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.QueryKeyHasher"/>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
@@ -113,7 +110,6 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
             RefetchInterval = RefetchInterval,
             RefetchIntervalInBackground = RefetchIntervalInBackground,
             NetworkMode = NetworkMode,
-            NotifyOnChangeProps = NotifyOnChangeProps,
             QueryKeyHasher = QueryKeyHasher,
         };
     }

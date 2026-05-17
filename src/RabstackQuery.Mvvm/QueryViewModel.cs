@@ -145,12 +145,6 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
             UpdateFromResult(result);
         }, null);
 
-    // Assigns every result-derived property unconditionally. TanStack's auto-tracking
-    // (TrackedQueryResult) records which properties a React component reads *during render*;
-    // MVVM has no render pass — XAML/Blazor bindings are declared statically — so that
-    // gate is inapplicable here. Per-property change suppression is instead delegated to
-    // CommunityToolkit's generated setter, which short-circuits on equality before raising
-    // PropertyChanged. The observer's NotifyOnChangeProps gate still applies upstream.
     private void UpdateFromResult(IQueryResult<TData> result)
     {
         _logger.QueryViewModelResultUpdated(_queryKeyDisplay, result.Status);

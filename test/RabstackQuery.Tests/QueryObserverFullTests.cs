@@ -3089,12 +3089,8 @@ public sealed class QueryObserverFullTests
         Assert.True(alwaysObserver.ShouldFetchOnWindowFocus());
     }
 
-    /// <summary>
-    /// Null NotifyOnChangeProps (default) notifies on every state change —
-    /// backward compatible baseline.
-    /// </summary>
     [Fact]
-    public async Task NotifyOnChangeProps_Null_Notifies_On_Every_Change()
+    public async Task Observer_Notifies_On_Every_State_Change()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -3104,13 +3100,12 @@ public sealed class QueryObserverFullTests
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
             {
-                QueryKey = ["notify-null"],
+                QueryKey = ["notify-every-change"],
                 QueryFn = async _ =>
                 {
                     await Task.Yield();
                     return "data";
                 },
-                // NotifyOnChangeProps defaults to null
             });
 
         // Act
@@ -3125,223 +3120,6 @@ public sealed class QueryObserverFullTests
 
         // Assert — at least the FetchStatus and Success transitions fire
         Assert.True(notifyCount >= 2);
-
-        sub.Dispose();
-    }
-
-    /// <summary>
-    /// With NotifyOnChangeProps = { Data }, listener is called when Data changes
-    /// but NOT during FetchStatus-only transitions.
-    /// </summary>
-    [Fact]
-    public async Task NotifyOnChangeProps_Data_Only_Skips_FetchStatus_Transitions()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var notifications = new List<IQueryResult<string>>();
-        var fetchComplete = new TaskCompletionSource();
-
-        var observer = new QueryObserver<string, string>(client,
-            new QueryObserverOptions<string, string>
-            {
-                QueryKey = ["notify-data-only"],
-                QueryFn = async _ =>
-                {
-                    await Task.Yield();
-                    return "result";
-                },
-                NotifyOnChangeProps = new HashSet<string> { QueryResultProps.Data },
-            });
-
-        // Act
-        var sub = observer.Subscribe(result =>
-        {
-            notifications.Add(result);
-            if (result.Data is not null)
-                fetchComplete.TrySetResult();
-        });
-
-        await fetchComplete.Task;
-
-        // Assert — the first notification always fires (prevResult is null),
-        // then only notifications where Data actually changed should follow.
-        // FetchStatus-only transitions (Idle→Fetching) are skipped.
-        Assert.All(notifications.Skip(1), n =>
-            Assert.Equal("result", n.Data));
-
-        sub.Dispose();
-    }
-
-    /// <summary>
-    /// Empty NotifyOnChangeProps set suppresses all notifications — the listener
-    /// is never called even though the query state changes.
-    /// </summary>
-    [Fact]
-    public async Task NotifyOnChangeProps_Empty_Set_Never_Notifies()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var notifyCount = 0;
-
-        var observer = new QueryObserver<string, string>(client,
-            new QueryObserverOptions<string, string>
-            {
-                QueryKey = ["notify-empty"],
-                QueryFn = async _ =>
-                {
-                    await Task.Yield();
-                    return "data";
-                },
-                NotifyOnChangeProps = new HashSet<string>(),
-            });
-
-        // Act
-        var sub = observer.Subscribe(_ => notifyCount++);
-
-        // Allow the fetch cycle to complete
-        await Task.Delay(100);
-
-        // Assert — no tracked properties means no notifications fire, even
-        // though the query transitions through Pending→Fetching→Succeeded.
-        Assert.Equal(0, notifyCount);
-
-        sub.Dispose();
-    }
-
-    /// <summary>
-    /// NotifyOnChangeProps = { Data, Error } fires for both data success and error transitions.
-    /// </summary>
-    [Fact]
-    public async Task NotifyOnChangeProps_Multiple_Props_Fires_For_Data_And_Error()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var notifications = new List<IQueryResult<string>>();
-        var shouldFail = true;
-        var errorSeen = new TaskCompletionSource();
-        var successSeen = new TaskCompletionSource();
-
-        var observer = new QueryObserver<string, string>(client,
-            new QueryObserverOptions<string, string>
-            {
-                QueryKey = ["notify-multi"],
-                QueryFn = async _ =>
-                {
-                    await Task.Yield();
-                    if (shouldFail)
-                        throw new InvalidOperationException("fail");
-                    return "ok";
-                },
-                NotifyOnChangeProps = new HashSet<string>
-                {
-                    QueryResultProps.Data,
-                    QueryResultProps.Error,
-                },
-            });
-
-        // Subscribe and set retry to 0 so the error surfaces immediately
-        client.QueryCache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["notify-multi"],
-            QueryKeyHasher = DefaultQueryKeyHasher.Instance,
-            Retry = 0,
-        });
-
-        var sub = observer.Subscribe(result =>
-        {
-            notifications.Add(result);
-            if (result.IsError) errorSeen.TrySetResult();
-            if (result.IsSuccess) successSeen.TrySetResult();
-        });
-
-        await errorSeen.Task;
-
-        // Now succeed on next fetch
-        shouldFail = false;
-        _ = observer.RefetchAsync();
-        await successSeen.Task;
-
-        // Assert — notifications include error and success transitions
-        Assert.Contains(notifications, n => n.Error is not null);
-        Assert.Contains(notifications, n => n.Data == "ok");
-
-        sub.Dispose();
-    }
-
-    /// <summary>
-    /// First notification always fires regardless of NotifyOnChangeProps setting.
-    /// </summary>
-    [Fact]
-    public async Task NotifyOnChangeProps_First_Notification_Always_Fires()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var firstNotification = new TaskCompletionSource<IQueryResult<string>>();
-
-        var observer = new QueryObserver<string, string>(client,
-            new QueryObserverOptions<string, string>
-            {
-                QueryKey = ["notify-first"],
-                QueryFn = async _ =>
-                {
-                    await Task.Yield();
-                    return "data";
-                },
-                // Status would filter out everything, but first still fires
-                NotifyOnChangeProps = new HashSet<string> { QueryResultProps.Status },
-            });
-
-        // Act
-        var sub = observer.Subscribe(result =>
-            firstNotification.TrySetResult(result));
-
-        var result = await firstNotification.Task;
-
-        // Assert — received the first notification even though Status may not
-        // have changed from its initial value
-        Assert.NotNull(result);
-
-        sub.Dispose();
-    }
-
-    /// <summary>
-    /// With NotifyOnChangeProps = { Data }, a refetch returning the same data
-    /// does not trigger a notification beyond the initial one.
-    /// </summary>
-    [Fact]
-    public async Task NotifyOnChangeProps_Refetch_Same_Data_Skips_Notification()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var notifyCount = 0;
-        var firstFetch = new TaskCompletionSource();
-
-        var observer = new QueryObserver<string, string>(client,
-            new QueryObserverOptions<string, string>
-            {
-                QueryKey = ["notify-same-data"],
-                QueryFn = async _ =>
-                {
-                    await Task.Yield();
-                    return "stable";
-                },
-                NotifyOnChangeProps = new HashSet<string> { QueryResultProps.Data },
-            });
-
-        var sub = observer.Subscribe(result =>
-        {
-            notifyCount++;
-            if (result.IsSuccess) firstFetch.TrySetResult();
-        });
-
-        await firstFetch.Task;
-        var countAfterFirstFetch = notifyCount;
-
-        // Act — refetch returns the same data
-        await observer.RefetchAsync();
-
-        // Assert — no additional Data-change notification since data is unchanged
-        Assert.Equal(countAfterFirstFetch, notifyCount);
 
         sub.Dispose();
     }

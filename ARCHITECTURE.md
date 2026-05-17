@@ -52,3 +52,13 @@ JavaScript's `getQueryData` works regardless of type because there's no runtime 
 Construct `QueryViewModel`, `InfiniteQueryViewModel`, and `MutationViewModel` on the UI
 thread. They capture `SynchronizationContext.Current`, throw `InvalidOperationException`
 if it is null, and post observer updates through it.
+
+## Omitted property tracking
+
+TanStack uses `trackResult` and `notifyOnChangeProps` to suppress React re-renders based
+on result properties. The MVVM adapter uses per-property
+`INotifyPropertyChanged` events, so it omits that tracking machinery. CommunityToolkit's
+generated setters suppress events when values are equal.
+
+`QueryObserver` notifies on every query state change. `QueriesObserver` memoizes combined
+results and suppresses notifications when the combined output is the same reference.

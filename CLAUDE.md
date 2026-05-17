@@ -31,6 +31,10 @@ Before adding a new public API, check whether TanStack has an equivalent. If it 
 2. **Document the reasoning** in a code comment at the call site.
 3. **Write tests for the intended semantics, not the observed behavior.** Every test for a non-trivial behavioral choice should reference a TanStack source location or an explicit design decision.
 
+### Auditing inherited TanStack APIs
+
+For each TanStack API being ported, check whether it solves a problem in the C#/MVVM execution model. Omit machinery specific to React rendering. Document the omitted construct, why it does not apply, and any behavior retained. See `ARCHITECTURE.md`, "Omitted property tracking", for an example.
+
 ## C#-Specific Porting Concerns
 
 These areas have no TS equivalent and are where porting agents most likely introduce bugs.

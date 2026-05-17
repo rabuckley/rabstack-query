@@ -149,28 +149,6 @@ public record QueryObserverOptions<TData, TQueryData>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
     /// <summary>
-    /// Explicit list of <see cref="IQueryResult{TData}"/> property names that
-    /// should trigger listener notifications when their values change. Use
-    /// <see cref="QueryResultProps"/> constants for type-safe property names.
-    /// <para>
-    /// <c>null</c> (default) = auto-tracking mode. When a
-    /// <see cref="TrackedQueryResult{TData}"/> wrapper is used (e.g. via
-    /// <see cref="QueriesObserver{TData}"/>'s combine function), only properties
-    /// accessed through the wrapper trigger notifications. When no wrapper is used,
-    /// all changes notify (backward compatible).
-    /// Empty set = never notify. Set with names = notify only when at least
-    /// one listed property changed.
-    /// </para>
-    /// <para>
-    /// Mirrors TanStack's <c>notifyOnChangeProps</c> option
-    /// (<c>queryObserver.ts:662–696</c>). Auto-tracking via
-    /// <see cref="TrackedQueryResult{TData}"/> is the C# equivalent of TanStack's
-    /// JS Proxy-based <c>trackedProps</c>.
-    /// </para>
-    /// </summary>
-    public IReadOnlySet<string>? NotifyOnChangeProps { get; init; }
-
-    /// <summary>
     /// Custom function to control structural sharing of query data. Called with
     /// the previous and new data after <see cref="Select"/> (or after the raw
     /// cache-to-output conversion when Select is null). Return the previous

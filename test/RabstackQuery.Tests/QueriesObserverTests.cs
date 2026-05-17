@@ -519,7 +519,7 @@ public sealed class QueriesObserverTests
         ]);
 
         // Act — initial: 1 query
-        var (initialRaw, getInitialCombined, _) = observer.GetOptimisticResult(
+        var (initialRaw, getInitialCombined) = observer.GetOptimisticResult(
             [new QueryObserverOptions<int> { QueryKey = ["q10-a"], QueryFn = async _ => 1 }],
             combine);
         var initialCombined = getInitialCombined(initialRaw);
@@ -527,7 +527,7 @@ public sealed class QueriesObserverTests
         Assert.Equal(1, initialCombined.Count);
 
         // Act — expanded: 2 queries
-        var (newRaw, getNewCombined, _) = observer.GetOptimisticResult(
+        var (newRaw, getNewCombined) = observer.GetOptimisticResult(
         [
             new QueryObserverOptions<int> { QueryKey = ["q10-a"], QueryFn = async _ => 1 },
             new QueryObserverOptions<int> { QueryKey = ["q10-b"], QueryFn = async _ => 2 },
@@ -556,7 +556,7 @@ public sealed class QueriesObserverTests
         ]);
 
         // Initial: 2 queries
-        var (initialRaw, getInitialCombined, _) = observer.GetOptimisticResult(
+        var (initialRaw, getInitialCombined) = observer.GetOptimisticResult(
         [
             new QueryObserverOptions<int> { QueryKey = ["q11-a"], QueryFn = async _ => 1 },
             new QueryObserverOptions<int> { QueryKey = ["q11-b"], QueryFn = async _ => 2 },
@@ -566,7 +566,7 @@ public sealed class QueriesObserverTests
         Assert.Equal(2, initialCombined.Count);
 
         // Act — shrink to 1 query
-        var (newRaw, getNewCombined, _) = observer.GetOptimisticResult(
+        var (newRaw, getNewCombined) = observer.GetOptimisticResult(
         [
             new QueryObserverOptions<int> { QueryKey = ["q11-a"], QueryFn = async _ => 1 },
         ], combine);
@@ -597,7 +597,7 @@ public sealed class QueriesObserverTests
         ]);
 
         // Initial: q12-a → success (cached)
-        var (initialRaw, getInitialCombined, _) = observer.GetOptimisticResult(
+        var (initialRaw, getInitialCombined) = observer.GetOptimisticResult(
         [
             new QueryObserverOptions<int> { QueryKey = ["q12-a"], QueryFn = async _ => 1 },
         ], combine);
@@ -606,7 +606,7 @@ public sealed class QueriesObserverTests
         Assert.Equal(["Succeeded"], initialCombined.Keys);
 
         // Act — replace with an uncached query (q12-b) at the same position
-        var (newRaw, getNewCombined, _) = observer.GetOptimisticResult(
+        var (newRaw, getNewCombined) = observer.GetOptimisticResult(
         [
             new QueryObserverOptions<int> { QueryKey = ["q12-b"], QueryFn = async _ => 2 },
         ], combine);
@@ -693,116 +693,8 @@ public sealed class QueriesObserverTests
         sub.Dispose();
     }
 
-    // ── Test 14: synchronized trackResult across observers ─────────────────────
-
-    /// <summary>
-    /// When combine accesses a property on one observer's tracked result, that
-    /// property is auto-tracked on ALL observers in the group (PR #7000
-    /// synchronization). Accessing Data on only the first tracked result should
-    /// record "Data" on both observers, so a Data-unchanged update on the second
-    /// observer is suppressed.
-    /// </summary>
-    [Fact(Timeout = 10_000)]
-    public void TrackResult_Synchronizes_Across_Observers()
-    {
-        // Arrange — pre-populate cache
-        var client = CreateQueryClient();
-        client.SetQueryData(["tr1"], 1);
-        client.SetQueryData(["tr2"], 2);
-        var notifyCount = 0;
-
-        // Combine only accesses Data on the first result, but the synchronized
-        // tracking callback records "Data" on ALL observers in the group.
-        Func<IReadOnlyList<IQueryResult<int>>, int> combine = results =>
-            results[0].Data;
-
-        var observer = new QueriesObserver<int, int>(client,
-        [
-            new QueryObserverOptions<int>
-            {
-                QueryKey = ["tr1"],
-                QueryFn = async _ => 1
-            },
-            new QueryObserverOptions<int>
-            {
-                QueryKey = ["tr2"],
-                QueryFn = async _ => 2
-            },
-        ], combine);
-
-        var sub = observer.Subscribe(_ => notifyCount++);
-
-        // Assert — observers were created
-        Assert.Equal(2, observer.GetObservers().Count);
-
-        var countAfterSubscribe = notifyCount;
-
-        // Act — update tr1's Data. Combine accesses Data, so it runs and
-        // produces a new result (3 instead of 1). Notification fires.
-        client.SetQueryData(["tr1"], 3);
-        Assert.True(notifyCount > countAfterSubscribe, "Data change should notify");
-
-        sub.Dispose();
-    }
-
-    // ── Test 15: trackResult synchronizes property tracking across observers ───
-
-    /// <summary>
-    /// TanStack: "should track properties on all observers when trackResult is called"
-    /// When tracked results are obtained via <c>GetOptimisticResult</c>'s third tuple
-    /// element and a property is accessed on one tracked result, the synchronized
-    /// <c>onPropTracked</c> callback records that property on ALL observers. This
-    /// test verifies the mechanism works by accessing <c>Status</c> on only the first
-    /// tracked result, then confirming that a Data-only change still triggers a
-    /// notification (because Data wasn't tracked, so it doesn't suppress), while a
-    /// Status-unchanged update on the second observer would be suppressed.
-    /// </summary>
     [Fact]
-    public void TrackResult_ShouldSynchronizePropertyAccess_AcrossAllObservers()
-    {
-        // Arrange — pre-populate cache so observers start with data
-        var client = CreateQueryClient();
-        client.SetQueryData(["sync-tr1"], 1);
-        client.SetQueryData(["sync-tr2"], 2);
-
-        var queries = new List<QueryObserverOptions<int>>
-        {
-            new() { QueryKey = ["sync-tr1"], QueryFn = async _ => 1 },
-            new() { QueryKey = ["sync-tr2"], QueryFn = async _ => 2 },
-        };
-
-        // Combine only accesses Data on the first result — so Data is tracked
-        // on ALL observers via synchronization.
-        Func<IReadOnlyList<IQueryResult<int>>, int> combine = results =>
-            results[0].Data;
-
-        var observer = new QueriesObserver<int, int>(client, queries, combine);
-
-        // Act — get tracked results via the 3-tuple
-        var (rawResults, _, getTracked) = observer.GetOptimisticResult(queries, combine);
-
-        var trackedResults = getTracked();
-
-        // Assert — both observers have tracked results
-        Assert.Equal(2, trackedResults.Count);
-
-        // Access Status on only the first tracked result. This should synchronize
-        // "Status" tracking across ALL observers.
-        var status = trackedResults[0].Status;
-        Assert.Equal(QueryStatus.Succeeded, status);
-
-        // Verify the second tracked result is also accessible and functional
-        Assert.Equal(2, trackedResults[1].Data);
-    }
-
-    // ── Test 16: GetOptimisticResult 3-tuple ────────────────────────────────────
-
-    /// <summary>
-    /// GetOptimisticResult with combine returns a 3-tuple whose third element
-    /// provides tracked results.
-    /// </summary>
-    [Fact]
-    public void GetOptimisticResult_Returns_ThreeTuple_With_Tracked_Results()
+    public void GetOptimisticResult_Returns_RawResults_And_Combine_Delegate()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -817,7 +709,7 @@ public sealed class QueriesObserverTests
         ], combine);
 
         // Act
-        var (rawResults, getCombined, getTracked) = observer.GetOptimisticResult(
+        var (rawResults, getCombined) = observer.GetOptimisticResult(
             [new QueryObserverOptions<int> { QueryKey = ["gt1"], QueryFn = async _ => 42 }],
             combine);
 
@@ -827,15 +719,7 @@ public sealed class QueriesObserverTests
 
         // Assert — combine delegate works
         Assert.Equal(42, getCombined(null));
-
-        // Assert — tracked results are present and accessible
-        var tracked = getTracked();
-        Assert.Single(tracked);
-        // Accessing Data through tracked result should work
-        Assert.Equal(42, tracked[0].Data);
     }
-
-    // ── Test 17: SetQueries with combine ──────────────────────────────────────
 
     /// <summary>
     /// SetQueries overload accepts a combine function parameter.
@@ -952,18 +836,6 @@ public sealed class QueriesObserverTests
             "Notify loop didn't run enough iterations to exercise the race window");
     }
 
-    /// <summary>
-    /// Reproduces a race between <c>SetQueries</c> and <c>OnUpdate</c> on the
-    /// combine memoization state (<c>_combinedResult</c>, <c>_hasCombinedResult</c>,
-    /// <c>_lastCombineInput</c>, <c>_observerMatches</c>).
-    ///
-    /// <c>SetQueries</c> writes these fields and calls <c>Notify()</c> without
-    /// acquiring <c>_resultLock</c>. Concurrently, a query fetch completion triggers
-    /// <c>OnUpdate→Notify()</c>. Both <c>Notify</c> calls race on the combine fields,
-    /// reading stale or torn memoization state. The failure modes are exceptions from
-    /// index-out-of-range (when <c>_observerMatches</c> and <c>_result</c> have
-    /// mismatched lengths) or corrupted combine output.
-    /// </summary>
     [Fact(Timeout = 30_000)]
     public async Task Combine_Should_Not_Corrupt_Under_Concurrent_SetQueries_And_Notify()
     {
@@ -1004,8 +876,6 @@ public sealed class QueriesObserverTests
             }
         });
 
-        // Thread 2: rapidly SetQueries to add/remove a query, which writes
-        // _result, _observerMatches, and calls Notify — all without _stateLock.
         var setQueriesTask = Task.Run(() =>
         {
             var two = new QueryObserverOptions<int>[]
@@ -1124,28 +994,6 @@ public sealed class QueriesObserverTests
             $"Subscribe loop ran only {Volatile.Read(ref subscribeIterations)} iterations");
     }
 
-    /// <summary>
-    /// Exercises Bug #2 and #3 (QueriesObserver state races) through the real
-    /// production notification path:
-    ///
-    ///   RefetchInterval timers fire on ThreadPool → fetch completions call
-    ///   Dispatch → QueryObserver.NotifyListeners → QueriesObserver.OnUpdate
-    ///   reads/writes _observers and _result
-    ///
-    /// To ensure the race window is reliably hit, a second thread drives
-    /// additional notifications via SetQueryData (the same Dispatch → OnUpdate
-    /// path, just initiated synchronously rather than via timer). A third thread
-    /// calls SetQueries (simulating UI navigation), writing _observers, _result,
-    /// and _observerMatches.
-    ///
-    /// The refetch intervals prove that the timer → ThreadPool → Dispatch path
-    /// participates in the race; the SetQueryData thread amplifies contention to
-    /// make the race deterministically triggerable.
-    ///
-    /// Pre-fix, OnUpdate's non-atomic read-modify-write on _result raced with
-    /// SetQueries' writes — causing IndexOutOfRangeException (mismatched
-    /// _observers/_result lengths) or lost updates.
-    /// </summary>
     [Fact(Timeout = 30_000)]
     public async Task RefetchInterval_Should_Not_Corrupt_State_Under_Concurrent_SetQueries()
     {
