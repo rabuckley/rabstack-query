@@ -56,44 +56,35 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         _client = client;
         _api = api;
 
-        // All three queries share the same cache key and query function. The cache
-        // type must be IEnumerable<Project> to match QueryCollectionViewModel's internal
-        // type (ProjectListViewModel also observes this key via UseQueryCollection).
+        // Keep the cached type aligned with ProjectListViewModel's IEnumerable<Project>;
+        // observers of the same key with different cached types throw.
+        var projects = Queries.Projects(api);
 
-
-        _totalTaskCountBaseOptions = new QueryObserverOptions<int, IEnumerable<Project>>
+        _totalTaskCountBaseOptions = projects.ToObserverOptions(ps => ps.Sum(p => p.TaskCount)) with
         {
-            QueryKey = QueryKeys.Projects,
-            QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
-            Select = projects => projects.Sum(p => p.TaskCount),
             RefetchIntervalInBackground = false,
             StaleTime = DashboardStaleTime,
         };
 
         TotalTaskCountQuery = client.UseQuery(_totalTaskCountBaseOptions);
 
-        CompletionRateQuery = client.UseQuery(new QueryObserverOptions<string, IEnumerable<Project>>
+        CompletionRateQuery = client.UseQuery(projects.ToObserverOptions(ps =>
         {
-            QueryKey = QueryKeys.Projects,
-            QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
-            Select = projects =>
-            {
-                var total = projects.Sum(p => p.TaskCount);
-                if (total == 0) return "0%";
-                var completed = projects.Sum(p => p.CompletedTaskCount);
-                return $"{completed * 100 / total}%";
-            },
+            var total = ps.Sum(p => p.TaskCount);
+            if (total == 0) return "0%";
+            var completed = ps.Sum(p => p.CompletedTaskCount);
+            return $"{completed * 100 / total}%";
+        }) with
+        {
             StaleTime = DashboardStaleTime,
         });
 
-        MostActiveProjectQuery = client.UseQuery(new QueryObserverOptions<string?, IEnumerable<Project>>
+        MostActiveProjectQuery = client.UseQuery(projects.ToObserverOptions(ps => ps
+            .OrderByDescending(p => p.TaskCount - p.CompletedTaskCount)
+            .Select(p => p.Name)
+            .FirstOrDefault()) with
         {
-            QueryKey = QueryKeys.Projects,
-            QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
-            Select = projects => projects
-                .OrderByDescending(p => p.TaskCount - p.CompletedTaskCount)
-                .Select(p => p.Name)
-                .FirstOrDefault(),
+            StaleTime = DashboardStaleTime,
         });
     }
 
