@@ -30,6 +30,9 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     private readonly string _queryKeyDisplay;
     private IDisposable? _subscription;
 
+    // Dispose may run off the UI thread, so posted callbacks need a volatile guard.
+    private volatile bool _disposed;
+
     [ObservableProperty]
     public partial TData? Data { get; set; }
 
@@ -141,7 +144,7 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     private void OnResultChanged(IQueryResult<TData> result) =>
         _syncContext.Post(_ =>
         {
-            if (_subscription is null) return;
+            if (_disposed) return;
             UpdateFromResult(result);
         }, null);
 
@@ -198,6 +201,7 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     public void Dispose()
     {
         _logger.QueryViewModelDisposed(_queryKeyDisplay);
+        _disposed = true;
         _subscription?.Dispose();
         _subscription = null;
         GC.SuppressFinalize(this);

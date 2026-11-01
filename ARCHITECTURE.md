@@ -88,6 +88,14 @@ Construct `QueryViewModel`, `InfiniteQueryViewModel`, and `MutationViewModel` on
 thread. They capture `SynchronizationContext.Current`, throw `InvalidOperationException`
 if it is null, and post observer updates through it.
 
+- **Subscribe-time notifications are delivered.** Observers can notify inside `Subscribe`
+  (the mount fetch), before the constructor's synchronous `CurrentResult` read. A queuing
+  dispatcher runs that post after construction. It carries the result already applied, so
+  the equality-checked setters raise no `PropertyChanged`.
+- **Disposal is safe from any thread.** `Dispose` sets a volatile flag before
+  unsubscribing. No posted update starts applying after `Dispose` returns, though one
+  already running on the UI thread may finish.
+
 ## Omitted property tracking
 
 TanStack uses `trackResult` and `notifyOnChangeProps` to suppress React re-renders based

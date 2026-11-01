@@ -20,6 +20,9 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     private readonly string _queryKeyDisplay;
     private IDisposable? _subscription;
 
+    // Dispose may run off the UI thread, so posted callbacks need a volatile guard.
+    private volatile bool _disposed;
+
     [ObservableProperty]
     public partial InfiniteData<TData, TPageParam>? Data { get; set; }
 
@@ -102,7 +105,7 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     private void OnResultChanged(IInfiniteQueryResult<TData, TPageParam> result) =>
         _syncContext.Post(_ =>
         {
-            if (_subscription is null) return;
+            if (_disposed) return;
             UpdateFromResult(result);
         }, null);
 
@@ -186,6 +189,7 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         _logger.InfiniteQueryViewModelDisposed(_queryKeyDisplay);
         // Disposing the subscription triggers OnUnsubscribe → Destroy() cascade
         // on the inner QueryObserver, which handles all cleanup.
+        _disposed = true;
         _subscription?.Dispose();
         _subscription = null;
         GC.SuppressFinalize(this);

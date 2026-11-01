@@ -27,6 +27,9 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     private readonly SynchronizationContext _syncContext;
     private IDisposable? _subscription;
 
+    // Dispose may run off the UI thread, so posted callbacks need a volatile guard.
+    private volatile bool _disposed;
+
     [ObservableProperty]
     public partial TData? Data { get; set; }
 
@@ -95,7 +98,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     private void OnResultChanged(IMutationResult<TData, TError> result) =>
         _syncContext.Post(_ =>
         {
-            if (_subscription is null) return;
+            if (_disposed) return;
             UpdateFromResult(result);
         }, null);
 
@@ -193,6 +196,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         if (disposing)
         {
             _logger.MutationViewModelDisposed();
+            _disposed = true;
             _subscription?.Dispose();
             _subscription = null;
         }

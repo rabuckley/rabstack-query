@@ -269,6 +269,106 @@ public sealed class ThreadMarshallingTests
     }
 
     [Fact]
+    public async Task InfiniteQueryViewModel_Deferred_Post_Should_Not_Update_Properties_After_Dispose()
+    {
+        var syncContext = new DeferredSynchronizationContext();
+        var client = CreateQueryClient();
+        var fetchGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var vm = WithSyncContext(syncContext, () =>
+            new InfiniteQueryViewModel<string, int>(
+                client,
+                new InfiniteQueryObserverOptions<string, int>
+                {
+                    QueryKey = ["ghost-infinite"],
+                    QueryFn = _ => fetchGate.Task,
+                    InitialPageParam = 0,
+                    GetNextPageParam = static _ => PageParamResult<int>.None,
+                }));
+        syncContext.DrainQueue();
+
+        // Fetch continuations use this queue. Stop when the cache updates;
+        // draining the queue would also deliver the success notification before disposal.
+        fetchGate.SetResult("page-0");
+        while (client.GetQueryData<InfiniteData<string, int>>(["ghost-infinite"]) is null)
+        {
+            await WaitForAsync(() => syncContext.QueuedCount > 0);
+            syncContext.RunNext();
+        }
+
+        vm.Dispose();
+        var changed = RecordPropertyChanges(vm);
+        var ghostCount = syncContext.DrainQueue();
+
+        Assert.True(ghostCount > 0);
+        Assert.Empty(changed);
+        Assert.Null(vm.Data);
+        Assert.False(vm.IsSuccess);
+    }
+
+    [Fact]
+    public void QueryViewModel_SubscribeTime_Post_Should_Not_Raise_PropertyChanged_When_Drained()
+    {
+        var syncContext = new DeferredSynchronizationContext();
+        var client = CreateQueryClient();
+        var fetchGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var vm = WithSyncContext(syncContext, () =>
+            new QueryViewModel<string, string>(
+                client,
+                queryKey: ["subscribe-time-qvm"],
+                queryFn: _ => fetchGate.Task));
+
+        Assert.True(vm.IsFetching, "Constructor should apply the mount-fetch state synchronously.");
+        Assert.True(syncContext.QueuedCount > 0,
+            "Precondition: the mount fetch should have posted a subscribe-time notification.");
+
+        var changed = RecordPropertyChanges(vm);
+        syncContext.DrainQueue();
+
+        Assert.Empty(changed);
+        Assert.True(vm.IsFetching);
+        Assert.Equal(QueryStatus.Pending, vm.Status);
+    }
+
+    [Fact]
+    public void InfiniteQueryViewModel_SubscribeTime_Post_Should_Not_Raise_PropertyChanged_When_Drained()
+    {
+        var syncContext = new DeferredSynchronizationContext();
+        var client = CreateQueryClient();
+        var fetchGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var vm = WithSyncContext(syncContext, () =>
+            new InfiniteQueryViewModel<string, int>(
+                client,
+                new InfiniteQueryObserverOptions<string, int>
+                {
+                    QueryKey = ["subscribe-time-infinite"],
+                    QueryFn = _ => fetchGate.Task,
+                    InitialPageParam = 0,
+                    GetNextPageParam = static _ => PageParamResult<int>.None,
+                }));
+
+        Assert.True(vm.IsFetching, "Constructor should apply the mount-fetch state synchronously.");
+        Assert.True(syncContext.QueuedCount > 0,
+            "Precondition: the mount fetch should have posted a subscribe-time notification.");
+
+        var changed = RecordPropertyChanges(vm);
+        syncContext.DrainQueue();
+
+        Assert.Empty(changed);
+        Assert.True(vm.IsFetching);
+        Assert.Equal(QueryStatus.Pending, vm.Status);
+    }
+
+    private static List<string?> RecordPropertyChanges(System.ComponentModel.INotifyPropertyChanged source)
+    {
+        var changed = new List<string?>();
+        source.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        return changed;
+    }
+
+    [Fact]
     public void QueryViewModel_Constructed_Without_SyncContext_Throws()
     {
         var client = CreateQueryClient();

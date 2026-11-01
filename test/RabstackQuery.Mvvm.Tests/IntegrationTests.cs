@@ -39,8 +39,6 @@ public sealed class IntegrationTests : SyncContextTestBase
         // Act -- dispose while the fetch is still blocked on fetchGate.
         var disposeException = Record.Exception(() => vm.Dispose());
 
-        // Release the blocked fetch after disposal. The observer callback should
-        // gracefully handle the disposed subscription (null-checked in OnResultChanged).
         var completionException = await Record.ExceptionAsync(async () =>
         {
             fetchGate.TrySetResult("late-data");

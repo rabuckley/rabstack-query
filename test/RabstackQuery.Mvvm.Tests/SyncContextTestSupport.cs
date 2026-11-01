@@ -30,6 +30,13 @@ internal sealed class DeferredSynchronizationContext : SynchronizationContext
 
     public override void Send(SendOrPostCallback d, object? state) => d(state);
 
+    public bool RunNext()
+    {
+        if (!_queue.TryDequeue(out var item)) return false;
+        item.Callback(item.State);
+        return true;
+    }
+
     public int DrainQueue()
     {
         var count = 0;
