@@ -66,13 +66,15 @@ JavaScript's `getQueryData` works regardless of type because there's no runtime 
 
 2. **Hydrating new queries**: Created as `Query<object>` with `IsHydratedPlaceholder = true`. Discoverable via `FindAll()`/`GetAll()` but `GetQueryData<T>()` returns `default` (type mismatch).
 
-3. **Placeholder upgrade**: When `QueryCache.Build<TData>()` is called (observer subscription, `SetQueryData`), it detects the placeholder, removes it, and creates a properly-typed `Query<TData>` from the dehydrated state.
+3. **Placeholder upgrade**: `QueryCache.GetOrCreate<TData, TQueryData>()` replaces the placeholder with a `Query<TData>` initialized from its dehydrated state. Observer subscription and `SetQueryData` trigger this upgrade.
 
 ### Deliberate Divergences from TanStack
 
 - **`GetQueryData<T>` returns `default` for unupgraded placeholders** — TanStack's `getQueryData` always returns hydrated data because JavaScript has no runtime type checking. Consumers needing pre-subscription access can use `QueryCache.TryGetHydratedData<T>(hash)` (internal API).
 
-- **Upgrade atomicity.** `GetOrCreate` removes the placeholder before adding its typed replacement. Concurrent lookups can miss the query during this gap. A concurrent `GetOrCreate` can add a fresh query first, losing the hydrated state. `GetOrAdd` prevents competing additions from returning uncached queries; removal checks instance identity to avoid evicting a replacement.
+- **Upgrade atomicity.** `GetOrCreate` uses `ConcurrentDictionary.TryUpdate` so replacement leaves no gap in cache lookups. It destroys losing candidates to clear their GC timers and retries. Listeners receive `QueryRemoved(placeholder)` then `QueryAdded(typed)` in one batch. Avoid factory-based `AddOrUpdate`, which can discard queries without clearing their timers.
+
+  Concurrent `Hydrate` can update a placeholder after `GetOrCreate` snapshots it but before the swap, losing the newer state.
 
 - **No promise dehydration** — C# Tasks can't transfer across processes. Pending queries hydrate as state-only; observers trigger a fresh fetch.
 

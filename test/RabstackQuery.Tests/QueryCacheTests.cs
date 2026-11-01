@@ -253,17 +253,14 @@ public sealed class QueryCacheTests
     [Fact]
     public void Remove_Should_Not_Evict_A_Different_Query_With_The_Same_Hash()
     {
-        // Arrange
         var client = CreateQueryClient();
         var cache = client.QueryCache;
         var stale = BuildQuery<string>(client, ["todos"]);
         cache.Remove(stale);
         var current = BuildQuery<string>(client, ["todos"]);
 
-        // Act
         cache.Remove(stale);
 
-        // Assert
         Assert.Same(current, cache.Get<string>(current.QueryHash!));
     }
 
@@ -274,25 +271,70 @@ public sealed class QueryCacheTests
     [Fact]
     public async Task GetOrCreate_Should_Return_The_Cached_Query_When_Another_Thread_Adds_It_First()
     {
-        // Arrange
         using var loggerFactory = new GatedLoggerFactory();
         var client = new QueryClient(new QueryCache(), loggerFactory: loggerFactory);
         loggerFactory.Arm();
 
-        // Pausing in the Query constructor's CreateLogger call forces both callers
-        // to miss the cache lookup before either adds its query.
+        // CreateLogger pauses construction so both callers miss the cache before insertion.
         var first = Task.Run(() => BuildQuery<string>(client, ["todos"]));
         Assert.True(loggerFactory.Paused.Wait(TimeSpan.FromSeconds(10)));
 
-        // Act
         var second = BuildQuery<string>(client, ["todos"]);
         loggerFactory.Release();
         var firstQuery = await first.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Same(second, firstQuery);
         Assert.Same(second, client.QueryCache.Get<string>(second.QueryHash!));
         Assert.Single(client.QueryCache.GetAll());
+    }
+
+    [Fact]
+    public async Task GetByHash_Should_Find_The_Placeholder_While_Another_Thread_Upgrades_It()
+    {
+        using var loggerFactory = new GatedLoggerFactory();
+        var client = CreateHydratedClient(loggerFactory, ["todos"], "hydrated");
+        var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]);
+        var placeholder = client.QueryCache.GetByHash(queryHash);
+        loggerFactory.Arm();
+
+        // Constructor logging pauses the upgrade after the snapshot and before replacement.
+        var upgrade = Task.Run(() => BuildQuery<string>(client, ["todos"]));
+        Assert.True(loggerFactory.Paused.Wait(TimeSpan.FromSeconds(10)));
+
+        var duringUpgrade = client.QueryCache.GetByHash(queryHash);
+        loggerFactory.Release();
+        var typed = await upgrade.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Same(placeholder, duringUpgrade);
+        Assert.Same(typed, client.QueryCache.Get<string>(queryHash));
+    }
+
+    [Fact]
+    public async Task GetOrCreate_Should_Share_One_Hydrated_Query_When_Two_Threads_Upgrade_A_Placeholder()
+    {
+        using var loggerFactory = new GatedLoggerFactory();
+        var client = CreateHydratedClient(loggerFactory, ["todos"], "hydrated");
+        loggerFactory.Arm();
+
+        var first = Task.Run(() => BuildQuery<string>(client, ["todos"]));
+        Assert.True(loggerFactory.Paused.Wait(TimeSpan.FromSeconds(10)));
+
+        var second = BuildQuery<string>(client, ["todos"]);
+        loggerFactory.Release();
+        var firstQuery = await first.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Same(second, firstQuery);
+        Assert.Equal("hydrated", second.State?.Data);
+        Assert.Single(client.QueryCache.GetAll());
+    }
+
+    private static QueryClient CreateHydratedClient(ILoggerFactory loggerFactory, QueryKey queryKey, string data)
+    {
+        var source = CreateQueryClient();
+        source.SetQueryData(queryKey, data);
+        var client = new QueryClient(new QueryCache(), loggerFactory: loggerFactory);
+        client.Hydrate(source.Dehydrate());
+        return client;
     }
 
     private sealed class GatedLoggerFactory : ILoggerFactory
@@ -367,6 +409,23 @@ public sealed class QueryCacheTests
         // Assert
         Assert.NotNull(receivedEvent);
         Assert.IsType<QueryCacheQueryRemovedEvent>(receivedEvent);
+    }
+
+    [Fact]
+    public void Notify_Should_Fire_Removed_Then_Added_When_Placeholder_Upgraded()
+    {
+        var client = CreateHydratedClient(NullLoggerFactory.Instance, ["todos"], "hydrated");
+        var cache = client.QueryCache;
+        var placeholder = cache.GetByHash(DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]));
+        var events = new List<QueryCacheNotifyEvent>();
+        cache.Subscribe(events.Add);
+
+        var typed = BuildQuery<string>(client, ["todos"]);
+
+        Assert.Collection(
+            events,
+            e => Assert.Same(placeholder, Assert.IsType<QueryCacheQueryRemovedEvent>(e).Query),
+            e => Assert.Same(typed, Assert.IsType<QueryCacheQueryAddedEvent>(e).Query));
     }
 
     [Fact]

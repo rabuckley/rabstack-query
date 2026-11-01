@@ -1488,7 +1488,11 @@ public sealed class QueryClient : IDisposable
                     };
 
                     var placeholderQuery = new Query<object>(config);
-                    queryCache.Add(placeholderQuery);
+                    if (!ReferenceEquals(queryCache.Add(placeholderQuery), placeholderQuery))
+                    {
+                        // The discarded placeholder still owns its constructor's GC timer.
+                        placeholderQuery.Destroy();
+                    }
                 }
             }
         });

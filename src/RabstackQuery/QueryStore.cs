@@ -19,6 +19,10 @@ internal sealed class QueryStore : IQueryStore
 
     public bool TryRemove(string queryHash, Query query) => _cache.TryRemove(new(queryHash, query));
 
+    // Replacement relies on Query retaining reference equality.
+    public bool TryReplace(string queryHash, Query replacement, Query expected) =>
+        _cache.TryUpdate(queryHash, replacement, expected);
+
     public bool TryGetValue(string queryHash, [NotNullWhen(true)] out Query? query)
     {
         return _cache.TryGetValue(queryHash, out query);

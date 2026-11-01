@@ -63,8 +63,8 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         var queryKey = options.QueryKey;
         var queryHash = options.QueryHash ?? HashQueryKeyByOptions(queryKey, options);
 
-        // TanStack's build checks then adds on one JS thread. Concurrent callers here
-        // need GetOrAdd and a retry to avoid returning an uncached query.
+        // TanStack's build checks then adds synchronously. C# callers can race,
+        // so retry rather than return a query that loses insertion.
         while (true)
         {
             if (Get<TData>(queryHash) is { } cached)
@@ -77,12 +77,10 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
 
             // Check for a hydrated placeholder that needs upgrading. Get<TData>
             // returns null for placeholders (type mismatch), so look by hash.
-            var existing = GetByHash(queryHash);
-            if (existing is { IsHydratedPlaceholder: true })
+            var placeholder = GetByHash(queryHash) is { IsHydratedPlaceholder: true } p ? p : null;
+            if (placeholder is not null)
             {
-                // Replacement is not atomic; see ARCHITECTURE.md, "Upgrade atomicity".
-                var dehydrated = existing.Dehydrate(0);
-                Remove(existing); // emits QueryRemoved — OK, placeholder has no observers
+                var dehydrated = placeholder.Dehydrate(0);
 
                 initialState ??= new QueryState<TData>
                 {
@@ -111,7 +109,10 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
                 Metrics = _metrics,
             });
 
-            if (ReferenceEquals(Add(query), query))
+            var won = placeholder is not null
+                ? TryReplacePlaceholder(placeholder, query)
+                : ReferenceEquals(Add(query), query);
+            if (won)
             {
                 _logger.QueryCacheBuild(queryHash, createdNew: true);
                 return query;
@@ -135,6 +136,27 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         }
 
         return cached;
+    }
+
+    // TanStack keeps the existing instance. C# must replace hydrated placeholders
+    // to change their data type without leaving a gap in cache lookups.
+    private bool TryReplacePlaceholder(Query placeholder, Query typed)
+    {
+        Debug.Assert(typed.QueryHash is not null);
+        if (!_queries.TryReplace(typed.QueryHash, typed, placeholder))
+        {
+            return false;
+        }
+
+        _logger.QueryCacheRemove(typed.QueryHash);
+        _logger.QueryCacheAdd(typed.QueryHash);
+        placeholder.Destroy();
+        _notifyManager.Batch(() =>
+        {
+            Notify(new QueryCacheQueryRemovedEvent { Query = placeholder });
+            Notify(new QueryCacheQueryAddedEvent { Query = typed });
+        });
+        return true;
     }
 
     internal void Remove(Query query)
