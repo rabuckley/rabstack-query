@@ -124,9 +124,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             // Register with new query
             UpdateQuery();
 
-            // Trigger a fetch if we have active listeners and the query is enabled,
-            // matching TanStack's behavior where a key change causes a refetch.
-            if (ListenerCount > 0 && ResolveEnabled())
+            if (ListenerCount > 0 && ShouldFetchOptionally(queryChanged: true, prevEnabled))
             {
                 _ = ExecuteFetch();
             }
@@ -149,10 +147,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             // meaningful changed, preserving QueriesObserver's change detection.
             UpdateResult();
 
-            // When enabled transitions from false → true with active listeners,
-            // trigger a fetch. Mirrors TanStack's shouldFetchOptionally in setOptions.
-            var nextEnabled = ResolveEnabled();
-            if (ListenerCount > 0 && !prevEnabled && nextEnabled)
+            if (ListenerCount > 0 && ShouldFetchOptionally(queryChanged: false, prevEnabled))
             {
                 _ = ExecuteFetch();
             }
@@ -607,6 +602,16 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // TODO: TanStack also checks !(status === 'error' && retryOnMount === false).
         // RetryOnMount is not yet implemented.
         return state.DataUpdatedAt == 0;
+    }
+
+    // TanStack's queryObserver.ts shouldFetchOptionally checks suspense errors.
+    // Omit that guard because this library has no suspense mode.
+    private bool ShouldFetchOptionally(bool queryChanged, bool prevEnabled)
+    {
+        if (!queryChanged && prevEnabled) return false;
+        if (!ResolveEnabled() || _currentQuery?.State is not { } state) return false;
+
+        return state.DataUpdatedAt == 0 || IsStaleByTime(state, ResolveStaleTime());
     }
 
     private bool IsStaleByTime(QueryState<TQueryData> state, TimeSpan staleTime)

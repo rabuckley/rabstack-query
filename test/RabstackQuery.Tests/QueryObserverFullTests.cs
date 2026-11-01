@@ -358,6 +358,145 @@ public sealed class QueryObserverFullTests
         subscription.Dispose();
     }
 
+    // See TanStack's queryObserver.ts, shouldFetchOptionally.
+    [Fact]
+    public void SetOptions_Changing_QueryKey_To_Fresh_Cached_Query_Does_Not_Fetch()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData<string>(["page", 1], "page-1");
+        client.SetQueryData<string>(["page", 2], "page-2");
+        var fetchCount = 0;
+
+        QueryObserverOptions<string, string> PageOptions(int page) => new()
+        {
+            QueryKey = ["page", page],
+            QueryFn = _ =>
+            {
+                Interlocked.Increment(ref fetchCount);
+                return Task.FromResult($"fetched-{page}");
+            },
+            StaleTime = TimeSpan.FromMinutes(5),
+        };
+
+        var observer = new QueryObserver<string, string>(client, PageOptions(1));
+        using var subscription = observer.Subscribe(_ => { });
+
+        observer.SetOptions(PageOptions(2));
+        observer.SetOptions(PageOptions(1));
+
+        Assert.Equal(0, fetchCount);
+        Assert.Equal("page-1", observer.CurrentResult.Data);
+    }
+
+    [Fact]
+    public async Task SetOptions_Changing_QueryKey_To_Stale_Cached_Query_Fetches()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData<string>(["page", 1], "page-1");
+        client.SetQueryData<string>(["page", 2], "page-2");
+        var page2Fetched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        QueryObserverOptions<string, string> PageOptions(int page) => new()
+        {
+            QueryKey = ["page", page],
+            QueryFn = _ =>
+            {
+                if (page is 2) page2Fetched.TrySetResult();
+                return Task.FromResult($"fetched-{page}");
+            },
+            StaleTime = TimeSpan.Zero,
+        };
+
+        var observer = new QueryObserver<string, string>(client, PageOptions(1));
+        using var subscription = observer.Subscribe(_ => { });
+
+        observer.SetOptions(PageOptions(2));
+
+        await page2Fetched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // See TanStack's query.ts, isStaleByTime.
+    [Fact]
+    public async Task SetOptions_Changing_QueryKey_To_Empty_Query_Fetches_Even_With_Static_StaleTime()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData<string>(["page", 1], "page-1");
+        var page2Fetched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        QueryObserverOptions<string, string> PageOptions(int page) => new()
+        {
+            QueryKey = ["page", page],
+            QueryFn = _ =>
+            {
+                if (page is 2) page2Fetched.TrySetResult();
+                return Task.FromResult($"fetched-{page}");
+            },
+            StaleTime = Timeout.InfiniteTimeSpan,
+        };
+
+        var observer = new QueryObserver<string, string>(client, PageOptions(1));
+        using var subscription = observer.Subscribe(_ => { });
+
+        observer.SetOptions(PageOptions(2));
+
+        await page2Fetched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // See TanStack's queryObserver.ts, shouldFetchOptionally.
+    [Fact]
+    public void SetOptions_Enabling_With_Fresh_Data_Does_Not_Fetch()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData<string>(["toggle"], "cached");
+        var fetchCount = 0;
+
+        QueryObserverOptions<string, string> Options(bool enabled) => new()
+        {
+            QueryKey = ["toggle"],
+            QueryFn = _ =>
+            {
+                Interlocked.Increment(ref fetchCount);
+                return Task.FromResult("fetched");
+            },
+            StaleTime = TimeSpan.FromMinutes(5),
+            Enabled = enabled,
+        };
+
+        var observer = new QueryObserver<string, string>(client, Options(false));
+        using var subscription = observer.Subscribe(_ => { });
+
+        observer.SetOptions(Options(true));
+
+        Assert.Equal(0, fetchCount);
+    }
+
+    [Fact]
+    public async Task SetOptions_Enabling_With_Stale_Data_Fetches()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData<string>(["toggle"], "cached");
+        var fetched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        QueryObserverOptions<string, string> Options(bool enabled) => new()
+        {
+            QueryKey = ["toggle"],
+            QueryFn = _ =>
+            {
+                fetched.TrySetResult();
+                return Task.FromResult("fetched");
+            },
+            StaleTime = TimeSpan.Zero,
+            Enabled = enabled,
+        };
+
+        var observer = new QueryObserver<string, string>(client, Options(false));
+        using var subscription = observer.Subscribe(_ => { });
+
+        observer.SetOptions(Options(true));
+
+        await fetched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [Fact]
     public async Task SetOptions_Same_QueryKey_Should_Not_Re_Register()
     {
