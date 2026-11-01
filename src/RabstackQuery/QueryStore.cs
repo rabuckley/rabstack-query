@@ -15,12 +15,9 @@ internal sealed class QueryStore : IQueryStore
 
     public bool Set(string queryHash, Query query) => _cache.TryAdd(queryHash, query);
 
-    public bool TryAdd(string queryHash, Query query) => _cache.TryAdd(queryHash, query);
+    public Query GetOrAdd(string queryHash, Query query) => _cache.GetOrAdd(queryHash, query);
 
-    public bool TryRemove(string queryHash, [NotNullWhen(true)] out Query? query)
-    {
-        return _cache.TryRemove(queryHash, out query);
-    }
+    public bool TryRemove(string queryHash, Query query) => _cache.TryRemove(new(queryHash, query));
 
     public bool TryGetValue(string queryHash, [NotNullWhen(true)] out Query? query)
     {

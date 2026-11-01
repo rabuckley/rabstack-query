@@ -72,7 +72,7 @@ JavaScript's `getQueryData` works regardless of type because there's no runtime 
 
 - **`GetQueryData<T>` returns `default` for unupgraded placeholders** — TanStack's `getQueryData` always returns hydrated data because JavaScript has no runtime type checking. Consumers needing pre-subscription access can use `QueryCache.TryGetHydratedData<T>(hash)` (internal API).
 
-- **Upgrade atomicity** — The remove-then-add in `Build` is not atomic. Between `Remove(placeholder)` and `Add(typedQuery)`, concurrent `FindAll`/`GetByHash` calls won't see the query. Acceptable because `Build<TData>` is typically called on the UI thread (Blazor/MAUI).
+- **Upgrade atomicity.** `GetOrCreate` removes the placeholder before adding its typed replacement. Concurrent lookups can miss the query during this gap. A concurrent `GetOrCreate` can add a fresh query first, losing the hydrated state. `GetOrAdd` prevents competing additions from returning uncached queries; removal checks instance identity to avoid evicting a replacement.
 
 - **No promise dehydration** — C# Tasks can't transfer across processes. Pending queries hydrate as state-only; observers trigger a fresh fetch.
 

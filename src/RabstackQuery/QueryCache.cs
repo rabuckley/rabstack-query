@@ -63,23 +63,28 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
         var queryKey = options.QueryKey;
         var queryHash = options.QueryHash ?? HashQueryKeyByOptions(queryKey, options);
 
-        var query = Get<TData>(queryHash);
-        var createdNew = query is null;
-
-        if (query is null)
+        // TanStack's build checks then adds on one JS thread. Concurrent callers here
+        // need GetOrAdd and a retry to avoid returning an uncached query.
+        while (true)
         {
+            if (Get<TData>(queryHash) is { } cached)
+            {
+                _logger.QueryCacheBuild(queryHash, createdNew: false);
+                return cached;
+            }
+
+            var initialState = state;
+
             // Check for a hydrated placeholder that needs upgrading. Get<TData>
             // returns null for placeholders (type mismatch), so look by hash.
             var existing = GetByHash(queryHash);
             if (existing is { IsHydratedPlaceholder: true })
             {
-                // Upgrade: extract state from placeholder, create typed query.
-                // Not atomic (remove + add) — acceptable because GetOrCreate is typically
-                // called on the UI thread in Blazor/MAUI. See ARCHITECTURE.md.
+                // Replacement is not atomic; see ARCHITECTURE.md, "Upgrade atomicity".
                 var dehydrated = existing.Dehydrate(0);
                 Remove(existing); // emits QueryRemoved — OK, placeholder has no observers
 
-                state ??= new QueryState<TData>
+                initialState ??= new QueryState<TData>
                 {
                     Data = dehydrated.State.Data is TData typed ? typed : default,
                     DataUpdateCount = dehydrated.State.DataUpdateCount,
@@ -96,45 +101,51 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
                 };
             }
 
-            query = new Query<TData>(new QueryConfig<TData>()
+            var query = new Query<TData>(new QueryConfig<TData>()
             {
                 Client = client,
                 QueryKey = queryKey,
                 QueryHash = queryHash,
                 Options = client.DefaultQueryOptions(options),
-                State = state,
+                State = initialState,
                 Metrics = _metrics,
             });
 
-            Add(query);
+            if (ReferenceEquals(Add(query), query))
+            {
+                _logger.QueryCacheBuild(queryHash, createdNew: true);
+                return query;
+            }
+
+            // Even an uncached query needs its constructor's GC timer cleared.
+            query.Destroy();
         }
-
-        _logger.QueryCacheBuild(queryHash, createdNew);
-
-        return query;
     }
 
-    internal void Add(Query query)
+    internal Query Add(Query query)
     {
         Debug.Assert(query.QueryHash is not null);
 
-        if (_queries.TryAdd(query.QueryHash, query))
+        var cached = _queries.GetOrAdd(query.QueryHash, query);
+        if (ReferenceEquals(cached, query))
         {
             _logger.QueryCacheAdd(query.QueryHash);
             _metrics?.CacheSize?.Add(1);
             Notify(new QueryCacheQueryAddedEvent { Query = query });
         }
+
+        return cached;
     }
 
     internal void Remove(Query query)
     {
         Debug.Assert(query.QueryHash is not null);
-        if (_queries.TryRemove(query.QueryHash, out var removedQuery))
+        if (_queries.TryRemove(query.QueryHash, query))
         {
             _logger.QueryCacheRemove(query.QueryHash);
             _metrics?.CacheSize?.Add(-1);
             query.Destroy();
-            Notify(new QueryCacheQueryRemovedEvent { Query = removedQuery });
+            Notify(new QueryCacheQueryRemovedEvent { Query = query });
         }
     }
 

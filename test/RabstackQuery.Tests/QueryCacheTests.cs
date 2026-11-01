@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace RabstackQuery;
 
 /// <summary>
@@ -245,6 +248,84 @@ public sealed class QueryCacheTests
 
         // Assert
         Assert.Empty(cache.GetAll());
+    }
+
+    [Fact]
+    public void Remove_Should_Not_Evict_A_Different_Query_With_The_Same_Hash()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+        var cache = client.QueryCache;
+        var stale = BuildQuery<string>(client, ["todos"]);
+        cache.Remove(stale);
+        var current = BuildQuery<string>(client, ["todos"]);
+
+        // Act
+        cache.Remove(stale);
+
+        // Assert
+        Assert.Same(current, cache.Get<string>(current.QueryHash!));
+    }
+
+    #endregion
+
+    #region Concurrent GetOrCreate
+
+    [Fact]
+    public async Task GetOrCreate_Should_Return_The_Cached_Query_When_Another_Thread_Adds_It_First()
+    {
+        // Arrange
+        using var loggerFactory = new GatedLoggerFactory();
+        var client = new QueryClient(new QueryCache(), loggerFactory: loggerFactory);
+        loggerFactory.Arm();
+
+        // Pausing in the Query constructor's CreateLogger call forces both callers
+        // to miss the cache lookup before either adds its query.
+        var first = Task.Run(() => BuildQuery<string>(client, ["todos"]));
+        Assert.True(loggerFactory.Paused.Wait(TimeSpan.FromSeconds(10)));
+
+        // Act
+        var second = BuildQuery<string>(client, ["todos"]);
+        loggerFactory.Release();
+        var firstQuery = await first.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Same(second, firstQuery);
+        Assert.Same(second, client.QueryCache.Get<string>(second.QueryHash!));
+        Assert.Single(client.QueryCache.GetAll());
+    }
+
+    private sealed class GatedLoggerFactory : ILoggerFactory
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private int _armed;
+
+        public ManualResetEventSlim Paused { get; } = new();
+
+        public void Arm() => Volatile.Write(ref _armed, 1);
+
+        public void Release() => _release.Set();
+
+        public ILogger CreateLogger(string categoryName)
+        {
+            if (Interlocked.Exchange(ref _armed, 0) is 1)
+            {
+                Paused.Set();
+                _release.Wait(TimeSpan.FromSeconds(10));
+            }
+
+            return NullLogger.Instance;
+        }
+
+        public void AddProvider(ILoggerProvider provider)
+        {
+        }
+
+        public void Dispose()
+        {
+            _release.Dispose();
+            Paused.Dispose();
+        }
     }
 
     #endregion
