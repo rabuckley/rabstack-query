@@ -128,16 +128,21 @@ else
     [Parameter] public int ProjectId { get; set; }
 
     private TaskBoardViewModel _vm = null!;
+    private ViewModelScope? _scope;
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
-        _vm = Track(new TaskBoardViewModel(Client, Api, ProjectId));
-        Observe(_vm.TasksQuery);
-        Observe(_vm.AddTaskMutation);
+        if (_scope is not null && _vm.ProjectId == ProjectId) return;
+
+        _scope?.Dispose();
+        _scope = BeginScope();
+        _vm = _scope.Track(new TaskBoardViewModel(Client, Api, ProjectId));
+        _scope.Observe(_vm.TasksQuery);
+        _scope.Observe(_vm.AddTaskMutation);
 
         if (_vm.ProjectQuery is not null)
         {
-            Observe(_vm.ProjectQuery);
+            _scope.Observe(_vm.ProjectQuery);
         }
     }
 
