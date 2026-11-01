@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Runtime.ExceptionServices;
 
 using Microsoft.AspNetCore.Components;
@@ -6,6 +8,9 @@ using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using RabstackQuery.Mvvm;
+
+using INotifyPropertyChanged = System.ComponentModel.INotifyPropertyChanged;
+using PropertyChangedEventHandler = System.ComponentModel.PropertyChangedEventHandler;
 
 namespace RabstackQuery.Blazor;
 
@@ -59,6 +64,43 @@ public sealed class RabstackComponentBaseTests : IDisposable
         Assert.Equal(rendersAfterDispose, component.RenderCount);
     }
 
+    [Fact]
+    public async Task Dispose_UnsubscribesFromObservedSourcesItDoesNotOwn()
+    {
+        // Arrange
+        var source = new CountingNotifier();
+        var collection = new CountingCollection();
+        var component = new ObservingComponent(_client, source, collection);
+        await _renderer.RenderAsync(component);
+        Assert.Equal(1, source.SubscriberCount);
+        Assert.Equal(1, collection.SubscriberCount);
+
+        // Act
+        await _renderer.Dispatcher.InvokeAsync(component.Dispose);
+
+        // Assert
+        Assert.Equal(0, source.SubscriberCount);
+        Assert.Equal(0, collection.SubscriberCount);
+        Assert.False(source.IsDisposed);
+    }
+
+    [Fact]
+    public async Task Dispose_UnsubscribesFromTrackedViewModels_AndDisposesThem()
+    {
+        // Arrange
+        var tracked = new CountingNotifier();
+        var component = new ObservingComponent(_client, tracked: tracked);
+        await _renderer.RenderAsync(component);
+        Assert.Equal(1, tracked.SubscriberCount);
+
+        // Act
+        await _renderer.Dispatcher.InvokeAsync(component.Dispose);
+
+        // Assert
+        Assert.Equal(0, tracked.SubscriberCount);
+        Assert.True(tracked.IsDisposed);
+    }
+
     private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5_000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
@@ -95,6 +137,49 @@ public sealed class RabstackComponentBaseTests : IDisposable
         }
 
         protected override void BuildRenderTree(RenderTreeBuilder builder) => RenderCount++;
+    }
+
+    private sealed class ObservingComponent(
+        QueryClient client,
+        INotifyPropertyChanged? source = null,
+        ObservableCollection<string>? collection = null,
+        CountingNotifier? tracked = null) : RabstackComponentBase
+    {
+        protected override void OnInitialized()
+        {
+            Client = client;
+            if (source is not null) Observe(source);
+            if (collection is not null) Observe(collection);
+            if (tracked is not null) Track(tracked);
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder) { }
+    }
+
+    private sealed class CountingNotifier : INotifyPropertyChanged, IDisposable
+    {
+        public int SubscriberCount { get; private set; }
+
+        public bool IsDisposed { get; private set; }
+
+        public event PropertyChangedEventHandler? PropertyChanged
+        {
+            add => SubscriberCount++;
+            remove => SubscriberCount--;
+        }
+
+        public void Dispose() => IsDisposed = true;
+    }
+
+    private sealed class CountingCollection : ObservableCollection<string>
+    {
+        public int SubscriberCount { get; private set; }
+
+        public override event NotifyCollectionChangedEventHandler? CollectionChanged
+        {
+            add => SubscriberCount++;
+            remove => SubscriberCount--;
+        }
     }
 
     private sealed class TestRenderer : Renderer

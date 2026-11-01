@@ -48,12 +48,7 @@ namespace RabstackQuery.Blazor;
 /// </example>
 public abstract class RabstackComponentBase : ComponentBase, IDisposable
 {
-    // Thread safety: Blazor synchronizes all component lifecycle methods (OnInitialized,
-    // OnParametersSet, Dispose) onto the same synchronization context, so concurrent access
-    // to this list cannot occur under normal Blazor usage. If a subclass calls Use* from an
-    // async code path outside the component lifecycle, that's a misuse — but List<T> is
-    // sufficient for the intended contract.
-    private readonly List<IDisposable> _tracked = [];
+    private readonly List<Action> _cleanup = [];
     private bool _renderPending;
     private bool _disposed;
 
@@ -167,12 +162,11 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
     // ── Pre-composed ViewModel Support ────────────────────────────────
 
     /// <summary>
-    /// Subscribes to <see cref="INotifyPropertyChanged.PropertyChanged"/> on a pre-composed
-    /// ViewModel and registers it for disposal when this component is removed from the render
-    /// tree. Returns the ViewModel for inline assignment.
+    /// Renders this component when <paramref name="viewModel"/> raises
+    /// <see cref="INotifyPropertyChanged.PropertyChanged"/> and disposes the ViewModel with the component.
     /// </summary>
+    /// <returns>The supplied ViewModel.</returns>
     /// <remarks>
-    /// Use this for shared ViewModels that own multiple queries/mutations internally.
     /// Call <see cref="Observe(INotifyPropertyChanged)"/> on nested query/mutation properties
     /// to subscribe to their change notifications as well.
     /// </remarks>
@@ -189,29 +183,30 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
     /// </example>
     protected T Track<T>(T viewModel) where T : INotifyPropertyChanged, IDisposable
     {
-        viewModel.PropertyChanged += ScheduleRender;
-        _tracked.Add(viewModel);
+        _cleanup.Add(viewModel.Dispose);
+        Observe(viewModel);
         return viewModel;
     }
 
     /// <summary>
-    /// Subscribes to <see cref="INotifyPropertyChanged.PropertyChanged"/> on a nested
-    /// object (e.g. a query or mutation owned by a parent ViewModel) for render coalescing.
-    /// Does not register for disposal — the parent ViewModel is responsible for disposing
-    /// its children.
+    /// Renders this component when <paramref name="source"/> raises
+    /// <see cref="INotifyPropertyChanged.PropertyChanged"/>. Unsubscribes when this component
+    /// is disposed without disposing <paramref name="source"/>.
     /// </summary>
     protected void Observe(INotifyPropertyChanged source)
     {
         source.PropertyChanged += ScheduleRender;
+        _cleanup.Add(() => source.PropertyChanged -= ScheduleRender);
     }
 
     /// <summary>
-    /// Subscribes to <see cref="ObservableCollection{T}.CollectionChanged"/> for render
-    /// coalescing. Does not register for disposal.
+    /// Renders this component when <paramref name="collection"/> raises
+    /// <see cref="ObservableCollection{T}.CollectionChanged"/> and unsubscribes when this component is disposed.
     /// </summary>
     protected void Observe<TItem>(ObservableCollection<TItem> collection)
     {
         collection.CollectionChanged += ScheduleCollectionRender;
+        _cleanup.Add(() => collection.CollectionChanged -= ScheduleCollectionRender);
     }
 
     // ── Tracking and Render Coalescing ─────────────────────────────────
@@ -219,30 +214,16 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
     private QueryCollectionViewModel<TItem, TQueryFnData> TrackCollection<TItem, TQueryFnData>(
         QueryCollectionViewModel<TItem, TQueryFnData> viewModel)
     {
-        viewModel.PropertyChanged += ScheduleRender;
-        viewModel.Items.CollectionChanged += ScheduleCollectionRender;
-        _tracked.Add(new CollectionSubscription<TItem>(viewModel, viewModel.Items, ScheduleRender, ScheduleCollectionRender));
+        Track(viewModel);
+        Observe(viewModel.Items);
         return viewModel;
     }
 
-    /// <summary>
-    /// Coalesces multiple <see cref="INotifyPropertyChanged.PropertyChanged"/> events from
-    /// the same synchronization context tick into a single <see cref="ComponentBase.StateHasChanged"/>
-    /// call. A ViewModel's <c>UpdateFromResult</c> fires 8+ property setters synchronously;
-    /// without coalescing, each one would post a separate render request.
-    /// </summary>
-    private void ScheduleRender(object? sender, PropertyChangedEventArgs e)
-    {
-        if (_disposed || _renderPending) return;
-        _renderPending = true;
-        _ = InvokeAsync(() =>
-        {
-            _renderPending = false;
-            if (!_disposed) StateHasChanged();
-        });
-    }
+    private void ScheduleRender(object? sender, PropertyChangedEventArgs e) => RequestRender();
 
-    private void ScheduleCollectionRender(object? sender, NotifyCollectionChangedEventArgs e)
+    private void ScheduleCollectionRender(object? sender, NotifyCollectionChangedEventArgs e) => RequestRender();
+
+    private void RequestRender()
     {
         if (_disposed || _renderPending) return;
         _renderPending = true;
@@ -254,7 +235,7 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
     }
 
     /// <summary>
-    /// Disposes all tracked ViewModels and unsubscribes from their change notifications.
+    /// Unsubscribes from every observed source and disposes all tracked ViewModels.
     /// Subclasses that override this method must call <c>base.Dispose()</c>.
     /// </summary>
     public virtual void Dispose()
@@ -262,45 +243,9 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        foreach (var d in _tracked) d.Dispose();
-        _tracked.Clear();
+        for (var i = _cleanup.Count - 1; i >= 0; i--) _cleanup[i]();
+        _cleanup.Clear();
 
         GC.SuppressFinalize(this);
-    }
-
-    /// <summary>
-    /// Wraps a <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> subscription so
-    /// that both <see cref="INotifyPropertyChanged.PropertyChanged"/> and
-    /// <see cref="ObservableCollection{T}.CollectionChanged"/> are unsubscribed on disposal.
-    /// </summary>
-    private sealed class CollectionSubscription<TItem> : IDisposable
-    {
-        private readonly INotifyPropertyChanged _viewModel;
-        private readonly ObservableCollection<TItem> _items;
-        private readonly PropertyChangedEventHandler _propertyHandler;
-        private readonly NotifyCollectionChangedEventHandler _collectionHandler;
-
-        public CollectionSubscription(
-            INotifyPropertyChanged viewModel,
-            ObservableCollection<TItem> items,
-            PropertyChangedEventHandler propertyHandler,
-            NotifyCollectionChangedEventHandler collectionHandler)
-        {
-            _viewModel = viewModel;
-            _items = items;
-            _propertyHandler = propertyHandler;
-            _collectionHandler = collectionHandler;
-        }
-
-        public void Dispose()
-        {
-            _viewModel.PropertyChanged -= _propertyHandler;
-            _items.CollectionChanged -= _collectionHandler;
-
-            // The ViewModel itself is IDisposable and handles observer unsubscription.
-            // Cast is safe: all ViewModels in RabstackQuery.Mvvm implement both
-            // INotifyPropertyChanged and IDisposable.
-            ((IDisposable)_viewModel).Dispose();
-        }
     }
 }
