@@ -4,41 +4,16 @@ using RabstackQuery.Example.Shared.ViewModels;
 
 namespace RabstackQuery.Example.Maui.Pages;
 
-[QueryProperty(nameof(ProjectId), "ProjectId")]
-[QueryProperty(nameof(TaskId), "TaskId")]
-public partial class TaskDetailPage : ContentPage
+public partial class TaskDetailPage : ContentPage, IQueryAttributable
 {
     private readonly QueryClient _client;
     private readonly ITaskBoardApi _api;
     private TaskDetailViewModel? _viewModel;
 
-    private int _projectId;
-    private int _taskId;
-    private bool _initialized;
-
-    public string? ProjectId
-    {
-        set
-        {
-            if (int.TryParse(value, out var id))
-            {
-                _projectId = id;
-                TryInitializeViewModel();
-            }
-        }
-    }
-
-    public string? TaskId
-    {
-        set
-        {
-            if (int.TryParse(value, out var id))
-            {
-                _taskId = id;
-                TryInitializeViewModel();
-            }
-        }
-    }
+    // The (ProjectId, TaskId) pair the current ViewModel was built for. Shell can
+    // re-apply query attributes to this page instance, with new values or the same
+    // ones, so the ViewModel is replaced only when the pair changes.
+    private (int ProjectId, int TaskId)? _route;
 
     public TaskDetailPage(QueryClient client, ITaskBoardApi api)
     {
@@ -50,28 +25,50 @@ public partial class TaskDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Both ProjectId and TaskId must be set before creating the ViewModel.
-    /// Shell sets query properties one at a time, so we wait until both are available.
+    /// Receives ProjectId and TaskId together. [QueryProperty] setters arrive one at a
+    /// time, which would build a ViewModel for a mixed pair (new project, old task)
+    /// whenever the page is reused with new values.
     /// </summary>
-    private void TryInitializeViewModel()
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
-        if (_projectId <= 0 || _taskId <= 0 || _initialized) return;
-        _initialized = true;
+        if (!TryGetId(query, "ProjectId", out var projectId) || !TryGetId(query, "TaskId", out var taskId))
+        {
+            return;
+        }
 
+        if (_route == (projectId, taskId)) return;
+        _route = (projectId, taskId);
+
+        InitializeViewModel(projectId, taskId);
+    }
+
+    private static bool TryGetId(IDictionary<string, object> query, string key, out int id)
+    {
+        id = 0;
+        return query.TryGetValue(key, out var value)
+            && int.TryParse(value?.ToString(), out id)
+            && id > 0;
+    }
+
+    private void InitializeViewModel(int projectId, int taskId)
+    {
         _viewModel?.Dispose();
-        _viewModel = new TaskDetailViewModel(_client, _api, _projectId, _taskId);
-        BindingContext = _viewModel;
+        var viewModel = new TaskDetailViewModel(_client, _api, projectId, taskId);
+        _viewModel = viewModel;
+        BindingContext = viewModel;
 
         // Sync the status picker with the current task status once data is available.
-        if (_viewModel.TaskQuery.Data is { } task)
+        if (viewModel.TaskQuery.Data is { } task)
         {
             SyncStatusPicker(task.Status);
         }
 
-        _viewModel.TaskQuery.PropertyChanged += (_, args) =>
+        // Captures this ViewModel rather than reading _viewModel, so a late notification
+        // from a replaced ViewModel cannot sync the picker from the new one's data.
+        viewModel.TaskQuery.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName is "Data" && _viewModel.TaskQuery.Data is { } data
-                && !_viewModel.TaskQuery.IsPlaceholderData)
+            if (args.PropertyName is "Data" && viewModel.TaskQuery.Data is { } data
+                && !viewModel.TaskQuery.IsPlaceholderData)
             {
                 SyncStatusPicker(data.Status);
             }
@@ -105,7 +102,7 @@ public partial class TaskDetailPage : ContentPage
         };
 
         // Only mutate if the status actually changed to avoid redundant API calls
-        // (e.g. from the initial sync in TryInitializeViewModel).
+        // (e.g. from the initial sync in InitializeViewModel).
         if (_viewModel.TaskQuery.Data?.Status != newStatus)
         {
             await _viewModel.UpdateStatusMutation.MutateCommand.ExecuteAsync(newStatus);
