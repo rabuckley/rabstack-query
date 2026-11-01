@@ -409,12 +409,10 @@ public sealed class StreamedQueryTests
         // Wait for the second stream to actually start
         await secondStreamStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Release 3 chunks for the new stream. Wait for the expected data count
-        // rather than FetchStatus.Idle — the cancelled first fetch dispatches a
-        // SuccessState (StreamedQuery catches the cancel and returns partial data)
-        // that briefly sets FetchStatus to Idle before the new fetch completes.
+        // The last chunk reaches the cache before the fetch settles, so the data count
+        // alone does not imply Idle.
         gate2.Release(3);
-        await WaitForCondition(() => observer.CurrentResult.Data?.Count == 5);
+        await WaitForCondition(() => observer.CurrentResult is { Data.Count: 5, FetchStatus: FetchStatus.Idle });
 
         // First stream contributed [0, 1], second stream appends [0, 1, 2]
         Assert.Equal([0, 1, 0, 1, 2], observer.CurrentResult.Data);
