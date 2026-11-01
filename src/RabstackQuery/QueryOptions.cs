@@ -53,7 +53,27 @@ public sealed class QueryOptions<TData>
     /// </summary>
     public static implicit operator QueryKey(QueryOptions<TData> opts) => opts.QueryKey;
 
-    internal QueryObserverOptions<TData> ToObserverOptions() => new()
+    /// <summary>
+    /// Creates observer options that carry this definition's key, query function and shared settings.
+    /// </summary>
+    /// <returns>New observer options. This definition is not modified.</returns>
+    /// <remarks>
+    /// Use a <see langword="with"/> expression on the result to add observer-only settings such as
+    /// <see cref="QueryObserverOptions{TData,TQueryData}.Enabled"/>,
+    /// <see cref="QueryObserverOptions{TData,TQueryData}.RefetchInterval"/> or
+    /// <see cref="QueryObserverOptions{TData,TQueryData}.PlaceholderData"/>. Settings this definition leaves
+    /// unset remain <see langword="null"/> and inherit key-prefix and client defaults.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// TaskQuery = client.UseQuery(
+    ///     Queries.Task(api, projectId, taskId).ToObserverOptions() with
+    ///     {
+    ///         Enabled = taskId > 0,
+    ///     });
+    /// </code>
+    /// </example>
+    public QueryObserverOptions<TData> ToObserverOptions() => new()
     {
         QueryKey = QueryKey,
         QueryFn = QueryFn,
@@ -67,19 +87,37 @@ public sealed class QueryOptions<TData>
         StructuralSharing = StructuralSharing,
     };
 
-    internal QueryObserverOptions<TOut, TData> ToObserverOptions<TOut>(Func<TData, TOut> select) => new()
+    /// <summary>
+    /// Creates observer options that carry this definition's key, query function and shared settings,
+    /// and select a different output type from the cached data.
+    /// </summary>
+    /// <typeparam name="TOut">The type the observer exposes after selection.</typeparam>
+    /// <param name="select">Transforms the cached <typeparamref name="TData"/> into the observer output.</param>
+    /// <returns>New observer options. This definition is not modified.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="select"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The cache continues to store <typeparamref name="TData"/>, so the result shares a cache entry with
+    /// other observers of this definition. <see cref="StructuralSharing"/> is not transferred: observers
+    /// apply structural sharing to the selected output, and a <typeparamref name="TData"/> delegate cannot
+    /// generally be applied to <typeparamref name="TOut"/>.
+    /// </remarks>
+    public QueryObserverOptions<TOut, TData> ToObserverOptions<TOut>(Func<TData, TOut> select)
     {
-        QueryKey = QueryKey,
-        QueryFn = QueryFn,
-        Select = select,
-        StaleTime = StaleTime,
-        GcTime = GcTime,
-        NetworkMode = NetworkMode,
-        Retry = Retry,
-        RetryDelay = RetryDelay,
-        Meta = Meta,
-        QueryKeyHasher = QueryKeyHasher,
-    };
+        ArgumentNullException.ThrowIfNull(select);
+        return new()
+        {
+            QueryKey = QueryKey,
+            QueryFn = QueryFn,
+            Select = select,
+            StaleTime = StaleTime,
+            GcTime = GcTime,
+            NetworkMode = NetworkMode,
+            Retry = Retry,
+            RetryDelay = RetryDelay,
+            Meta = Meta,
+            QueryKeyHasher = QueryKeyHasher,
+        };
+    }
 
     internal FetchQueryOptions<TData> ToFetchQueryOptions() => new()
     {

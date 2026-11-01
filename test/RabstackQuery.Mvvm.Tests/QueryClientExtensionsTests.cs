@@ -131,16 +131,17 @@ public sealed class QueryClientExtensionsTests : SyncContextTestBase
     // ── UseMutation overloads ────────────────────────────────────────
 
     [Fact]
-    public async Task UseMutation_FullOverload_Should_Create_Working_MutationViewModel()
+    public async Task UseMutation_FullOptions_InfersAllFourTypeArguments()
     {
-        // Tests UseMutation<TData, TError, TVariables, TOnMutateResult>(fn)
         // Arrange
         var client = CreateQueryClient();
-
-        using var vm = client.UseMutation<string, InvalidOperationException, string, object?>(
-            (input, context, ct) => Task.FromResult(input.ToUpper()));
+        var options = new MutationOptions<string, InvalidOperationException, string, object?>
+        {
+            MutationFn = (input, context, ct) => Task.FromResult(input.ToUpper()),
+        };
 
         // Act
+        using MutationViewModel<string, InvalidOperationException, string, object?> vm = client.UseMutation(options);
         await vm.MutateCommand.ExecuteAsync("hello");
 
         // Assert
@@ -149,46 +150,24 @@ public sealed class QueryClientExtensionsTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task UseMutation_SimplifiedOverload_Should_Default_TError_To_Exception()
+    public async Task UseMutation_TwoTypeOptions_ReturnsShortViewModel_AndWiresCallbacks()
     {
-        // Tests UseMutation<TData, TVariables, TOnMutateResult>(fn) — TError defaults to Exception
-        // Arrange
-        var client = CreateQueryClient();
-
-        using var vm = client.UseMutation<string, string, object?>(
-            (input, context, ct) => Task.FromResult(input.ToUpper()));
-
-        // Act
-        await vm.MutateCommand.ExecuteAsync("world");
-
-        // Assert
-        Assert.Equal("WORLD", vm.Data);
-        Assert.True(vm.IsSuccess);
-    }
-
-    [Fact]
-    public async Task UseMutation_With_Options_Should_Wire_Lifecycle_Callbacks()
-    {
-        // Tests that lifecycle callbacks (OnSuccess, OnSettled) are properly wired
-        // through the extension method.
         // Arrange
         var client = CreateQueryClient();
         var onSuccessCalled = false;
         var successData = "";
 
-        using var vm = client.UseMutation<string, Exception, string, object?>(
-            (input, context, ct) => Task.FromResult(input.ToUpper()),
-            new MutationOptions<string, Exception, string, object?>
-            {
-                OnSuccess = (data, variables, onMutateResult, context) =>
-                {
-                    onSuccessCalled = true;
-                    successData = data;
-                    return Task.CompletedTask;
-                }
-            });
-
         // Act
+        using MutationViewModel<string, string> vm = client.UseMutation(new MutationOptions<string, string>
+        {
+            MutationFn = (input, context, ct) => Task.FromResult(input.ToUpper()),
+            OnSuccess = (data, variables, onMutateResult, context) =>
+            {
+                onSuccessCalled = true;
+                successData = data;
+                return Task.CompletedTask;
+            },
+        });
         await vm.MutateCommand.ExecuteAsync("test");
 
         // Assert
@@ -199,21 +178,66 @@ public sealed class QueryClientExtensionsTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task UseMutation_Without_Options_Should_Work()
+    public async Task UseMutation_OptimisticFactory_PassesTypedRollbackState_OnFailure()
     {
-        // Tests that passing null/omitting options works correctly.
         // Arrange
         var client = CreateQueryClient();
-
-        // The default parameter value for options is null
-        using var vm = client.UseMutation<int, Exception, int, object?>(
-            (input, context, ct) => Task.FromResult(input * 2));
+        var current = 1;
+        int? rolledBackTo = null;
+        var options = MutationOptions.Create(
+            (int next, MutationFunctionContext _, CancellationToken _) =>
+                Task.FromException<string>(new InvalidOperationException("rejected")),
+            onMutate: (next, _) =>
+            {
+                var previous = current;
+                current = next;
+                return Task.FromResult(previous);
+            })
+            with
+            {
+                OnError = (_, _, previous, _) =>
+                {
+                    current = previous;
+                    rolledBackTo = previous;
+                    return Task.CompletedTask;
+                },
+            };
 
         // Act
-        await vm.MutateCommand.ExecuteAsync(21);
+        using MutationViewModel<string, Exception, int, int> vm = client.UseMutation(options);
+        await vm.MutateCommand.ExecuteAsync(5);
 
         // Assert
-        Assert.Equal(42, vm.Data);
-        Assert.True(vm.IsSuccess);
+        Assert.True(vm.IsError);
+        Assert.Equal(1, rolledBackTo);
+        Assert.Equal(1, current);
+    }
+
+    [Fact]
+    public void UseMutation_OptionsWithoutMutationFn_ThrowsArgumentException()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+        var options = new MutationOptions<string, string> { Retry = 1 };
+
+        // Act
+        void Act() => client.UseMutation(options);
+
+        // Assert
+        Assert.Throws<ArgumentException>("options", Act);
+    }
+
+    [Fact]
+    public void UseMutation_NullOptions_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+        MutationOptions<string, string>? options = null;
+
+        // Act
+        void Act() => client.UseMutation(options!);
+
+        // Assert
+        Assert.Throws<ArgumentNullException>("options", Act);
     }
 }

@@ -979,24 +979,22 @@ public sealed class QueryClient : IDisposable
     /// <example>
     /// <code>
     /// // Optimistic update
-    /// var addTodoMutation = client.UseMutation&lt;Todo, Todo&gt;(
-    ///     async (newTodo, ct) => await api.CreateTodo(newTodo, ct),
-    ///     new MutationOptions&lt;Todo, Todo&gt;
+    /// var addTodoMutation = client.UseMutation(new MutationOptions&lt;Todo, Todo&gt;
+    /// {
+    ///     MutationFn = async (newTodo, context, ct) => await api.CreateTodo(newTodo, ct),
+    ///     OnMutate = async (newTodo, context) =>
     ///     {
-    ///         OnMutate = async (newTodo) =>
-    ///         {
-    ///             // Optimistically add to cache
-    ///             var todos = client.GetQueryData&lt;List&lt;Todo&gt;&gt;(["todos"]) ?? new List&lt;Todo&gt;();
-    ///             todos.Add(newTodo);
-    ///             client.SetQueryData(["todos"], todos);
-    ///         },
-    ///         OnError = (error, variables) =>
-    ///         {
-    ///             // Rollback on error
-    ///             await client.InvalidateQueriesAsync(["todos"]);
-    ///         }
-    ///     }
-    /// );
+    ///         // Optimistically add to cache
+    ///         var todos = client.GetQueryData&lt;List&lt;Todo&gt;&gt;(["todos"]) ?? [];
+    ///         client.SetQueryData(["todos"], todos.Append(newTodo).ToList());
+    ///         return null;
+    ///     },
+    ///     OnError = async (error, variables, _, context) =>
+    ///     {
+    ///         // Rollback on error
+    ///         await client.InvalidateQueriesAsync(["todos"]);
+    ///     },
+    /// });
     /// </code>
     /// </example>
     // TODO: TanStack applies structuralSharing in Query.setData() (query.ts:231)

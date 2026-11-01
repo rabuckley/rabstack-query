@@ -71,17 +71,18 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
     private TaskItemViewModel(QueryClient client, ITaskBoardApi api)
     {
         // Optimistic status update — saves old status as context for rollback on error.
-        StatusMutation = client.UseMutation<TaskItem, Exception, TaskItemStatus, TaskItemStatus>(
-            mutationFn: async (newStatus, context, ct) =>
-                await api.UpdateTaskStatusAsync(ProjectId, Id, newStatus, ct),
-            options: new()
-            {
-                OnMutate = async (newStatus, context) =>
+        StatusMutation = client.UseMutation(
+            MutationOptions.Create(
+                async (TaskItemStatus newStatus, MutationFunctionContext context, CancellationToken ct) =>
+                    await api.UpdateTaskStatusAsync(ProjectId, Id, newStatus, ct),
+                onMutate: async (newStatus, context) =>
                 {
                     var oldStatus = Status;
                     Status = newStatus;
                     return oldStatus;
-                },
+                })
+            with
+            {
                 OnError = async (error, variables, oldStatus, context) =>
                 {
                     if (oldStatus is { } previous)
@@ -93,23 +94,23 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
                 {
                     UpdateAllProperties(data);
                 },
-            }
-        );
+            });
 
         // Optimistic priority cycling (Low -> Medium -> High -> Urgent -> Low).
         // The mutation variable is the desired new priority; the context stores the old
         // priority for rollback on error.
-        TogglePriorityMutation = client.UseMutation<TaskItem, Exception, TaskPriority, TaskPriority>(
-            mutationFn: async (newPriority, context, ct) =>
-                await api.UpdateTaskAsync(ProjectId, Id, Title, Description, newPriority, ct),
-            options: new()
-            {
-                OnMutate = async (newPriority, context) =>
+        TogglePriorityMutation = client.UseMutation(
+            MutationOptions.Create(
+                async (TaskPriority newPriority, MutationFunctionContext context, CancellationToken ct) =>
+                    await api.UpdateTaskAsync(ProjectId, Id, Title, Description, newPriority, ct),
+                onMutate: async (newPriority, context) =>
                 {
                     var oldPriority = Priority;
                     Priority = newPriority;
                     return oldPriority;
-                },
+                })
+            with
+            {
                 OnError = async (error, variables, oldPriority, context) =>
                 {
                     if (oldPriority is { } previous)
@@ -121,24 +122,21 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
                 {
                     UpdateAllProperties(data);
                 },
-            }
-        );
+            });
 
         // Deletion mutation — invalidates the tasks query on success so the list refreshes.
-        DeleteMutation = client.UseMutation<object?, int>(
-            mutationFn: async (_, context, ct) =>
+        DeleteMutation = client.UseMutation(new MutationOptions<object?, int>
+        {
+            MutationFn = async (_, context, ct) =>
             {
                 await api.DeleteTaskAsync(ProjectId, Id, ct);
                 return null;
             },
-            options: new()
+            OnSuccess = async (data, variables, onMutateResult, context) =>
             {
-                OnSuccess = async (data, variables, onMutateResult, context) =>
-                {
-                    await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(ProjectId));
-                },
-            }
-        );
+                await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(ProjectId));
+            },
+        });
     }
 
     /// <summary>

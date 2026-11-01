@@ -24,12 +24,11 @@ public partial class TodoListViewModel : ObservableObject, IDisposable
             ["todos"],
             async ctx => await api.GetTodosAsync(ctx.CancellationToken));
 
-        CreateTodo = client.UseMutation<Todo, CreateTodoRequest>(
-            async (request, _, ct) => await api.CreateTodoAsync(request, ct),
-            new MutationCallbacks<Todo, CreateTodoRequest>
-            {
-                OnSuccess = (_, _, _) => client.InvalidateQueries(["todos"])
-            });
+        CreateTodo = client.UseMutation(new MutationOptions<Todo, CreateTodoRequest>
+        {
+            MutationFn = async (request, _, ct) => await api.CreateTodoAsync(request, ct),
+            OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
+        });
     }
 
     public void Dispose()
@@ -63,6 +62,63 @@ public partial class TodoListViewModel : ObservableObject, IDisposable
     <Button Text="Add Todo" Command="{Binding CreateTodo.MutateCommand}" />
 </StackLayout>
 ```
+
+## Creating ViewModels
+
+Pass options to the `QueryClient` extension methods for callbacks and settings. Short forms support type inference:
+
+| Method | Accepts |
+|--------|---------|
+| `UseQuery` | key + function; `QueryOptions<T>`; `QueryOptions<T>` + select; `QueryObserverOptions<T>`; `QueryObserverOptions<TData, TQueryData>` |
+| `UseQueryCollection` | key + function + update; `QueryOptions<IEnumerable<T>>` + update; `QueryObserverOptions<IEnumerable<T>>` + update |
+| `UseInfiniteQuery` | `InfiniteQueryObserverOptions<TData, TPageParam>` |
+| `UseMutation` | mutation function; `MutationOptions<TData, TVariables>`; `MutationOptions<TData, TError, TVariables, TOnMutateResult>` |
+
+Compose a reusable `QueryOptions<T>` with observer settings through `ToObserverOptions()` (or `ToObserverOptions(select)`) and a `with` expression:
+
+```csharp
+TaskQuery = client.UseQuery(
+    Queries.Task(api, projectId, taskId).ToObserverOptions() with { Enabled = taskId > 0 });
+```
+
+`MutationOptions.Create` infers mutation types from a mutation lambda with typed parameters. Its two-delegate form also infers the optimistic rollback type from `onMutate`:
+
+```csharp
+StatusMutation = client.UseMutation(
+    MutationOptions.Create(
+        (TaskItemStatus status, MutationFunctionContext _, CancellationToken ct) =>
+            api.UpdateStatusAsync(id, status, ct),
+        onMutate: (status, _) =>
+        {
+            var previous = Status;
+            Status = status;
+            return Task.FromResult(previous);
+        })
+    with
+    {
+        OnError = (_, _, previous, _) => { Status = previous; return Task.CompletedTask; },
+    });
+```
+
+`PageViewModel` (MAUI) and `RabstackComponentBase` (Blazor) expose the same `Use*` methods and dispose what they create.
+
+Collection query functions must return `Task<IEnumerable<T>>`. An `async` lambda that awaits a `List<T>` adapts automatically; a method returning `Task<List<T>>` does not, because `Task<T>` is not covariant. Give reusable collection definitions an `IEnumerable<T>` data type.
+
+### Migrating from flattened parameters
+
+| Before | After |
+|--------|-------|
+| `UseQuery(key, fn, enabled: x, staleTime: y, ...)` | `UseQuery(QueryObserverOptions.Create(key, fn) with { Enabled = x, StaleTime = y })` |
+| `UseQuery(key, fn, select: s, ...)` | `UseQuery(QueryOptions.Create(key, fn), s)` or `new QueryObserverOptions<TData, TQueryData> { ..., Select = s }` |
+| `UseMutation<TData, TVariables>(fn, onSuccess: ...)` | `UseMutation(new MutationOptions<TData, TVariables> { MutationFn = fn, OnSuccess = ... })` |
+| `UseMutation(fn, options)` | `UseMutation(options with { MutationFn = fn })` |
+| `MutationDefinition.Create(fn)` | `MutationOptions.Create(fn)` |
+| `OptimisticMutationDefinition.Create(fn, onMutate)` | `MutationOptions.Create(fn, onMutate)` |
+| `MutationCallbacks` (three-argument callbacks) | `MutationOptions` callbacks, which also receive the `OnMutate` result |
+| `new MutationViewModel<...>(client, fn, options)` | `new MutationViewModel<...>(client, options with { MutationFn = fn })` |
+| `PageViewModel.Query`, `QueryCollection`, `InfiniteQuery`, `Mutation` | `UseQuery`, `UseQueryCollection`, `UseInfiniteQuery`, `UseMutation` |
+
+Creating a mutation ViewModel without a `MutationFn` throws `ArgumentException` at construction.
 
 ## ViewModels
 

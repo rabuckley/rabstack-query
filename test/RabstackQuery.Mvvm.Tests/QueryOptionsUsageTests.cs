@@ -1,11 +1,5 @@
 namespace RabstackQuery.Mvvm;
 
-/// <summary>
-/// Tests for MVVM overloads that accept <see cref="QueryOptions{TData}"/>,
-/// <see cref="MutationCallbacks{TData, TVariables}"/>, and the simplified
-/// ViewModel aliases (<see cref="QueryViewModel{TData}"/>,
-/// <see cref="MutationViewModel{TData, TVariables}"/>).
-/// </summary>
 public sealed class QueryOptionsUsageTests : SyncContextTestBase
 {
     private static QueryClient CreateClient() => new(new QueryCache());
@@ -241,7 +235,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
         var client = CreateClient();
         using var vm = new MutationViewModel<string, int>(
             client,
-            async (vars, ctx, ct) => $"result-{vars}");
+            new MutationOptions<string, int> { MutationFn = async (vars, ctx, ct) => $"result-{vars}" });
 
         Assert.True(vm.IsIdle);
 
@@ -251,7 +245,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
         Assert.Equal("result-42", vm.Data);
     }
 
-    // ── Simplified UseMutation ────────────────────────────────────────
+    // ── UseMutation ───────────────────────────────────────────────────
 
     [Fact]
     public async Task UseMutation_TwoTypeParams_Works()
@@ -267,20 +261,22 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task UseMutation_WithCallbacks_FiresOnSuccess()
+    public async Task UseMutation_WithOptions_FiresOnSuccess()
     {
         var client = CreateClient();
         var onSuccessCalled = false;
         string? successData = null;
 
-        using var vm = client.UseMutation<string, int>(
-            mutationFn: async (vars, ctx, ct) => $"result-{vars}",
-            onSuccess: (data, vars, ctx) =>
+        using var vm = client.UseMutation(new MutationOptions<string, int>
+        {
+            MutationFn = async (vars, ctx, ct) => $"result-{vars}",
+            OnSuccess = (data, vars, _, ctx) =>
             {
                 onSuccessCalled = true;
                 successData = data;
                 return Task.CompletedTask;
-            });
+            },
+        });
 
         vm.MutateCommand.Execute(5);
         await WaitForAsync(() => vm.IsSuccess);
@@ -290,20 +286,22 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task UseMutation_WithCallbacks_FiresOnError()
+    public async Task UseMutation_WithOptions_FiresOnError()
     {
         var client = CreateClient();
         var onErrorCalled = false;
         Exception? capturedError = null;
 
-        using var vm = client.UseMutation<string, int>(
-            mutationFn: (vars, ctx, ct) => throw new InvalidOperationException("boom"),
-            onError: (err, vars, ctx) =>
+        using var vm = client.UseMutation(new MutationOptions<string, int>
+        {
+            MutationFn = (vars, ctx, ct) => throw new InvalidOperationException("boom"),
+            OnError = (err, vars, _, ctx) =>
             {
                 onErrorCalled = true;
                 capturedError = err;
                 return Task.CompletedTask;
-            });
+            },
+        });
 
         vm.MutateCommand.Execute(1);
         await WaitForAsync(() => vm.IsError);
@@ -314,18 +312,20 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task UseMutation_WithCallbacks_FiresOnSettled()
+    public async Task UseMutation_WithOptions_FiresOnSettled()
     {
         var client = CreateClient();
         var onSettledCalled = false;
 
-        using var vm = client.UseMutation<string, int>(
-            mutationFn: async (vars, ctx, ct) => "done",
-            onSettled: (data, error, vars, ctx) =>
+        using var vm = client.UseMutation(new MutationOptions<string, int>
+        {
+            MutationFn = async (vars, ctx, ct) => "done",
+            OnSettled = (data, error, vars, _, ctx) =>
             {
                 onSettledCalled = true;
                 return Task.CompletedTask;
-            });
+            },
+        });
 
         vm.MutateCommand.Execute(0);
         await WaitForAsync(() => vm.IsSuccess);

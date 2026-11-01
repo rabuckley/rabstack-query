@@ -71,15 +71,16 @@ public sealed partial class ProjectListViewModel : ObservableObject, IDisposable
             }
         );
 
-        CreateProjectMutation = client.UseMutation<Project, (string Name, string Description)>(
-            mutationFn: async (variables, context, ct) =>
+        CreateProjectMutation = client.UseMutation(new MutationOptions<Project, (string Name, string Description)>
+        {
+            MutationFn = async (variables, context, ct) =>
                 await api.CreateProjectAsync(variables.Name, variables.Description, ct),
-            onSuccess: async (data, variables, context) =>
+            OnSuccess = async (data, variables, _, context) =>
             {
                 _createSucceeded = true;
                 await context.Client.InvalidateQueriesAsync(Queries.Projects(api));
-            }
-        );
+            },
+        });
     }
 
     [RelayCommand]

@@ -17,10 +17,27 @@ TanStack Query uses a single mega-object for all options. C# splits this into pu
 | Type | Why it exists |
 |------|---------------|
 | `QueryConfiguration<TData>` | Cache-level config (`GcTime`, `Retry`, `InitialData`, `NetworkMode`) passed to `QueryCache.GetOrCreate`. Separating this from observer options lets multiple observers share cache config without re-specifying it. |
-| `QueryOptions<TData>` | Reusable query definition (key + fn + config). Analogous to TanStack v5's `queryOptions()` helper. Covers the 80% case where no `Select` transform or observer-level options are needed. |
+| `QueryOptions<TData>` | Reusable query definition (key + fn + config). Use `ToObserverOptions()` or `ToObserverOptions(select)` with `with` to add observer settings. The select conversion drops `StructuralSharing`, which operates on the selected output type. |
 | `QueryObserverOptions<TData, TQueryData>` | Observer-level config (`Select`, `RefetchInterval`, `Enabled`, `PlaceholderData`). A `record` so `with` expressions can toggle individual properties (e.g., switching polling on/off). |
 | `FetchQueryOptions<TData>` | Imperative fetch config for `FetchQueryAsync`/`PrefetchQueryAsync`/`EnsureQueryDataAsync`. Exists because these methods don't create persistent observer subscriptions and fall back to different defaults (no retries). |
 | `QueryDefaults` / `MutationDefaults` | The defaultable subset, shared by client-wide defaults (`QueryClientDefaultOptions.Queries`/`.Mutations`) and key-prefix defaults (`SetQueryDefaults`/`SetMutationDefaults`), as TanStack shares one shape between `defaultOptions.queries` and `setQueryDefaults`. |
+
+## Factory overloads
+
+Keep creation logic in `QueryClientExtensions`. Options expose all settings without duplicating them
+in positional parameter lists. The shortcuts support C# type inference:
+
+- `UseQuery(key, fn)` and `UseMutation(fn)` infer types from the delegate.
+- `UseQuery(queryOptions, select)` calls `ToObserverOptions(select)`.
+- Same-type `UseQueryCollection<TItem>` overloads infer the collection item type without typed `update`
+  parameters. Two-type overloads pass raw cached items to `update`, which can preserve existing item ViewModels.
+
+`MutationOptions.Create` infers types from delegates, including rollback state from `onMutate`.
+A `MutationViewModel` requires `MutationFn` at construction. Core options allow it to be null because
+hydration can supply it through `HydrateMutationDefaults`.
+
+`PageViewModel` and `RabstackComponentBase` delegate to the extensions and own the returned ViewModels.
+The Blazor adapter also subscribes to change notifications. `AdapterParityTests` checks overload parity.
 
 ## Option Defaulting
 

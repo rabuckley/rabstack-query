@@ -58,21 +58,18 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
         // -- Task detail query with placeholder data from infinite list cache --
 
         TaskQuery = client.UseQuery(
-            queryKey: QueryKeys.Task(projectId, taskId),
-            queryFn: async ctx => await api.GetTaskAsync(projectId, taskId, ctx.CancellationToken),
-            enabled: taskId > 0,
-            staleTime: TimeSpan.FromSeconds(15),
-            // Seed placeholder data from the infinite query list cache so the UI
-            // shows something instantly while the detail fetch is in flight.
-            placeholderData: (_, _) =>
+            Queries.Task(api, projectId, taskId).ToObserverOptions() with
             {
-                var infiniteData = client.GetQueryData<InfiniteData<PagedResult<TaskItem>, string?>>(
-                    QueryKeys.Tasks(projectId));
-                return infiniteData?.Pages
-                    .SelectMany(p => p.Items)
-                    .FirstOrDefault(t => t.Id == taskId);
-            }
-        );
+                Enabled = taskId > 0,
+                PlaceholderData = (_, _) =>
+                {
+                    var infiniteData = client.GetQueryData<InfiniteData<PagedResult<TaskItem>, string?>>(
+                        QueryKeys.Tasks(projectId));
+                    return infiniteData?.Pages
+                        .SelectMany(p => p.Items)
+                        .FirstOrDefault(t => t.Id == taskId);
+                },
+            });
 
         // Sync editable fields when the query result changes. We subscribe to
         // PropertyChanged rather than polling so the fields update as soon as real
@@ -98,26 +95,26 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Update task mutation (title, description, priority) ──────────
 
-        UpdateTaskMutation = client.UseMutation<TaskItem, (string Title, string? Description, TaskPriority Priority)>(
-            mutationFn: async (variables, context, ct) =>
-                await api.UpdateTaskAsync(projectId, taskId, variables.Title, variables.Description, variables.Priority, ct),
-            onSuccess: async (updatedTask, _, context) =>
+        UpdateTaskMutation = client.UseMutation(
+            new MutationOptions<TaskItem, (string Title, string? Description, TaskPriority Priority)>
             {
-                // Update the detail cache with the server response
-                context.Client.SetQueryData(QueryKeys.Task(projectId, taskId), updatedTask);
+                MutationFn = async (variables, context, ct) =>
+                    await api.UpdateTaskAsync(projectId, taskId, variables.Title, variables.Description, variables.Priority, ct),
+                OnSuccess = async (updatedTask, _, _, context) =>
+                {
+                    context.Client.SetQueryData(QueryKeys.Task(projectId, taskId), updatedTask);
 
-                // Invalidate the task list so it refetches with the updated data
-                await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
-            }
-        );
+                    await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
+                },
+            });
 
         // -- Optimistic status update mutation ────────────────────────────
 
-        UpdateStatusMutation = client.UseMutation<TaskItem, TaskItemStatus>(
-            mutationFn: async (status, context, ct) =>
-                await api.UpdateTaskStatusAsync(projectId, taskId, status, ct),
-            options: new()
+        UpdateStatusMutation = client.UseMutation(
+            new MutationOptions<TaskItem, TaskItemStatus>
             {
+                MutationFn = async (status, context, ct) =>
+                    await api.UpdateTaskStatusAsync(projectId, taskId, status, ct),
                 OnMutate = async (newStatus, context) =>
                 {
                     // Cancel in-flight queries so they don't overwrite our optimistic update
@@ -145,9 +142,8 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
                 {
                     // Roll back the optimistic update by refetching
                     await context.Client.InvalidateQueriesAsync(QueryKeys.Task(projectId, taskId));
-                }
-            }
-        );
+                },
+            });
 
         // -- Paginated comments (reverse chronological, newest first) ─────
 
@@ -166,14 +162,15 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Add comment mutation ─────────────────────────────────────────
 
-        AddCommentMutation = client.UseMutation<Comment, string>(
-            mutationFn: async (body, context, ct) =>
+        AddCommentMutation = client.UseMutation(new MutationOptions<Comment, string>
+        {
+            MutationFn = async (body, context, ct) =>
                 await api.AddCommentAsync(taskId, body, ct),
-            onSuccess: async (_, _, context) =>
+            OnSuccess = async (_, _, _, context) =>
             {
                 await context.Client.InvalidateQueriesAsync(QueryKeys.Comments(taskId));
-            }
-        );
+            },
+        });
     }
 
     [RelayCommand]

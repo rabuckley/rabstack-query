@@ -72,28 +72,29 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
         TotalTaskCountQuery = client.UseQuery(_totalTaskCountBaseOptions);
 
-        CompletionRateQuery = client.UseQuery<string, IEnumerable<Project>>(
-            queryKey: QueryKeys.Projects,
-            queryFn: async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
-            enabled: true,
-            select: projects =>
+        CompletionRateQuery = client.UseQuery(new QueryObserverOptions<string, IEnumerable<Project>>
+        {
+            QueryKey = QueryKeys.Projects,
+            QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
+            Select = projects =>
             {
                 var total = projects.Sum(p => p.TaskCount);
                 if (total == 0) return "0%";
                 var completed = projects.Sum(p => p.CompletedTaskCount);
                 return $"{completed * 100 / total}%";
             },
-            staleTime: DashboardStaleTime
-        );
+            StaleTime = DashboardStaleTime,
+        });
 
-        MostActiveProjectQuery = client.UseQuery<string?, IEnumerable<Project>>(
-            queryKey: QueryKeys.Projects,
-            queryFn: async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
-            select: projects => projects
+        MostActiveProjectQuery = client.UseQuery(new QueryObserverOptions<string?, IEnumerable<Project>>
+        {
+            QueryKey = QueryKeys.Projects,
+            QueryFn = async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
+            Select = projects => projects
                 .OrderByDescending(p => p.TaskCount - p.CompletedTaskCount)
                 .Select(p => p.Name)
-                .FirstOrDefault()
-        );
+                .FirstOrDefault(),
+        });
     }
 
     /// <summary>

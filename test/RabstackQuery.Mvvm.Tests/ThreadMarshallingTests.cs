@@ -75,7 +75,10 @@ public sealed class ThreadMarshallingTests
         var vm = WithSyncContext(syncContext, () =>
             new MutationViewModel<string, Exception, string, object?>(
                 client,
-                mutationFn: (input, _, _) => Task.FromResult(input.ToUpper())));
+                new()
+                {
+                    MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+                }));
 
         syncContext.Reset();
 
@@ -225,7 +228,10 @@ public sealed class ThreadMarshallingTests
         var vm = WithSyncContext(syncContext, () =>
             new MutationViewModel<string, Exception, string, object?>(
                 client,
-                mutationFn: (input, _, _) => Task.FromResult(input.ToUpper())));
+                new()
+                {
+                    MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+                }));
         syncContext.DrainQueue();
 
         // Run off-context so mutation completion does not require draining UI notifications.
@@ -379,7 +385,10 @@ public sealed class ThreadMarshallingTests
 
         var exception = ConstructOnBareThread(() => new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: (input, _, _) => Task.FromResult(input.ToUpper())));
+            new()
+            {
+                MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+            }));
 
         Assert.IsType<InvalidOperationException>(exception);
     }

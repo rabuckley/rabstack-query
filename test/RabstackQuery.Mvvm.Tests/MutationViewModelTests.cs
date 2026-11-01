@@ -18,7 +18,10 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         var client = CreateQueryClient();
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: (_, _, _) => throw new InvalidOperationException("Simulated network error"));
+            new()
+            {
+                MutationFn = (_, _, _) => throw new InvalidOperationException("Simulated network error"),
+            });
 
         // Act — the command must not throw; errors are surfaced via IsError/Error
         await vm.MutateCommand.ExecuteAsync("input");
@@ -37,7 +40,10 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         var client = CreateQueryClient();
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: (input, _, _) => Task.FromResult(input.ToUpper()));
+            new()
+            {
+                MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+            });
 
         // Act
         await vm.MutateCommand.ExecuteAsync("hello");
@@ -58,9 +64,9 @@ public sealed class MutationViewModelTests : SyncContextTestBase
 
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: (_, _, _) => throw new InvalidOperationException("fail"),
-            options: new()
+            new()
             {
+                MutationFn = (_, _, _) => throw new InvalidOperationException("fail"),
                 OnError = async (error, variables, context, functionContext) =>
                 {
                     onErrorCalled = true;
@@ -82,7 +88,10 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         var client = CreateQueryClient();
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: (_, _, _) => throw new InvalidOperationException("fail"));
+            new()
+            {
+                MutationFn = (_, _, _) => throw new InvalidOperationException("fail"),
+            });
 
         await vm.MutateCommand.ExecuteAsync("input");
         Assert.True(vm.IsError);
@@ -106,10 +115,13 @@ public sealed class MutationViewModelTests : SyncContextTestBase
 
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: async (_, _, ct) =>
+            new()
             {
-                ct.Register(() => tcs.TrySetCanceled(ct));
-                return await tcs.Task;
+                MutationFn = async (_, _, ct) =>
+                {
+                    ct.Register(() => tcs.TrySetCanceled(ct));
+                    return await tcs.Task;
+                },
             });
 
         // Act — start the mutation, then cancel it
@@ -120,4 +132,32 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         // needs it to transition the command out of its executing state).
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => mutateTask);
     }
+
+    [Fact]
+    public void Constructor_OptionsWithoutMutationFn_ThrowsArgumentException()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+        var options = new MutationOptions<string, Exception, string, object?> { Retry = 2 };
+
+        // Act
+        void Act() => _ = new MutationViewModel<string, Exception, string, object?>(client, options);
+
+        // Assert
+        Assert.Throws<ArgumentException>("options", Act);
+    }
+
+    [Fact]
+    public void Constructor_NullOptions_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+
+        // Act
+        void Act() => _ = new MutationViewModel<string, Exception, string, object?>(client, null!);
+
+        // Assert
+        Assert.Throws<ArgumentNullException>("options", Act);
+    }
 }
+

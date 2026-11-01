@@ -417,7 +417,7 @@ public sealed class QueryViewModelOptionsTests : SyncContextTestBase
         client.SetQueryDefaults(["select-inherits"], new QueryDefaults { StaleTime = TimeSpan.FromSeconds(30) });
 
         using var vm = client.UseQuery(
-            ["select-inherits"], _ => Task.FromResult("data"), select: data => data.Length);
+            QueryOptions.Create(["select-inherits"], _ => Task.FromResult("data")), data => data.Length);
         await WaitForAsync(() => vm.IsSuccess);
 
         Assert.False(vm.IsStale);
@@ -434,7 +434,10 @@ public sealed class QueryViewModelOptionsTests : SyncContextTestBase
         };
 
         using var vm = client.UseQuery(
-            ["explicit-zero"], _ => Task.FromResult("data"), enabled: true, staleTime: TimeSpan.Zero);
+            QueryObserverOptions.Create(["explicit-zero"], _ => Task.FromResult("data")) with
+            {
+                StaleTime = TimeSpan.Zero,
+            });
         await WaitForAsync(() => vm.IsSuccess);
 
         Assert.True(vm.IsStale);

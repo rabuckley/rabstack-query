@@ -22,6 +22,7 @@
     <Project Path="src/RabstackQuery.DevTools.Maui/RabstackQuery.DevTools.Maui.csproj" />
   </Folder>
   <Folder Name="/test/">
+    <Project Path="test/RabstackQuery.Blazor.Tests/RabstackQuery.Blazor.Tests.csproj" />
     <Project Path="test/RabstackQuery.Mvvm.Tests/RabstackQuery.Mvvm.Tests.csproj" />
     <Project Path="test/RabstackQuery.Tests/RabstackQuery.Tests.csproj" />
   </Folder>

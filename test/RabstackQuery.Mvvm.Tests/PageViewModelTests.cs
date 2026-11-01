@@ -31,27 +31,33 @@ public sealed class PageViewModelTests : SyncContextTestBase
         public TestPageViewModel(QueryClient client)
         {
             Client = client;
-            StringQuery = Query(["test"], _ => Task.FromResult("hello"));
-            EchoMutation = Mutation<string, string>((input, _, _) => Task.FromResult(input));
+            StringQuery = UseQuery(["test"], _ => Task.FromResult("hello"));
+            EchoMutation = UseMutation<string, string>((input, _, _) => Task.FromResult(input));
         }
     }
 
     // ── Disposal ──────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Dispose_DisposesAllTrackedChildren()
+    public async Task Dispose_ReleasesOwnedQueryAndMutationObservers()
     {
         // Arrange
         var client = CreateClient();
         var vm = new TestPageViewModel(client);
         await WaitForAsync(() => vm.StringQuery.IsSuccess);
+        await vm.EchoMutation.InvokeAsync("x");
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["test"] });
+        var mutation = Assert.Single(client.MutationCache.GetAll());
+        Assert.NotNull(query);
+        Assert.Equal(1, query.ObserverCount);
+        Assert.True(mutation.HasObservers);
 
         // Act
         vm.Dispose();
 
-        // Assert — after disposal, the mutation should report idle state
-        // (observer subscription cleaned up) and query should no longer fetch.
-        Assert.True(vm.EchoMutation.IsIdle);
+        // Assert
+        Assert.Equal(0, query.ObserverCount);
+        Assert.False(mutation.HasObservers);
     }
 
     [Fact]
@@ -68,7 +74,7 @@ public sealed class PageViewModelTests : SyncContextTestBase
     // ── Query Factory Methods ─────────────────────────────────────────
 
     [Fact]
-    public async Task Query_WithKeyAndFn_CreatesWorkingViewModel()
+    public async Task UseQuery_WithKeyAndFn_CreatesWorkingViewModel()
     {
         var client = CreateClient();
         using var vm = new TestPageViewModel(client);
@@ -78,7 +84,7 @@ public sealed class PageViewModelTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task Query_WithQueryOptions_CreatesWorkingViewModel()
+    public async Task UseQuery_WithQueryOptions_CreatesWorkingViewModel()
     {
         var client = CreateClient();
         var options = new QueryOptions<int>
@@ -101,14 +107,14 @@ public sealed class PageViewModelTests : SyncContextTestBase
         public QueryOptionsPageViewModel(QueryClient client, QueryOptions<int> options)
         {
             Client = client;
-            CountQuery = Query(options);
+            CountQuery = UseQuery(options);
         }
     }
 
     // ── Mutation Factory Methods ──────────────────────────────────────
 
     [Fact]
-    public async Task Mutation_CreatesWorkingViewModel()
+    public async Task UseMutation_WithFunction_CreatesWorkingViewModel()
     {
         var client = CreateClient();
         using var vm = new TestPageViewModel(client);
@@ -120,82 +126,49 @@ public sealed class PageViewModelTests : SyncContextTestBase
     }
 
     [Fact]
-    public async Task Mutation_WithMutationDefinition_CreatesWorkingViewModel()
-    {
-        var client = CreateClient();
-        using var page = new MutationDefinitionPageViewModel(client);
-
-        await page.UpperMutation.InvokeAsync("hello");
-
-        Assert.True(page.UpperMutation.IsSuccess);
-        Assert.Equal("HELLO", page.UpperMutation.Data);
-    }
-
-    [Fact]
-    public async Task Mutation_WithMutationDefAndCallbacks_FiresCallbacks()
+    public async Task UseMutation_WithOptions_FiresCallbacks()
     {
         var client = CreateClient();
         var successCalled = false;
 
-        using var page = new MutationDefinitionCallbacksPageViewModel(client, () => successCalled = true);
+        using var page = new MutationOptionsPageViewModel(client, () => successCalled = true);
 
         await page.UpperMutation.InvokeAsync("test");
 
         Assert.True(page.UpperMutation.IsSuccess);
+        Assert.Equal("TEST", page.UpperMutation.Data);
         await WaitForAsync(() => successCalled);
-        Assert.True(successCalled);
     }
 
     [Fact]
-    public async Task Mutation_WithOptimisticMutationDefinition_CreatesWorkingViewModel()
+    public async Task UseMutation_WithOptimisticFactory_RollsBackCache_OnFailure()
     {
         // Arrange
         var client = CreateClient();
-        using var page = new OptimisticMutationDefinitionPageViewModel(client);
+        client.SetQueryData(["data"], "original");
+        using var page = new OptimisticMutationPageViewModel(client);
 
         // Act
-        await page.UpdateMutation.InvokeAsync("new-value");
+        Task Act() => page.UpdateMutation.InvokeAsync("new-value");
 
         // Assert
-        Assert.True(page.UpdateMutation.IsSuccess);
-        Assert.Equal("new-value", page.UpdateMutation.Data);
+        await Assert.ThrowsAsync<InvalidOperationException>(Act);
+        Assert.Equal("original", client.GetQueryData<string>(["data"]));
     }
 
-    private sealed class MutationDefinitionPageViewModel : PageViewModel
+    private sealed class MutationOptionsPageViewModel : PageViewModel
     {
         public MutationViewModel<string, string> UpperMutation { get; }
 
         [SetsRequiredMembers]
-        public MutationDefinitionPageViewModel(QueryClient client)
+        public MutationOptionsPageViewModel(QueryClient client, Action onSuccess)
         {
             Client = client;
 
-            var def = new MutationDefinition<string, string>
+            UpperMutation = UseMutation(new MutationOptions<string, string>
             {
                 MutationFn = (input, _, _) => Task.FromResult(input.ToUpperInvariant()),
-            };
-
-            UpperMutation = Mutation(def);
-        }
-    }
-
-    private sealed class MutationDefinitionCallbacksPageViewModel : PageViewModel
-    {
-        public MutationViewModel<string, string> UpperMutation { get; }
-
-        [SetsRequiredMembers]
-        public MutationDefinitionCallbacksPageViewModel(QueryClient client, Action onSuccess)
-        {
-            Client = client;
-
-            var def = new MutationDefinition<string, string>
-            {
-                MutationFn = (input, _, _) => Task.FromResult(input.ToUpperInvariant()),
-            };
-
-            UpperMutation = Mutation(def, new MutationCallbacks<string, string>
-            {
-                OnSuccess = (data, vars, ctx) =>
+                OnSuccess = (data, vars, _, ctx) =>
                 {
                     onSuccess();
                     return Task.CompletedTask;
@@ -204,33 +177,34 @@ public sealed class PageViewModelTests : SyncContextTestBase
         }
     }
 
-    private sealed class OptimisticMutationDefinitionPageViewModel : PageViewModel
+    private sealed class OptimisticMutationPageViewModel : PageViewModel
     {
         public MutationViewModel<string, Exception, string, string?> UpdateMutation { get; }
 
         [SetsRequiredMembers]
-        public OptimisticMutationDefinitionPageViewModel(QueryClient client)
+        public OptimisticMutationPageViewModel(QueryClient client)
         {
             Client = client;
 
-            var def = new OptimisticMutationDefinition<string, string, string?>
-            {
-                MutationFn = (input, _, _) => Task.FromResult(input),
-                OnMutate = (input, ctx) =>
+            UpdateMutation = UseMutation(
+                MutationOptions.Create(
+                    (string input, MutationFunctionContext _, CancellationToken _) =>
+                        Task.FromException<string>(new InvalidOperationException("rejected")),
+                    onMutate: (input, ctx) =>
+                    {
+                        var prev = ctx.Client.GetQueryData<string>(["data"]);
+                        ctx.Client.SetQueryData(["data"], input);
+                        return Task.FromResult(prev);
+                    })
+                with
                 {
-                    var prev = ctx.Client.GetQueryData<string>(["data"]);
-                    ctx.Client.SetQueryData(["data"], input);
-                    return Task.FromResult<string?>(prev);
-                },
-                OnError = (err, input, prev, ctx) =>
-                {
-                    if (prev is not null)
-                        ctx.Client.SetQueryData(["data"], prev);
-                    return Task.CompletedTask;
-                },
-            };
-
-            UpdateMutation = Mutation(def);
+                    OnError = (err, input, prev, ctx) =>
+                    {
+                        if (prev is not null)
+                            ctx.Client.SetQueryData(["data"], prev);
+                        return Task.CompletedTask;
+                    },
+                });
         }
     }
 }

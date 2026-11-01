@@ -33,6 +33,7 @@ jobs:
         run: |
           dotnet test --project test/RabstackQuery.Tests
           dotnet test --project test/RabstackQuery.Mvvm.Tests
+          dotnet test --project test/RabstackQuery.Blazor.Tests
 
   # Run the native binary to detect failures that publish-time checks miss.
   aot-validation:

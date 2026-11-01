@@ -178,4 +178,76 @@ public sealed class QueryOptionsTests
         Assert.Equal(NetworkMode.Always, observer.NetworkMode);
         Assert.Same(meta, observer.Meta);
     }
+
+    [Fact]
+    public void ToObserverOptions_CarriesQueryFnHasherAndStructuralSharing()
+    {
+        Func<QueryFunctionContext, Task<string>> queryFn = _ => Task.FromResult("data");
+        Func<string, string, string> sharing = (_, next) => next;
+        var hasher = DefaultQueryKeyHasher.Instance;
+        var options = new QueryOptions<string>
+        {
+            QueryKey = ["test"],
+            QueryFn = queryFn,
+            QueryKeyHasher = hasher,
+            StructuralSharing = sharing,
+        };
+
+        var observer = options.ToObserverOptions();
+
+        Assert.Same(queryFn, observer.QueryFn);
+        Assert.Same(hasher, observer.QueryKeyHasher);
+        Assert.Same(sharing, observer.StructuralSharing);
+    }
+
+    [Fact]
+    public void ToObserverOptions_WithSelect_DoesNotCarrySourceStructuralSharing()
+    {
+        // Observers apply StructuralSharing to the selected output, so a delegate over the source
+        // type cannot be reused once Select changes the output type.
+        var options = new QueryOptions<string>
+        {
+            QueryKey = ["test"],
+            QueryFn = _ => Task.FromResult("data"),
+            QueryKeyHasher = DefaultQueryKeyHasher.Instance,
+            StructuralSharing = (_, next) => next,
+        };
+
+        var observer = options.ToObserverOptions(s => s.Length);
+
+        Assert.Same(options.QueryFn, observer.QueryFn);
+        Assert.Same(options.QueryKeyHasher, observer.QueryKeyHasher);
+        Assert.Null(observer.StructuralSharing);
+    }
+
+    [Fact]
+    public void ToObserverOptions_WithExpression_AddsObserverSettings_WithoutChangingDefinition()
+    {
+        var options = new QueryOptions<string>
+        {
+            QueryKey = ["test"],
+            QueryFn = _ => Task.FromResult("data"),
+            StaleTime = TimeSpan.FromSeconds(15),
+        };
+
+        var first = options.ToObserverOptions() with { Enabled = false, StaleTime = TimeSpan.Zero };
+        var second = options.ToObserverOptions();
+
+        Assert.False(first.Enabled);
+        Assert.Equal(TimeSpan.Zero, first.StaleTime);
+        Assert.True(second.Enabled);
+        Assert.Equal(TimeSpan.FromSeconds(15), second.StaleTime);
+        Assert.Equal(TimeSpan.FromSeconds(15), options.StaleTime);
+    }
+
+    [Fact]
+    public void ToObserverOptions_NullSelect_Throws()
+    {
+        var options = QueryOptions.Create(["test"], _ => Task.FromResult("data"));
+        Func<string, int>? select = null;
+
+        void Act() => options.ToObserverOptions(select!);
+
+        Assert.Throws<ArgumentNullException>("select", Act);
+    }
 }

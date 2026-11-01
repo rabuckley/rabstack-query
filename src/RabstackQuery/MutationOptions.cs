@@ -109,3 +109,76 @@ public record MutationOptions<TData, TError, TVariables, TOnMutateResult>
 /// </summary>
 public record MutationOptions<TData, TVariables>
     : MutationOptions<TData, Exception, TVariables, object?>;
+
+/// <summary>
+/// Creates <see cref="MutationOptions{TData, TVariables}"/> and
+/// <see cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}"/> records with their type
+/// arguments inferred from the supplied delegates.
+/// </summary>
+/// <remarks>
+/// Add callbacks and settings with a <see langword="with"/> expression.
+/// Use explicitly typed mutation lambda parameters for type inference, or explicit type arguments
+/// when passing a method group.
+/// </remarks>
+/// <example>
+/// <code>
+/// var addTodo = MutationOptions.Create(
+///     (string title, MutationFunctionContext _, CancellationToken ct) => api.AddTodoAsync(title, ct))
+///     with
+///     {
+///         OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
+///     };
+/// </code>
+/// </example>
+public static class MutationOptions
+{
+    /// <summary>
+    /// Creates mutation options for <paramref name="mutationFn"/>, inferring
+    /// <typeparamref name="TData"/> and <typeparamref name="TVariables"/> from it.
+    /// </summary>
+    /// <typeparam name="TData">The type of data returned by the mutation.</typeparam>
+    /// <typeparam name="TVariables">The type of variables passed to the mutation.</typeparam>
+    /// <param name="mutationFn">The mutation function.</param>
+    /// <returns>Options whose <c>MutationFn</c> is <paramref name="mutationFn"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="mutationFn"/> is <see langword="null"/>.</exception>
+    public static MutationOptions<TData, TVariables> Create<TData, TVariables>(
+        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
+    {
+        ArgumentNullException.ThrowIfNull(mutationFn);
+        return new MutationOptions<TData, TVariables> { MutationFn = mutationFn };
+    }
+
+    /// <summary>
+    /// Creates mutation options for an optimistic update, inferring <typeparamref name="TOnMutateResult"/>
+    /// from the value <paramref name="onMutate"/> returns for rollback.
+    /// </summary>
+    /// <typeparam name="TData">The type of data returned by the mutation.</typeparam>
+    /// <typeparam name="TVariables">The type of variables passed to the mutation.</typeparam>
+    /// <typeparam name="TOnMutateResult">The rollback state returned by <paramref name="onMutate"/>.</typeparam>
+    /// <param name="mutationFn">The mutation function.</param>
+    /// <param name="onMutate">
+    /// Runs before <paramref name="mutationFn"/>. Its result is passed to <c>OnSuccess</c>, <c>OnError</c>
+    /// and <c>OnSettled</c>.
+    /// </param>
+    /// <returns>Options with <see cref="Exception"/> as the error type.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="mutationFn"/> or <paramref name="onMutate"/> is <see langword="null"/>.
+    /// </exception>
+    /// <remarks>
+    /// When <paramref name="mutationFn"/> has typed parameters, <paramref name="onMutate"/> can be an
+    /// untyped lambda.
+    /// </remarks>
+    public static MutationOptions<TData, Exception, TVariables, TOnMutateResult>
+        Create<TData, TVariables, TOnMutateResult>(
+            Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
+            Func<TVariables, MutationFunctionContext, Task<TOnMutateResult>> onMutate)
+    {
+        ArgumentNullException.ThrowIfNull(mutationFn);
+        ArgumentNullException.ThrowIfNull(onMutate);
+        return new MutationOptions<TData, Exception, TVariables, TOnMutateResult>
+        {
+            MutationFn = mutationFn,
+            OnMutate = onMutate,
+        };
+    }
+}

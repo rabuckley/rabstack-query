@@ -65,239 +65,104 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
 
     // ── Query ──────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Creates a <see cref="QueryViewModel{TData}"/> that is automatically subscribed
-    /// to render updates and disposed with this component.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData}(QueryClient, QueryKey, Func{QueryFunctionContext, Task{TData}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryViewModel<TData> UseQuery<TData>(
         QueryKey queryKey,
         Func<QueryFunctionContext, Task<TData>> queryFn)
-    {
-        var vm = new QueryViewModel<TData>(Client, queryKey, queryFn);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseQuery(queryKey, queryFn));
 
-    /// <summary>
-    /// Creates a <see cref="QueryViewModel{TData}"/> from a <see cref="QueryOptions{TData}"/>
-    /// definition. Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData}(QueryClient, QueryOptions{TData})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryViewModel<TData> UseQuery<TData>(QueryOptions<TData> options)
-    {
-        var vm = Client.UseQuery(options);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseQuery(options));
 
-    /// <summary>
-    /// Creates a <see cref="QueryViewModel{TData, TQueryData}"/> with a Select transform.
-    /// Automatically subscribed and disposed.
-    /// </summary>
-    protected QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
-        QueryObserverOptions<TData, TQueryData> options)
-    {
-        var vm = Client.UseQuery(options);
-        Track(vm);
-        return vm;
-    }
-
-    /// <summary>
-    /// Creates a <see cref="QueryViewModel{TData}"/> with full observer options (no transform).
-    /// Automatically subscribed and disposed.
-    /// </summary>
-    protected QueryViewModel<TData> UseQuery<TData>(QueryObserverOptions<TData> options)
-    {
-        var vm = Client.UseQuery(options);
-        Track(vm);
-        return vm;
-    }
-
-    /// <summary>
-    /// Creates a <see cref="QueryViewModel{TData, TQueryData}"/> from a
-    /// <see cref="QueryOptions{TQueryData}"/> with a Select transform.
-    /// Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData, TQueryData}(QueryClient, QueryOptions{TQueryData}, Func{TQueryData, TData})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
         QueryOptions<TQueryData> options,
         Func<TQueryData, TData> select)
-    {
-        var vm = Client.UseQuery(options, select);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseQuery(options, select));
 
-    // ── Query Collection ───────────────────────────────────────────────
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData}(QueryClient, QueryObserverOptions{TData})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
+    protected QueryViewModel<TData> UseQuery<TData>(QueryObserverOptions<TData> options)
+        => Track(Client.UseQuery(options));
 
-    /// <summary>
-    /// Creates a <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> where the
-    /// collection item type matches the cache type. Automatically subscribed (including
-    /// <see cref="ObservableCollection{T}.CollectionChanged"/>) and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData, TQueryData}(QueryClient, QueryObserverOptions{TData, TQueryData})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
+    protected QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
+        QueryObserverOptions<TData, TQueryData> options)
+        => Track(Client.UseQuery(options));
+
+    // ── Query collection ───────────────────────────────────────────────
+
+    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TItem}(QueryClient, QueryKey, Func{QueryFunctionContext, Task{IEnumerable{TItem}}}, Action{IEnumerable{TItem}, ObservableCollection{TItem}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryCollectionViewModel<TItem, TItem> UseQueryCollection<TItem>(
         QueryKey queryKey,
         Func<QueryFunctionContext, Task<IEnumerable<TItem>>> queryFn,
         Action<IEnumerable<TItem>?, ObservableCollection<TItem>> update)
-    {
-        var vm = new QueryCollectionViewModel<TItem, TItem>(Client, queryKey, queryFn, update);
-        TrackCollection(vm, vm.Items);
-        return vm;
-    }
+        => TrackCollection(Client.UseQueryCollection<TItem>(queryKey, queryFn, update));
 
-    /// <summary>
-    /// Creates a <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> where the
-    /// collection item type differs from the cache type (e.g. cache stores models,
-    /// collection holds ViewModels). Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TQueryFnData, TItem}(QueryClient, QueryKey, Func{QueryFunctionContext, Task{IEnumerable{TQueryFnData}}}, Action{IEnumerable{TQueryFnData}, ObservableCollection{TItem}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryCollectionViewModel<TItem, TQueryFnData> UseQueryCollection<TQueryFnData, TItem>(
         QueryKey queryKey,
         Func<QueryFunctionContext, Task<IEnumerable<TQueryFnData>>> queryFn,
         Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update)
-    {
-        var vm = Client.UseQueryCollection<TQueryFnData, TItem>(queryKey, queryFn, update);
-        TrackCollection(vm, vm.Items);
-        return vm;
-    }
+        => TrackCollection(Client.UseQueryCollection(queryKey, queryFn, update));
 
-    /// <summary>
-    /// Creates a <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> from a
-    /// <see cref="QueryOptions{TData}"/> definition. Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TItem}(QueryClient, QueryOptions{IEnumerable{TItem}}, Action{IEnumerable{TItem}, ObservableCollection{TItem}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryCollectionViewModel<TItem, TItem> UseQueryCollection<TItem>(
         QueryOptions<IEnumerable<TItem>> options,
         Action<IEnumerable<TItem>?, ObservableCollection<TItem>> update)
-    {
-        var vm = new QueryCollectionViewModel<TItem, TItem>(Client, options, update);
-        TrackCollection(vm, vm.Items);
-        return vm;
-    }
+        => TrackCollection(Client.UseQueryCollection<TItem>(options, update));
 
-    /// <summary>
-    /// Creates a <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> from a
-    /// <see cref="QueryOptions{TData}"/> with differing cache/collection types.
-    /// Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TQueryFnData, TItem}(QueryClient, QueryOptions{IEnumerable{TQueryFnData}}, Action{IEnumerable{TQueryFnData}, ObservableCollection{TItem}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryCollectionViewModel<TItem, TQueryFnData> UseQueryCollection<TQueryFnData, TItem>(
         QueryOptions<IEnumerable<TQueryFnData>> options,
         Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update)
-    {
-        var vm = Client.UseQueryCollection<TQueryFnData, TItem>(options, update);
-        TrackCollection(vm, vm.Items);
-        return vm;
-    }
+        => TrackCollection(Client.UseQueryCollection(options, update));
 
-    /// <summary>
-    /// Creates a <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> with full
-    /// observer options. Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TQueryFnData, TItem}(QueryClient, QueryObserverOptions{IEnumerable{TQueryFnData}}, Action{IEnumerable{TQueryFnData}, ObservableCollection{TItem}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryCollectionViewModel<TItem, TQueryFnData> UseQueryCollection<TQueryFnData, TItem>(
         QueryObserverOptions<IEnumerable<TQueryFnData>> options,
         Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update)
-    {
-        var vm = Client.UseQueryCollection<TQueryFnData, TItem>(options, update);
-        TrackCollection(vm, vm.Items);
-        return vm;
-    }
+        => TrackCollection(Client.UseQueryCollection(options, update));
 
-    // ── Infinite Query ─────────────────────────────────────────────────
+    // ── Infinite query ─────────────────────────────────────────────────
 
-    /// <summary>
-    /// Creates an <see cref="InfiniteQueryViewModel{TData, TPageParam}"/>.
-    /// Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseInfiniteQuery{TData, TPageParam}(QueryClient, InfiniteQueryObserverOptions{TData, TPageParam})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected InfiniteQueryViewModel<TData, TPageParam> UseInfiniteQuery<TData, TPageParam>(
         InfiniteQueryObserverOptions<TData, TPageParam> options)
-    {
-        var vm = Client.UseInfiniteQuery(options);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseInfiniteQuery(options));
 
     // ── Mutation ───────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> (2 type params).
-    /// Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseMutation{TData, TVariables}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}})" path="/summary|/typeparam|/param[@name!='client']|/exception"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
         Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
-    {
-        var vm = Client.UseMutation<TData, TVariables>(mutationFn);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseMutation(mutationFn));
 
-    /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> with
-    /// <see cref="MutationOptions{TData, TVariables}"/>. Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseMutation{TData, TVariables}(QueryClient, MutationOptions{TData, TVariables})" path="/summary|/typeparam|/param[@name!='client']|/exception"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
         MutationOptions<TData, TVariables> options)
-    {
-        var vm = Client.UseMutation<TData, TVariables>(mutationFn, options);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseMutation(options));
 
-    /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/>
-    /// with typed error and optimistic update context. Automatically subscribed and disposed.
-    /// </summary>
+    /// <inheritdoc cref="QueryClientExtensions.UseMutation{TData, TError, TVariables, TOnMutateResult}(QueryClient, MutationOptions{TData, TError, TVariables, TOnMutateResult})" path="/summary|/typeparam|/param[@name!='client']|/exception"/>
+    /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected MutationViewModel<TData, TError, TVariables, TOnMutateResult>
         UseMutation<TData, TError, TVariables, TOnMutateResult>(
-            Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-            MutationOptions<TData, TError, TVariables, TOnMutateResult>? options = null)
+            MutationOptions<TData, TError, TVariables, TOnMutateResult> options)
         where TError : Exception
-    {
-        var vm = Client.UseMutation<TData, TError, TVariables, TOnMutateResult>(mutationFn, options);
-        Track(vm);
-        return vm;
-    }
-
-    /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/>
-    /// with TError fixed to <see cref="Exception"/> and a typed optimistic update context.
-    /// Automatically subscribed and disposed.
-    /// </summary>
-    protected MutationViewModel<TData, Exception, TVariables, TOnMutateResult>
-        UseMutation<TData, TVariables, TOnMutateResult>(
-            Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-            MutationOptions<TData, Exception, TVariables, TOnMutateResult>? options = null)
-    {
-        var vm = Client.UseMutation<TData, TVariables, TOnMutateResult>(mutationFn, options);
-        Track(vm);
-        return vm;
-    }
-
-    // ── Mutation (from definition) ────────────────────────────────────
-
-    /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TVariables}"/> from a
-    /// <see cref="MutationDefinition{TData, TVariables}"/> definition. All type parameters are
-    /// inferred from the definition object. Automatically subscribed and disposed.
-    /// </summary>
-    protected MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
-        MutationDefinition<TData, TVariables> def,
-        MutationCallbacks<TData, TVariables>? callbacks = null)
-    {
-        var vm = Client.UseMutation(def, callbacks);
-        Track(vm);
-        return vm;
-    }
-
-    /// <summary>
-    /// Creates a <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/>
-    /// from an <see cref="OptimisticMutationDefinition{TData, TVariables, TOnMutateResult}"/> definition.
-    /// All type parameters are inferred. Automatically subscribed and disposed.
-    /// </summary>
-    protected MutationViewModel<TData, Exception, TVariables, TOnMutateResult>
-        UseMutation<TData, TVariables, TOnMutateResult>(
-            OptimisticMutationDefinition<TData, TVariables, TOnMutateResult> def)
-    {
-        var vm = Client.UseMutation(def);
-        Track(vm);
-        return vm;
-    }
+        => Track(Client.UseMutation(options));
 
     // ── Pre-composed ViewModel Support ────────────────────────────────
 
@@ -351,17 +216,13 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
 
     // ── Tracking and Render Coalescing ─────────────────────────────────
 
-    private void Track(INotifyPropertyChanged viewModel)
+    private QueryCollectionViewModel<TItem, TQueryFnData> TrackCollection<TItem, TQueryFnData>(
+        QueryCollectionViewModel<TItem, TQueryFnData> viewModel)
     {
         viewModel.PropertyChanged += ScheduleRender;
-        _tracked.Add((IDisposable)viewModel);
-    }
-
-    private void TrackCollection<TItem>(INotifyPropertyChanged viewModel, ObservableCollection<TItem> items)
-    {
-        viewModel.PropertyChanged += ScheduleRender;
-        items.CollectionChanged += ScheduleCollectionRender;
-        _tracked.Add(new CollectionSubscription<TItem>(viewModel, items, ScheduleRender, ScheduleCollectionRender));
+        viewModel.Items.CollectionChanged += ScheduleCollectionRender;
+        _tracked.Add(new CollectionSubscription<TItem>(viewModel, viewModel.Items, ScheduleRender, ScheduleCollectionRender));
+        return viewModel;
     }
 
     /// <summary>

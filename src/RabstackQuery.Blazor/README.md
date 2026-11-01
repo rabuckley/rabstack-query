@@ -62,12 +62,11 @@ else
 
     protected override void OnInitialized()
     {
-        _createTodo = UseMutation<Todo, CreateTodoRequest>(
-            async (request, ctx, ct) => await Api.CreateTodoAsync(request, ct),
-            new MutationCallbacks<Todo, CreateTodoRequest>
-            {
-                OnSuccess = (_, _, _) => Client.InvalidateQueries(["todos"])
-            });
+        _createTodo = UseMutation(new MutationOptions<Todo, CreateTodoRequest>
+        {
+            MutationFn = async (request, ctx, ct) => await Api.CreateTodoAsync(request, ct),
+            OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
+        });
     }
 }
 ```
@@ -78,6 +77,7 @@ else
 - **`UseMutation`** creates a `MutationViewModel` with the same lifecycle management
 - **`UseQueryCollection`** for `ObservableCollection`-backed list queries
 - **`UseInfiniteQuery`** for paginated/infinite scroll queries
+- The `Use*` methods accept the same options as the `QueryClient` extension methods; see the [MVVM API guide](../RabstackQuery.Mvvm/README.md#creating-viewmodels)
 - **Render Coalescing** batches multiple property change notifications into a single `StateHasChanged()` call per tick
 - **Automatic Disposal** of all tracked ViewModels when the component is removed from the render tree
 - **`Track` / `Observe`** for integrating pre-composed ViewModels that own their own queries

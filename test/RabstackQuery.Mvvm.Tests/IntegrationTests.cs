@@ -63,13 +63,13 @@ public sealed class IntegrationTests : SyncContextTestBase
 
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            mutationFn: (input, _, ct) =>
+            new()
             {
-                ct.ThrowIfCancellationRequested();
-                return Task.FromResult(input.ToUpper());
-            },
-            options: new()
-            {
+                MutationFn = (input, _, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    return Task.FromResult(input.ToUpper());
+                },
                 OnSuccess = async (data, variables, context, functionContext) =>
                 {
                     var count = Interlocked.Increment(ref completionCount);

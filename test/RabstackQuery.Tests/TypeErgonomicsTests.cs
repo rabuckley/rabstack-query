@@ -90,13 +90,13 @@ public class TypeErgonomicsTests
     }
 
     [Fact]
-    public void MutationDefinition_Create_InfersType()
+    public void MutationOptions_Create_InfersType()
     {
-        var def = MutationDefinition.Create<string, int>(
-            async (variables, ctx, ct) => variables.ToString());
+        var options = MutationOptions.Create(
+            async (int variables, MutationFunctionContext ctx, CancellationToken ct) => variables.ToString());
 
-        Assert.IsType<MutationDefinition<string, int>>(def);
-        Assert.NotNull(def.MutationFn);
+        Assert.IsType<MutationOptions<string, int>>(options);
+        Assert.NotNull(options.MutationFn);
     }
 
     [Fact]

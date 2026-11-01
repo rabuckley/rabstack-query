@@ -63,8 +63,16 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     /// Initializes a new instance of the <see cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}"/> class.
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
-    /// <param name="mutationFn">The async mutation function.</param>
-    /// <param name="options">Optional mutation configuration.</param>
+    /// <param name="options">
+    /// The mutation configuration. <see cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.MutationFn"/>
+    /// must be set.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="client"/> or <paramref name="options"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="options"/> has no <see cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.MutationFn"/>.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     /// No <see cref="SynchronizationContext"/> is present on the calling thread.
     /// </exception>
@@ -73,10 +81,20 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     /// </remarks>
     public MutationViewModel(
         QueryClient client,
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-        MutationOptions<TData, TError, TVariables, TOnMutateResult>? options = null)
+        MutationOptions<TData, TError, TVariables, TOnMutateResult> options)
     {
         ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
+
+        // Hydration can supply a missing MutationFn through HydrateMutationDefaults;
+        // ViewModels have no such fallback.
+        if (options.MutationFn is null)
+        {
+            throw new ArgumentException(
+                "MutationOptions.MutationFn must be set to create a MutationViewModel.",
+                nameof(options));
+        }
+
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.MutationViewModel");
         _syncContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException(
@@ -85,10 +103,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
                 "marshalled to it. It was constructed on a background or thread-pool " +
                 "thread — check for a Task.Run factory or a background DI scope.");
 
-        var mutationOptions = (options ?? new MutationOptions<TData, TError, TVariables, TOnMutateResult>())
-            with { MutationFn = mutationFn };
-
-        _observer = new MutationObserver<TData, TError, TVariables, TOnMutateResult>(client, mutationOptions);
+        _observer = new MutationObserver<TData, TError, TVariables, TOnMutateResult>(client, options);
         _subscription = _observer.Subscribe(OnResultChanged);
 
         UpdateFromResult(_observer.CurrentResult);
@@ -213,12 +228,11 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
 public sealed class MutationViewModel<TData, TVariables>
     : MutationViewModel<TData, Exception, TVariables, object?>
 {
-    /// <inheritdoc cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}}, MutationOptions{TData, TError, TVariables, TOnMutateResult}?)"/>
+    /// <inheritdoc cref="MutationViewModel{TData, TError, TVariables, TOnMutateResult}(QueryClient, MutationOptions{TData, TError, TVariables, TOnMutateResult})"/>
     public MutationViewModel(
         QueryClient client,
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
-        MutationOptions<TData, Exception, TVariables, object?>? options = null)
-        : base(client, mutationFn, options)
+        MutationOptions<TData, Exception, TVariables, object?> options)
+        : base(client, options)
     {
     }
 }

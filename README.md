@@ -90,21 +90,22 @@ Bind directly to the ViewModel properties in XAML or Blazor:
 
 ### Query Options
 
-Control staleness, polling, placeholder data, and retries:
+Pass `QueryObserverOptions<TData>` to control staleness, polling, placeholder data, and retries:
 
 ```csharp
-TaskQuery = client.UseQuery(
-    queryKey: ["tasks", projectId, taskId],
-    queryFn: async ctx => await api.GetTaskAsync(projectId, taskId, ctx.CancellationToken),
-    enabled: taskId > 0,
-    staleTime: TimeSpan.FromSeconds(15),
-    placeholderData: (_, _) =>
+TaskQuery = client.UseQuery(new QueryObserverOptions<TaskItem>
+{
+    QueryKey = ["tasks", projectId, taskId],
+    QueryFn = async ctx => await api.GetTaskAsync(projectId, taskId, ctx.CancellationToken),
+    Enabled = taskId > 0,
+    StaleTime = TimeSpan.FromSeconds(15),
+    PlaceholderData = (_, _) =>
     {
         // Seed from a parent list cache for instant perceived load
         var cached = client.GetQueryData<List<TaskItem>>(["tasks", projectId]);
         return cached?.FirstOrDefault(t => t.Id == taskId);
-    }
-);
+    },
+});
 ```
 
 ### Query Keys
@@ -150,32 +151,46 @@ var cached = client.GetQueryData(Queries.Projects(api));
 await client.PrefetchQueryAsync(Queries.Projects(api));
 ```
 
+Add observer settings with `ToObserverOptions()` and a `with` expression. The definition stays unchanged, and the observer shares its cache entry:
+
+```csharp
+TaskQuery = client.UseQuery(
+    Queries.Task(api, projectId, taskId).ToObserverOptions() with
+    {
+        Enabled = taskId > 0,
+        PlaceholderData = (_, _) => FindCachedTask(),
+    });
+```
+
 ### Select Transform
 
 Cache one type, expose another. The cache stores the full object; the observer transforms it:
 
 ```csharp
-TodoCountQuery = client.UseQuery(
-    queryKey: ["todos"],
-    queryFn: async ctx => await api.GetTodosAsync(ctx.CancellationToken),
-    select: todos => todos.Count
-);
+TodoCountQuery = client.UseQuery(Queries.Todos(api), todos => todos.Count);
 // TodoCountQuery.Data is int, but the cache holds List<Todo>
+
+// Add polling to the selected query.
+TodoCountQuery = client.UseQuery(
+    Queries.Todos(api).ToObserverOptions(todos => todos.Count) with
+    {
+        RefetchInterval = TimeSpan.FromSeconds(30),
+    });
 ```
 
 ## Mutations
 
-`UseMutation` creates a `MutationViewModel` with `MutateCommand` (an `IAsyncRelayCommand` for XAML binding) and lifecycle callbacks:
+`UseMutation` creates a `MutationViewModel` with `MutateCommand` (an `IAsyncRelayCommand` for XAML binding). Pass a mutation function alone, or a `MutationOptions` record holding the function, lifecycle callbacks, and settings:
 
 ```csharp
-CreateTodoMutation = client.UseMutation<Todo, string>(
-    mutationFn: async (title, context, ct) =>
-        await api.CreateTodoAsync(title, ct),
-    onSuccess: async (todo, title, context) =>
+CreateTodoMutation = client.UseMutation(new MutationOptions<Todo, string>
+{
+    MutationFn = async (title, context, ct) => await api.CreateTodoAsync(title, ct),
+    OnSuccess = async (todo, title, _, context) =>
     {
         await context.Client.InvalidateQueriesAsync(["todos"]);
-    }
-);
+    },
+});
 
 // Fire from code
 await CreateTodoMutation.MutateCommand.ExecuteAsync("Buy milk");
@@ -188,34 +203,38 @@ await CreateTodoMutation.MutateCommand.ExecuteAsync("Buy milk");
 
 ### Optimistic Updates
 
-Update the cache before the server responds. Roll back on error:
+Update the cache before the server responds and roll back on error. `MutationOptions.Create(mutationFn, onMutate)` infers the rollback-state type for the callbacks:
 
 ```csharp
-UpdateStatusMutation = client.UseMutation<TaskItem, TaskItemStatus>(
-    mutationFn: async (status, context, ct) =>
-        await api.UpdateStatusAsync(taskId, status, ct),
-    options: new()
-    {
-        OnMutate = async (newStatus, context) =>
+UpdateStatusMutation = client.UseMutation(
+    MutationOptions.Create(
+        async (TaskItemStatus status, MutationFunctionContext context, CancellationToken ct) =>
+            await api.UpdateStatusAsync(taskId, status, ct),
+        onMutate: async (newStatus, context) =>
         {
             await context.Client.CancelQueriesAsync(["tasks", taskId]);
 
             var previous = context.Client.GetQueryData<TaskItem>(["tasks", taskId]);
             if (previous is not null)
             {
-                context.Client.SetQueryData(["tasks", taskId],
-                    previous with { Status = newStatus });
+                context.Client.SetQueryData(["tasks", taskId], previous with { Status = newStatus });
             }
 
-            return null;
-        },
-        OnError = async (_, _, _, context) =>
+            return previous;
+        })
+    with
+    {
+        OnError = async (_, _, previous, context) =>
         {
-            await context.Client.InvalidateQueriesAsync(["tasks", taskId]);
-        }
-    }
-);
+            if (previous is not null)
+            {
+                context.Client.SetQueryData(["tasks", taskId], previous);
+            }
+        },
+    });
 ```
+
+Type the mutation lambda's parameters (or pass explicit type arguments) so C# can infer the remaining types.
 
 ## Infinite Queries
 

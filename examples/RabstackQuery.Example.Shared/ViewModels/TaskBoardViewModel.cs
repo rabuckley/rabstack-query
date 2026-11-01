@@ -73,26 +73,29 @@ public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
         // Project details query with placeholder data seeded from the projects list
         // cache so the page title renders instantly while the detail fetch is in flight.
         ProjectQuery = client.UseQuery(
-            queryKey: QueryKeys.Project(projectId),
-            queryFn: async ctx => await api.GetProjectAsync(projectId, ctx.CancellationToken),
-            enabled: true,
-            placeholderData: (_, _) =>
+            QueryObserverOptions.Create(
+                QueryKeys.Project(projectId),
+                async ctx => await api.GetProjectAsync(projectId, ctx.CancellationToken))
+            with
             {
-                var projects = client.GetQueryData<IEnumerable<Project>>(QueryKeys.Projects);
-                return projects?.FirstOrDefault(p => p.Id == projectId);
-            }
-        );
+                PlaceholderData = (_, _) =>
+                {
+                    var projects = client.GetQueryData<IEnumerable<Project>>(QueryKeys.Projects);
+                    return projects?.FirstOrDefault(p => p.Id == projectId);
+                },
+            });
 
-        AddTaskMutation = client.UseMutation<TaskItem, (string Title, TaskPriority Priority)>(
-            mutationFn: async (variables, context, ct) =>
+        AddTaskMutation = client.UseMutation(new MutationOptions<TaskItem, (string Title, TaskPriority Priority)>
+        {
+            MutationFn = async (variables, context, ct) =>
                 await api.CreateTaskAsync(projectId, variables.Title, variables.Priority, ct),
-            onSuccess: async (data, variables, context) =>
+            OnSuccess = async (data, variables, _, context) =>
             {
                 // Refresh the task list and project details (task counts may have changed).
                 await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
                 await context.Client.InvalidateQueriesAsync(QueryKeys.Projects);
-            }
-        );
+            },
+        });
 
         // Recompute the grouped task lists whenever the infinite query data changes.
         TasksQuery.PropertyChanged += OnTasksQueryPropertyChanged;
