@@ -38,6 +38,13 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     private Query<TQueryData>? _currentQuery;
     private IQueryResult<TData>? _currentResult;
     private ITimer? _refetchIntervalTimer;
+
+    // Subscription callbacks hold the listeners lock before taking this lock. Read
+    // _isMounted here instead of HasListeners/ListenerCount to avoid reversing that order.
+    private readonly Lock _refetchIntervalLock = new();
+
+    // Guarded by _refetchIntervalLock.
+    private bool _isMounted;
     private ITimer? _staleTimeoutTimer;
     private TimeSpan _currentRefetchInterval;
 
@@ -571,6 +578,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             // first subscribe too.
             _currentQuery?.AddObserver(this);
 
+            lock (_refetchIntervalLock) { _isMounted = true; }
+
             var shouldFetch = ShouldFetchOnMount();
             _logger.ObserverFetchOnMount(_currentQuery?.QueryHash, shouldFetch);
 
@@ -816,12 +825,20 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     /// </summary>
     private void UpdateRefetchInterval(TimeSpan nextInterval)
     {
-        ClearRefetchInterval();
+        lock (_refetchIntervalLock)
+        {
+            ClearRefetchInterval();
 
-        _currentRefetchInterval = nextInterval;
+            _currentRefetchInterval = nextInterval;
 
-        if (!ResolveEnabled() || nextInterval <= TimeSpan.Zero) return;
+            if (!_isMounted || !ResolveEnabled() || nextInterval <= TimeSpan.Zero) return;
 
+            StartRefetchInterval(nextInterval);
+        }
+    }
+
+    private void StartRefetchInterval(TimeSpan nextInterval)
+    {
         _logger.ObserverRefetchIntervalStarted(nextInterval, _currentQuery?.QueryHash);
 
         _refetchIntervalTimer = _client.TimeProvider.CreateTimer(_ =>
@@ -861,7 +878,12 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     private void Destroy()
     {
         ClearStaleTimeout();
-        ClearRefetchInterval();
+        lock (_refetchIntervalLock)
+        {
+            _isMounted = false;
+            ClearRefetchInterval();
+        }
+
         _currentQuery?.RemoveObserver(this);
     }
 

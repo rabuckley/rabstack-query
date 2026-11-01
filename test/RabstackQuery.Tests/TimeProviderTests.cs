@@ -339,6 +339,37 @@ public sealed class TimeProviderTests
             $"Expected more than {initialCount} fetches, got {fetchCount}");
     }
 
+    [Fact]
+    public async Task RefetchInterval_ChangedAfterLastUnsubscribe_DoesNotPoll()
+    {
+        var timeProvider = new FakeTimeProvider();
+        var client = CreateQueryClient(timeProvider);
+        var fetchCount = 0;
+
+        QueryObserverOptions<string, string> Options(TimeSpan interval) => new()
+        {
+            QueryKey = ["interval-unmounted"],
+            RefetchInterval = interval,
+            RefetchIntervalInBackground = true,
+            QueryFn = _ => Task.FromResult($"data-{Interlocked.Increment(ref fetchCount)}"),
+        };
+
+        var observer = new QueryObserver<string, string>(client, Options(TimeSpan.FromSeconds(5)));
+        var fetched = new TaskCompletionSource();
+        var subscription = observer.Subscribe(result =>
+        {
+            if (result.IsSuccess) fetched.TrySetResult();
+        });
+        await fetched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        subscription.Dispose();
+        var countAfterUnsubscribe = Volatile.Read(ref fetchCount);
+
+        observer.SetOptions(Options(TimeSpan.FromSeconds(1)));
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(countAfterUnsubscribe, Volatile.Read(ref fetchCount));
+    }
+
     // ── Initial Data Timestamp ────────────────────────────────────────
 
     [Fact]
