@@ -220,7 +220,9 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
     public IEnumerable<Query> FindAll(QueryFilters? filters)
     {
         if (filters is null) return GetAll();
-        return GetAll().Where(q => QueryKeyMatcher.MatchQuery(q, filters));
+
+        var encodedFilterKey = QueryKeyMatcher.EncodeFilterKey(filters.QueryKey);
+        return GetAll().Where(q => QueryKeyMatcher.MatchQuery(q, filters, encodedFilterKey));
     }
 
     /// <summary>Returns all queries.</summary>

@@ -62,3 +62,24 @@ generated setters suppress events when values are equal.
 
 `QueryObserver` notifies on every query state change. `QueriesObserver` memoizes combined
 results and suppresses notifications when the combined output is the same reference.
+
+## Query key encoding
+
+`QueryKeyEncoder` uses `Utf8JsonWriter` to avoid reflection in trimmed and Native AOT apps.
+It accepts scalars, sequences, string-keyed `IDictionary` values with ordinally sorted keys,
+and `IQueryKeyElement` values. Unsupported types throw `ArgumentException`.
+
+- Use a dictionary or implement `IQueryKeyElement` instead of passing anonymous objects.
+- Keep encoding independent of application JSON settings. Naming policies, ignored
+  properties and converters must not change key identity.
+- Hashing and matching share the encoder so filters reach keys with the same hash.
+  For example, `1` and `1L` share a cache entry and match the same filters.
+- Enums share key identity with their underlying numbers; `Guid` values share it with
+  their string forms.
+- Positive `DateTimeOffset` offsets encode `+` literally rather than as `\u002B`,
+  changing hashes produced by the previous serializer.
+- Object elements match as a whole. A dictionary containing only `status` does not match
+  one containing both `status` and `page`.
+
+Both test projects disable reflection-based JSON serialization to catch accidental use
+before an AOT publish.

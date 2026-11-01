@@ -41,7 +41,7 @@ These areas have no TS equivalent and are where porting agents most likely intro
 
 ### Query Key Identity and Equality
 
-All key comparison goes through serialization — `DefaultQueryKeyHasher` serializes to JSON with sorted properties for deterministic hashing, and `QueryKeyMatcher` uses the same approach for partial/exact matching. Cache lookups are by hash string. **Never compare keys via `==` or `.Equals()` on `QueryKey` directly.**
+Hashing and matching share `QueryKeyEncoder`, which writes JSON without reflection and sorts dictionary keys ordinally. Keep these paths consistent so invalidation reaches every key sharing a cache entry. Do not reintroduce reflection-based `JsonSerializer` calls; both test projects disable them for trim/AOT compatibility. Cache lookups use hash strings. Never compare `QueryKey` instances with `==` or `.Equals()`.
 
 ### Disposal and Lifetime Management
 

@@ -465,9 +465,9 @@ public sealed class CriticalBugFixTests
         // Verify that the shared instance produces the same results as a new instance
         QueryKey key =
         [
-            "test", new
+            "test", new Dictionary<string, object?>
             {
-                id = 42
+                ["id"] = 42
             }
         ];
 

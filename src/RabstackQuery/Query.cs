@@ -25,6 +25,17 @@ public abstract class Query : Removable
     public QueryKey? QueryKey { get; protected init; }
 
     /// <summary>
+    /// Per-element encodings of <see cref="QueryKey"/>, computed on first use so filters
+    /// don't re-encode this key for every invalidation, refetch or removal.
+    /// </summary>
+    /// <remarks>
+    /// Concurrent first reads may each encode the key; the results are equal, so whichever
+    /// assignment wins is correct.
+    /// </remarks>
+    internal string[]? EncodedKeyElements =>
+        QueryKey is null ? null : field ??= QueryKeyEncoder.EncodeElements(QueryKey);
+
+    /// <summary>
     /// Marks the query as invalidated (stale).
     /// </summary>
     public abstract void Invalidate();

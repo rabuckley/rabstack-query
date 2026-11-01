@@ -116,6 +116,8 @@ public static class QueryKeys
 await client.InvalidateQueriesAsync(["projects"]);
 ```
 
+Key elements support `null`, strings, chars, booleans, numbers, enums, `Guid`s, dates and times, sequences, or string-keyed dictionaries. Use a `Dictionary<string, object?>` for plain objects, or implement `IQueryKeyElement` on your own type. Anything else, including anonymous objects, throws `ArgumentException`.
+
 ### Reusable Query Definitions
 
 `QueryOptions<TData>` bundles key + function + config into a single typed object (analogous to TanStack v5's `queryOptions()`). The same definition works with `UseQuery`, `FetchQueryAsync`, `GetQueryData`, and `SetQueryData`:

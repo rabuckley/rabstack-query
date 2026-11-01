@@ -47,7 +47,19 @@ Query keys use C# 12 collection expressions for hierarchical cache identity:
 ```csharp
 QueryKey key = ["todos"];                          // all todos
 QueryKey key = ["todos", todoId];                  // single todo
-QueryKey key = ["todos", new { status, page }];    // filtered list
+QueryKey key = ["todos", new Dictionary<string, object?> { ["status"] = status, ["page"] = page }]; // filtered list
+```
+
+Key elements support `null`, strings, chars, booleans, numbers, enums, `Guid`s, dates and times, sequences, and string-keyed dictionaries. Anonymous objects throw `ArgumentException`. Implement `IQueryKeyElement` to use your own type:
+
+```csharp
+public sealed record TodoFilter(string Status, int Page) : IQueryKeyElement
+{
+    public object ToQueryKeyValue() =>
+        new Dictionary<string, object?> { ["status"] = Status, ["page"] = Page };
+}
+
+QueryKey key = ["todos", new TodoFilter(status, page)];
 ```
 
 ### Query Observer

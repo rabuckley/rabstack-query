@@ -221,7 +221,9 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     public IEnumerable<Mutation> FindAll(MutationFilters? filters)
     {
         if (filters is null) return GetAll();
-        return GetAll().Where(m => MatchMutation(m, filters));
+
+        var encodedFilterKey = QueryKeyMatcher.EncodeFilterKey(filters.MutationKey);
+        return GetAll().Where(m => MatchMutation(m, filters, encodedFilterKey));
     }
 
     /// <summary>Returns all mutations.</summary>
@@ -247,16 +249,19 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
         });
     }
 
-    private static bool MatchMutation(Mutation mutation, MutationFilters filters)
+    private static bool MatchMutation(Mutation mutation, MutationFilters filters, string[]? encodedFilterKey)
     {
         // Key filter
-        if (filters.MutationKey is not null)
+        if (encodedFilterKey is not null)
         {
             if (mutation.MutationKey is null) return false;
 
+            // Unlike query keys, mutation keys aren't cached: they come from options that can
+            // change, and mutation caches are small.
+            var mutationKey = QueryKeyEncoder.EncodeElements(mutation.MutationKey);
             var matches = filters.Exact
-                ? QueryKeyMatcher.ExactMatchKey(mutation.MutationKey, filters.MutationKey)
-                : QueryKeyMatcher.PartialMatchKey(mutation.MutationKey, filters.MutationKey);
+                ? QueryKeyMatcher.ExactMatchKey(mutationKey, encodedFilterKey)
+                : QueryKeyMatcher.PartialMatchKey(mutationKey, encodedFilterKey);
 
             if (!matches) return false;
         }

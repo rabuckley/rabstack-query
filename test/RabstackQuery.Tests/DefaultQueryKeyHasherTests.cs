@@ -34,36 +34,6 @@ public sealed class DefaultQueryKeyHasherTests
     }
 
     [Fact]
-    public void Hash_WithEquivalentAnonymousObjects_ShouldReturnSameHash()
-    {
-        // Arrange
-        var hasher = new DefaultQueryKeyHasher();
-
-        QueryKey key1 =
-        [
-            "todos", new
-            {
-                a = 1, b = 2
-            }
-        ];
-
-        QueryKey key2 =
-        [
-            "todos", new
-            {
-                b = 2, a = 1
-            }
-        ];
-
-        // Act
-        var hash1 = hasher.HashQueryKey(key1);
-        var hash2 = hasher.HashQueryKey(key2);
-
-        // Assert
-        Assert.Equal(hash1, hash2);
-    }
-
-    [Fact]
     public void Hash_WithEqivalentDictionaries_ShouldReturnSameHash()
     {
         // Arrange
@@ -104,32 +74,26 @@ public sealed class DefaultQueryKeyHasherTests
     }
 
     [Fact]
-    public void Hash_WithEquivalentNestedObjects_ShouldReturnSameHash()
+    public void Hash_WithEquivalentNestedDictionaries_ShouldReturnSameHash()
     {
         // Arrange
         var hasher = new DefaultQueryKeyHasher();
 
         QueryKey key1 =
         [
-            "todos", new
+            "todos", new Dictionary<string, object?>
             {
-                a = 1,
-                b = new[]
-                {
-                    3, 2, 1
-                }
+                ["a"] = 1,
+                ["b"] = new Dictionary<string, object?> { ["y"] = new[] { 3, 2, 1 }, ["x"] = true },
             }
         ];
 
         QueryKey key2 =
         [
-            "todos", new
+            "todos", new Dictionary<string, object?>
             {
-                b = new[]
-                {
-                    3, 2, 1
-                },
-                a = 1
+                ["b"] = new Dictionary<string, object?> { ["x"] = true, ["y"] = new[] { 3, 2, 1 } },
+                ["a"] = 1,
             }
         ];
 

@@ -43,8 +43,8 @@ public class QueryKeyMatcherTests
     [Fact]
     public void PartialMatchKey_ObjectElements_SamePropertyOrder_ReturnsTrue()
     {
-        QueryKey key = ["todos", new { status = "done", page = 1 }];
-        QueryKey filter = ["todos", new { status = "done", page = 1 }];
+        QueryKey key = ["todos", Filter(status: "done", page: 1)];
+        QueryKey filter = ["todos", Filter(status: "done", page: 1)];
 
         Assert.True(QueryKeyMatcher.PartialMatchKey(key, filter));
     }
@@ -52,9 +52,8 @@ public class QueryKeyMatcherTests
     [Fact]
     public void PartialMatchKey_ObjectElements_DifferentPropertyOrder_ReturnsTrue()
     {
-        // Property order shouldn't matter — sorted JSON comparison
-        QueryKey key = ["todos", new { status = "done", page = 1 }];
-        QueryKey filter = ["todos", new { page = 1, status = "done" }];
+        QueryKey key = ["todos", Filter(status: "done", page: 1)];
+        QueryKey filter = ["todos", new Dictionary<string, object?> { ["page"] = 1, ["status"] = "done" }];
 
         Assert.True(QueryKeyMatcher.PartialMatchKey(key, filter));
     }
@@ -62,8 +61,8 @@ public class QueryKeyMatcherTests
     [Fact]
     public void PartialMatchKey_ObjectElements_DifferentValues_ReturnsFalse()
     {
-        QueryKey key = ["todos", new { status = "done" }];
-        QueryKey filter = ["todos", new { status = "active" }];
+        QueryKey key = ["todos", new Dictionary<string, object?> { ["status"] = "done" }];
+        QueryKey filter = ["todos", new Dictionary<string, object?> { ["status"] = "active" }];
 
         Assert.False(QueryKeyMatcher.PartialMatchKey(key, filter));
     }
@@ -168,6 +167,9 @@ public class QueryKeyMatcherTests
 
         Assert.True(QueryKeyMatcher.MatchQuery(query2, filters));
     }
+
+    private static Dictionary<string, object?> Filter(string status, int page) =>
+        new() { ["status"] = status, ["page"] = page };
 
     private static QueryClient CreateQueryClient()
     {

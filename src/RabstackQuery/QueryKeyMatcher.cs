@@ -1,71 +1,50 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-
 namespace RabstackQuery;
 
-/// <summary>
-/// Utilities for matching query keys and applying <see cref="QueryFilters"/>.
-/// Mirrors TanStack Query's <c>partialMatchKey</c> and <c>matchQuery</c>
-/// from <c>utils.ts</c>.
-/// </summary>
+// Keys compare by per-element encoding rather than CLR equality: 1 and 1L share a hash, so
+// filters must treat them as equal to reach every key sharing a cache entry.
 internal static class QueryKeyMatcher
 {
-    /// <summary>
-    /// Checks whether <paramref name="key"/> matches <paramref name="filter"/>.
-    /// When <paramref name="filter"/> has fewer elements than <paramref name="key"/>,
-    /// it acts as a prefix match. Each element pair is compared by serializing
-    /// to sorted JSON (same approach as <see cref="DefaultQueryKeyHasher"/>).
-    /// </summary>
     public static bool PartialMatchKey(QueryKey key, QueryKey filter)
     {
         if (ReferenceEquals(key, filter)) return true;
-
-        var keyList = key.ToList();
-        var filterList = filter.ToList();
-
-        // A filter longer than the key can never match.
-        if (filterList.Count > keyList.Count) return false;
-
-        // Compare element-by-element up to the filter length.
-        for (var i = 0; i < filterList.Count; i++)
-        {
-            if (!ElementsEqual(keyList[i], filterList[i])) return false;
-        }
-
-        return true;
+        return PartialMatchKey(QueryKeyEncoder.EncodeElements(key), QueryKeyEncoder.EncodeElements(filter));
     }
 
     /// <summary>
     /// Checks whether <paramref name="key"/> is an exact match for <paramref name="filter"/>
     /// (same length and all elements equal).
     /// </summary>
-    public static bool ExactMatchKey(QueryKey key, QueryKey filter)
-    {
-        var keyList = key.ToList();
-        var filterList = filter.ToList();
+    public static bool ExactMatchKey(QueryKey key, QueryKey filter) =>
+        ExactMatchKey(QueryKeyEncoder.EncodeElements(key), QueryKeyEncoder.EncodeElements(filter));
 
-        if (keyList.Count != filterList.Count) return false;
+    public static bool PartialMatchKey(string[] key, string[] filter) =>
+        filter.Length <= key.Length && key.AsSpan(0, filter.Length).SequenceEqual(filter);
 
-        for (var i = 0; i < filterList.Count; i++)
-        {
-            if (!ElementsEqual(keyList[i], filterList[i])) return false;
-        }
+    public static bool ExactMatchKey(string[] key, string[] filter) =>
+        key.AsSpan().SequenceEqual(filter);
 
-        return true;
-    }
+    // Callers scanning a cache encode the filter key once rather than once per entry.
+    public static string[]? EncodeFilterKey(QueryKey? filterKey) =>
+        filterKey is null ? null : QueryKeyEncoder.EncodeElements(filterKey);
 
     /// <summary>
     /// Applies all filters from <paramref name="filters"/> to a <paramref name="query"/>
     /// using AND logic. Returns true only when every specified filter passes.
     /// </summary>
-    public static bool MatchQuery(Query query, QueryFilters filters)
+    public static bool MatchQuery(Query query, QueryFilters filters) =>
+        MatchQuery(query, filters, EncodeFilterKey(filters.QueryKey));
+
+    /// <param name="encodedFilterKey">
+    /// The result of <see cref="EncodeFilterKey"/> for <paramref name="filters"/>' key.
+    /// </param>
+    public static bool MatchQuery(Query query, QueryFilters filters, string[]? encodedFilterKey)
     {
         // Key filter
-        if (filters.QueryKey is not null && query.QueryKey is not null)
+        if (encodedFilterKey is not null && query.EncodedKeyElements is { } queryKey)
         {
             var matches = filters.Exact
-                ? ExactMatchKey(query.QueryKey, filters.QueryKey)
-                : PartialMatchKey(query.QueryKey, filters.QueryKey);
+                ? ExactMatchKey(queryKey, encodedFilterKey)
+                : PartialMatchKey(queryKey, encodedFilterKey);
 
             if (!matches) return false;
         }
@@ -98,37 +77,5 @@ internal static class QueryKeyMatcher
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// Compares two query-key elements by serializing each to sorted JSON.
-    /// </summary>
-    private static bool ElementsEqual(object? a, object? b)
-    {
-        if (ReferenceEquals(a, b)) return true;
-        if (a is null || b is null) return false;
-
-        // Fast path for common primitives
-        if (a is string sa && b is string sb) return sa == sb;
-        if (a.GetType().IsPrimitive && b.GetType().IsPrimitive) return a.Equals(b);
-
-        // Fall back to sorted-JSON comparison for complex objects
-        var jsonA = SerializeSorted(a);
-        var jsonB = SerializeSorted(b);
-        return jsonA == jsonB;
-    }
-
-    // QueryKey elements are primitives (strings, numbers, booleans) and simple
-    // anonymous objects — all natively handled by System.Text.Json without
-    // requiring unreferenced types or runtime codegen.
-    [UnconditionalSuppressMessage("Trimming", "IL2026",
-        Justification = "QueryKey elements are JSON-serializable primitives and simple objects.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050",
-        Justification = "QueryKey elements are JSON-serializable primitives and simple objects.")]
-    private static string SerializeSorted(object value)
-    {
-        var node = JsonSerializer.SerializeToNode(value);
-        var sorted = JsonNodeUtils.SortJsonNode(node);
-        return sorted?.ToJsonString() ?? "null";
     }
 }

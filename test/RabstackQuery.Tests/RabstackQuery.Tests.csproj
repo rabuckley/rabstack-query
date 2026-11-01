@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
+    <!-- Catch reflection-based JSON calls before they reach trimmed or AOT builds. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
     <RootNamespace>RabstackQuery</RootNamespace>
   </PropertyGroup>
 

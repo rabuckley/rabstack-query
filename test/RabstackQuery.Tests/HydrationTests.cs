@@ -52,9 +52,9 @@ public sealed class HydrationTests
 
         QueryKey complexKey =
         [
-            "users", new
+            "users", new Dictionary<string, object?>
             {
-                Page = 1, Filter = "active"
+                ["Page"] = 1, ["Filter"] = "active"
             }
         ];
 
