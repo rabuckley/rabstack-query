@@ -53,6 +53,46 @@ var manualData = client.GetQueryData<string>(["validation", "manual"]);
 
 Console.WriteLine($"Manual data: {manualData}");
 
+var date = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.FromHours(10));
+QueryKey[] shapeKeys =
+[
+    ["shapes", "scalars", null, true, 'c', 1, 1L, 1.5, 1.5f, 1.5m, (byte)1, ulong.MaxValue, (Half)1, (Int128)1],
+    ["shapes", "enum", DayOfWeek.Friday],
+    ["shapes", "guid", Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e")],
+    ["shapes", "dates", date, date.UtcDateTime, DateOnly.FromDateTime(date.UtcDateTime), TimeOnly.MinValue, TimeSpan.FromMinutes(5)],
+    ["shapes", "sequence", new[] { 3, 2, 1 }, new List<object?> { "a", null }],
+    ["shapes", "dictionary", new Dictionary<string, object?> { ["page"] = 1, ["status"] = "done" }],
+    ["shapes", "element", new ValidationFilter("done", 1)],
+];
+
+foreach (var key in shapeKeys)
+{
+    client.SetQueryData(key, "shape");
+}
+
+Check(
+    client.GetQueryData<string>(["shapes", "element", new Dictionary<string, object?> { ["status"] = "done", ["page"] = 1 }]) == "shape",
+    "IQueryKeyElement should match its dictionary form");
+
+await client.InvalidateQueriesAsync(["shapes"]);
+var invalidated = client.QueryCache.FindAll(new QueryFilters { QueryKey = ["shapes"] })
+    .Count(q => q is Query<string> { State.IsInvalidated: true });
+Check(invalidated == shapeKeys.Length, $"Expected {shapeKeys.Length} invalidated shape queries, got {invalidated}");
+
+var unsupportedRejected = false;
+try
+{
+    client.SetQueryData(["shapes", new { anonymous = true }], "never");
+}
+catch (ArgumentException)
+{
+    unsupportedRejected = true;
+}
+
+Check(unsupportedRejected, "Anonymous objects should be rejected with ArgumentException");
+
+Console.WriteLine($"Key shapes: {shapeKeys.Length} encoded, matched and invalidated");
+
 // ── Mutation (exercises Mutation<TData, ...>, retry, metrics) ────────
 
 var mutationOptions = new MutationOptions<string, string>
@@ -114,3 +154,14 @@ diClient.Dispose();
 diProvider.Dispose();
 
 Console.WriteLine("All code paths exercised successfully.");
+
+static void Check(bool condition, string message)
+{
+    if (!condition) throw new InvalidOperationException($"Validation failed: {message}");
+}
+
+internal sealed record ValidationFilter(string Status, int Page) : IQueryKeyElement
+{
+    public object ToQueryKeyValue() =>
+        new Dictionary<string, object?> { ["status"] = Status, ["page"] = Page };
+}

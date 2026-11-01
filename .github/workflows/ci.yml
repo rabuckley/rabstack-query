@@ -33,3 +33,25 @@ jobs:
         run: |
           dotnet test --project test/RabstackQuery.Tests
           dotnet test --project test/RabstackQuery.Mvvm.Tests
+
+  # Run the native binary to detect failures that publish-time checks miss.
+  aot-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Native AOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish with Native AOT
+        run: |
+          dotnet publish examples/RabstackQuery.TrimAotValidation/RabstackQuery.TrimAotValidation.csproj \
+            -c Release -r linux-x64 -o aot-out /p:PublishAot=true \
+            /p:SuppressTrimAnalysisWarnings=false /warnaserror
+
+      - name: Run AOT binary
+        run: ./aot-out/RabstackQuery.TrimAotValidation
