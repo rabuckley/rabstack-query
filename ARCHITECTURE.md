@@ -39,6 +39,9 @@ hydration can supply it through `HydrateMutationDefaults`.
 `PageViewModel` and `RabstackComponentBase` delegate to the extensions and own the returned ViewModels.
 The Blazor adapter also subscribes to change notifications. `AdapterParityTests` checks overload parity.
 
+Composite ViewModels capture constructor parameters. `ViewModelScope` lets components release them when those parameters change. TanStack's `useBaseQuery` updates one observer through `setOptions`.
+Use `QueryViewModel.SetOptions` to switch keys while preserving the previous query's data for `PlaceholderData`.
+
 ## Option Defaulting
 
 TanStack's `defaultQueryOptions` spreads `{ ...defaultOptions.queries, ...getQueryDefaults(queryKey), ...options }`,

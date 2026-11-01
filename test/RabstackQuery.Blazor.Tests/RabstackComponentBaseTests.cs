@@ -101,6 +101,85 @@ public sealed class RabstackComponentBaseTests : IDisposable
         Assert.True(tracked.IsDisposed);
     }
 
+    [Fact]
+    public async Task DisposingScope_ReleasesItsRegistrations_AndKeepsComponentRegistrations()
+    {
+        var componentTracked = new CountingNotifier();
+        var scopeTracked = new CountingNotifier();
+        var scopeObserved = new CountingNotifier();
+        var component = new ScopedComponent(_client, componentTracked, scopeTracked, scopeObserved);
+        await _renderer.RenderAsync(component);
+
+        await _renderer.Dispatcher.InvokeAsync(() => component.Scope.Dispose());
+
+        Assert.True(scopeTracked.IsDisposed);
+        Assert.Equal(0, scopeTracked.SubscriberCount);
+        Assert.Equal(0, scopeObserved.SubscriberCount);
+        Assert.False(scopeObserved.IsDisposed);
+        Assert.False(componentTracked.IsDisposed);
+        Assert.Equal(1, componentTracked.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task Dispose_ReleasesOpenScopes()
+    {
+        var scopeTracked = new CountingNotifier();
+        var component = new ScopedComponent(_client, scopeTracked: scopeTracked);
+        await _renderer.RenderAsync(component);
+
+        await _renderer.Dispatcher.InvokeAsync(component.Dispose);
+
+        Assert.True(scopeTracked.IsDisposed);
+        Assert.Equal(0, scopeTracked.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task Track_InDisposedScope_DisposesViewModelWithoutSubscribing()
+    {
+        var component = new ScopedComponent(_client);
+        await _renderer.RenderAsync(component);
+        await _renderer.Dispatcher.InvokeAsync(() => component.Scope.Dispose());
+        var late = new CountingNotifier();
+
+        await _renderer.Dispatcher.InvokeAsync(() => component.Scope.Track(late));
+
+        Assert.True(late.IsDisposed);
+        Assert.Equal(0, late.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task ParameterChange_ReplacesScopedQuery_AndReleasesOldObserver()
+    {
+        var component = new ParameterComponent(_client);
+        await _renderer.RenderAsync(component, ParameterView.FromDictionary(new Dictionary<string, object?> { ["Id"] = 1 }));
+        await WaitForAsync(() => component.Item.Data == "item-1");
+        var first = _client.QueryCache.Find(new QueryFilters { QueryKey = ["item", 1], Exact = true });
+        Assert.NotNull(first);
+
+        await _renderer.SetParametersAsync(component, new Dictionary<string, object?> { ["Id"] = 2 });
+        await WaitForAsync(() => component.Item.Data == "item-2");
+
+        var second = _client.QueryCache.Find(new QueryFilters { QueryKey = ["item", 2], Exact = true });
+        Assert.NotNull(second);
+        Assert.Equal(0, first.ObserverCount);
+        Assert.Equal(1, second.ObserverCount);
+    }
+
+    [Fact]
+    public async Task UnchangedParameters_KeepScopedQuery()
+    {
+        var component = new ParameterComponent(_client);
+        await _renderer.RenderAsync(component, ParameterView.FromDictionary(new Dictionary<string, object?> { ["Id"] = 1 }));
+        var original = component.Item;
+
+        await _renderer.SetParametersAsync(component, new Dictionary<string, object?> { ["Id"] = 1 });
+
+        var query = _client.QueryCache.Find(new QueryFilters { QueryKey = ["item", 1], Exact = true });
+        Assert.NotNull(query);
+        Assert.Same(original, component.Item);
+        Assert.Equal(1, query.ObserverCount);
+    }
+
     private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5_000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
@@ -156,6 +235,52 @@ public sealed class RabstackComponentBaseTests : IDisposable
         protected override void BuildRenderTree(RenderTreeBuilder builder) { }
     }
 
+    private sealed class ScopedComponent(
+        QueryClient client,
+        CountingNotifier? componentTracked = null,
+        CountingNotifier? scopeTracked = null,
+        CountingNotifier? scopeObserved = null) : RabstackComponentBase
+    {
+        public ViewModelScope Scope { get; private set; } = null!;
+
+        protected override void OnInitialized()
+        {
+            Client = client;
+            if (componentTracked is not null) Track(componentTracked);
+            Scope = BeginScope();
+            if (scopeTracked is not null) Scope.Track(scopeTracked);
+            if (scopeObserved is not null) Scope.Observe(scopeObserved);
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder) { }
+    }
+
+    private sealed class ParameterComponent : RabstackComponentBase
+    {
+        private ViewModelScope? _scope;
+        private int _builtFor;
+
+        public ParameterComponent(QueryClient client) => Client = client;
+
+        [Parameter]
+        public int Id { get; set; }
+
+        public QueryViewModel<string> Item { get; private set; } = null!;
+
+        protected override void OnParametersSet()
+        {
+            if (_scope is not null && _builtFor == Id) return;
+
+            _scope?.Dispose();
+            _scope = BeginScope();
+            _builtFor = Id;
+            var id = Id;
+            Item = _scope.Track(Client.UseQuery<string>(["item", id], _ => Task.FromResult($"item-{id}")));
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder) { }
+    }
+
     private sealed class CountingNotifier : INotifyPropertyChanged, IDisposable
     {
         public int SubscriberCount { get; private set; }
@@ -193,6 +318,13 @@ public sealed class RabstackComponentBaseTests : IDisposable
 
         public Task RenderAsync(IComponent component) =>
             Dispatcher.InvokeAsync(() => RenderRootComponentAsync(AssignRootComponentId(component)));
+
+        public Task RenderAsync(IComponent component, ParameterView parameters) =>
+            Dispatcher.InvokeAsync(() => RenderRootComponentAsync(AssignRootComponentId(component), parameters));
+
+        // Mirrors the router supplying new route values to a page it reuses.
+        public Task SetParametersAsync(IComponent component, Dictionary<string, object?> parameters) =>
+            Dispatcher.InvokeAsync(() => component.SetParametersAsync(ParameterView.FromDictionary(parameters)));
 
         protected override void HandleException(Exception exception) =>
             ExceptionDispatchInfo.Capture(exception).Throw();

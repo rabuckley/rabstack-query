@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.ComponentModel;
 
 using Microsoft.AspNetCore.Components;
@@ -9,23 +8,22 @@ using RabstackQuery.Mvvm;
 namespace RabstackQuery.Blazor;
 
 /// <summary>
-/// Base class for Blazor components that use RabStack Query. Provides <c>UseQuery</c>,
-/// <c>UseMutation</c>, <c>UseQueryCollection</c>, and <c>UseInfiniteQuery</c> methods that
-/// automatically subscribe to property changes, coalesce renders, and dispose all tracked
-/// ViewModels when the component is removed from the render tree.
+/// Provides query and mutation ViewModels that render this component on change
+/// and are disposed when it leaves the render tree.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Call the <c>Use*</c> methods from <see cref="ComponentBase.OnInitialized"/> (or
-/// <see cref="ComponentBase.OnParametersSet"/> for parameter-dependent queries). Each call
-/// creates a ViewModel, subscribes to its change notifications, and registers it for
-/// automatic disposal.
+/// Call the <c>Use*</c> methods from <see cref="ComponentBase.OnInitialized"/>. Each call
+/// creates another ViewModel that stays subscribed until the component is disposed.
 /// </para>
 /// <para>
-/// Render coalescing: when a ViewModel fires multiple <see cref="INotifyPropertyChanged.PropertyChanged"/>
-/// events within the same synchronization context tick (e.g. a single observer result updating
-/// 8+ properties), only one <see cref="ComponentBase.StateHasChanged"/> call is scheduled.
-/// This avoids redundant render cycles without requiring explicit batching from consumers.
+/// For parameter-dependent state, call <see cref="BeginScope"/> in
+/// <see cref="ComponentBase.OnParametersSet"/> and replace the scope only when the values
+/// change. To keep one query and switch its key, call
+/// <see cref="QueryViewModel{TData, TQueryData}.SetOptions"/>.
+/// </para>
+/// <para>
+/// Change notifications share one pending <see cref="ComponentBase.StateHasChanged"/> call.
 /// </para>
 /// </remarks>
 /// <example>
@@ -48,9 +46,14 @@ namespace RabstackQuery.Blazor;
 /// </example>
 public abstract class RabstackComponentBase : ComponentBase, IDisposable
 {
-    private readonly List<Action> _cleanup = [];
+    private readonly ViewModelScope _scope;
     private bool _renderPending;
     private bool _disposed;
+
+    protected RabstackComponentBase()
+    {
+        _scope = new ViewModelScope(RequestRender);
+    }
 
     /// <summary>
     /// The <see cref="QueryClient"/> instance, injected from the DI container.
@@ -182,32 +185,31 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
     /// </code>
     /// </example>
     protected T Track<T>(T viewModel) where T : INotifyPropertyChanged, IDisposable
-    {
-        _cleanup.Add(viewModel.Dispose);
-        Observe(viewModel);
-        return viewModel;
-    }
+        => _scope.Track(viewModel);
 
     /// <summary>
     /// Renders this component when <paramref name="source"/> raises
     /// <see cref="INotifyPropertyChanged.PropertyChanged"/>. Unsubscribes when this component
     /// is disposed without disposing <paramref name="source"/>.
     /// </summary>
-    protected void Observe(INotifyPropertyChanged source)
-    {
-        source.PropertyChanged += ScheduleRender;
-        _cleanup.Add(() => source.PropertyChanged -= ScheduleRender);
-    }
+    protected void Observe(INotifyPropertyChanged source) => _scope.Observe(source);
 
     /// <summary>
     /// Renders this component when <paramref name="collection"/> raises
     /// <see cref="ObservableCollection{T}.CollectionChanged"/> and unsubscribes when this component is disposed.
     /// </summary>
-    protected void Observe<TItem>(ObservableCollection<TItem> collection)
-    {
-        collection.CollectionChanged += ScheduleCollectionRender;
-        _cleanup.Add(() => collection.CollectionChanged -= ScheduleCollectionRender);
-    }
+    protected void Observe<TItem>(ObservableCollection<TItem> collection) => _scope.Observe(collection);
+
+    /// <summary>
+    /// Creates a scope for ViewModels that must be released before this component is disposed,
+    /// such as those built from parameter values.
+    /// </summary>
+    /// <returns>A new scope that renders this component on change and is disposed with it if still open.</returns>
+    /// <remarks>
+    /// Disposing the returned scope disposes only the ViewModels and subscriptions registered in it.
+    /// If this component is already disposed, the returned scope is disposed too.
+    /// </remarks>
+    protected ViewModelScope BeginScope() => _scope.BeginChild();
 
     // ── Tracking and Render Coalescing ─────────────────────────────────
 
@@ -218,10 +220,6 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
         Observe(viewModel.Items);
         return viewModel;
     }
-
-    private void ScheduleRender(object? sender, PropertyChangedEventArgs e) => RequestRender();
-
-    private void ScheduleCollectionRender(object? sender, NotifyCollectionChangedEventArgs e) => RequestRender();
 
     private void RequestRender()
     {
@@ -243,8 +241,7 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        for (var i = _cleanup.Count - 1; i >= 0; i--) _cleanup[i]();
-        _cleanup.Clear();
+        _scope.Dispose();
 
         GC.SuppressFinalize(this);
     }

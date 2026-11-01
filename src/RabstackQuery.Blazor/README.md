@@ -81,6 +81,7 @@ else
 - **Render Coalescing** batches multiple property change notifications into a single `StateHasChanged()` call per tick
 - **Automatic Disposal** of all tracked ViewModels when the component is removed from the render tree
 - **`Track` / `Observe`** for integrating pre-composed ViewModels that own their own queries
+- **`BeginScope`** to group ViewModels for disposal when parameter values change
 
 ### Pre-composed ViewModels
 
@@ -98,6 +99,33 @@ When your component uses a ViewModel class that internally manages multiple quer
     }
 }
 ```
+
+### Parameter-dependent queries
+
+Blazor reuses a component when only its parameters change, so `OnInitialized` does not run again. Each `Use*` or `Track` call keeps its ViewModel subscribed until the component is disposed.
+
+Build parameter-dependent ViewModels in a `ViewModelScope` and replace the scope when the values change. `OnParametersSet` can run with unchanged values, so check them first:
+
+```razor
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private TaskBoardViewModel _vm = null!;
+    private ViewModelScope? _scope;
+
+    protected override void OnParametersSet()
+    {
+        if (_scope is not null && _vm.ProjectId == ProjectId) return;
+
+        _scope?.Dispose();
+        _scope = BeginScope();
+        _vm = _scope.Track(new TaskBoardViewModel(Client, Api, ProjectId));
+        _scope.Observe(_vm.TasksQuery);
+    }
+}
+```
+
+For a single query, use `_scope.Track(Client.UseQuery(...))`. To preserve the previous key's data for `PlaceholderData`, create the query once and call `QueryViewModel.SetOptions` from `OnParametersSet`.
 
 ## Documentation
 
