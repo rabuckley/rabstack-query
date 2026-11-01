@@ -170,7 +170,6 @@ public sealed class QueryCollectionViewModelTests : SyncContextTestBase
         var client = CreateQueryClient();
         client.SetQueryDefaults(["error-propagate"], new QueryDefaults
         {
-            QueryKey = ["error-propagate"],
             Retry = 0
         });
 

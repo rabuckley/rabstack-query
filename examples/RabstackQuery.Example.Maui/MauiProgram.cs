@@ -35,17 +35,18 @@ public static class MauiProgram
         {
             options.DefaultOptions = new QueryClientDefaultOptions
             {
-                StaleTime = TimeSpan.FromSeconds(30),
-                Retry = 2,
+                Queries = new QueryDefaults
+                {
+                    StaleTime = TimeSpan.FromSeconds(30),
+                    Retry = 2,
+                },
             };
-            options.SetQueryDefaults(new QueryDefaults
+            options.SetQueryDefaults(["projects"], new QueryDefaults
             {
-                QueryKey = ["projects"],
                 GcTime = TimeSpan.FromMinutes(10),
             });
-            options.SetQueryDefaults(new QueryDefaults
+            options.SetQueryDefaults(["tasks"], new QueryDefaults
             {
-                QueryKey = ["tasks"],
                 StaleTime = TimeSpan.FromSeconds(10),
             });
         }, ServiceLifetime.Singleton);

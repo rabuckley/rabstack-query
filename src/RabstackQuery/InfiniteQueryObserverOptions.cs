@@ -58,19 +58,19 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
     public bool Enabled { get; init; } = true;
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.StaleTime"/>
-    public TimeSpan StaleTime { get; init; } = TimeSpan.Zero;
+    public TimeSpan? StaleTime { get; init; }
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.GcTime"/>
-    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
+    public TimeSpan? GcTime { get; init; }
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.RefetchOnWindowFocus"/>
-    public RefetchOnBehavior RefetchOnWindowFocus { get; init; } = RefetchOnBehavior.WhenStale;
+    public RefetchOnBehavior? RefetchOnWindowFocus { get; init; }
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.RefetchOnReconnect"/>
-    public RefetchOnBehavior RefetchOnReconnect { get; init; } = RefetchOnBehavior.WhenStale;
+    public RefetchOnBehavior? RefetchOnReconnect { get; init; }
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.RefetchOnMount"/>
-    public RefetchOnBehavior RefetchOnMount { get; init; } = RefetchOnBehavior.WhenStale;
+    public RefetchOnBehavior? RefetchOnMount { get; init; }
 
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.RefetchInterval"/>
     public TimeSpan RefetchInterval { get; init; } = TimeSpan.Zero;
@@ -84,9 +84,6 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.QueryKeyHasher"/>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
-    // Retry is intentionally omitted. Retry configuration is controlled at the
-    // query level via QueryConfiguration<TData>.Retry (defaulting to 3). There is no
-    // per-observer retry override — the inner QueryObserver doesn't forward it.
 
     /// <summary>
     /// Builds the inner <see cref="QueryObserverOptions{TData,TQueryData}"/> used by

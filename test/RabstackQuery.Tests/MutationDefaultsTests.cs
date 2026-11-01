@@ -11,7 +11,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 3,
+                Retry = 3,
             });
 
         // Act — build a mutation that matches the prefix
@@ -41,7 +41,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 3,
+                Retry = 3,
             });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
@@ -61,7 +61,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 3,
+                Retry = 3,
             });
 
         // Per-mutation Retry should win over key defaults
@@ -82,14 +82,14 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 2, GcTime = TimeSpan.FromMilliseconds(10_000),
+                Retry = 2, GcTime = TimeSpan.FromMilliseconds(10_000),
             });
 
         // Register a more specific default that overrides Retry but not GcTime
         client.SetMutationDefaults(["todos", "create"],
             new MutationDefaults
             {
-                MutationKey = ["todos", "create"], Retry = 5,
+                Retry = 5,
             });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
@@ -111,14 +111,14 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 2,
+                Retry = 2,
             });
 
         // Replace with new defaults for the same key
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 5,
+                Retry = 5,
             });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
@@ -139,7 +139,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], RetryDelay = customDelay,
+                RetryDelay = customDelay,
             });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
@@ -158,7 +158,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], NetworkMode = NetworkMode.Always,
+                NetworkMode = NetworkMode.Always,
             });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
@@ -177,7 +177,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], GcTime = TimeSpan.FromMilliseconds(10_000),
+                GcTime = TimeSpan.FromMilliseconds(10_000),
             });
 
         var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
@@ -189,13 +189,13 @@ public class MutationDefaultsTests
     }
 
     [Fact]
-    public void GetMutationDefaults_ReturnsNull_WhenNoDefaultsMatch()
+    public void GetMutationDefaults_ReturnsEmptyDefaults_WhenNoDefaultsMatch()
     {
         var client = CreateQueryClient();
 
         var result = client.GetMutationDefaults(["nonexistent"]);
 
-        Assert.Null(result);
+        Assert.Equal(new MutationDefaults(), result);
     }
 
     [Fact]
@@ -206,13 +206,12 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 3, GcTime = TimeSpan.FromMilliseconds(10_000),
+                Retry = 3, GcTime = TimeSpan.FromMilliseconds(10_000),
             });
 
         var result = client.GetMutationDefaults(["todos", "create"]);
 
-        Assert.NotNull(result);
-        Assert.Equal(3, result!.Retry);
+        Assert.Equal(3, result.Retry);
         Assert.Equal(TimeSpan.FromMilliseconds(10_000), result.GcTime);
     }
 
@@ -225,7 +224,7 @@ public class MutationDefaultsTests
         client.SetMutationDefaults(["todos"],
             new MutationDefaults
             {
-                MutationKey = ["todos"], Retry = 3,
+                Retry = 3,
             });
 
         var options = new MutationOptions<string, Exception, string, object?>
@@ -259,6 +258,102 @@ public class MutationDefaultsTests
 
         Assert.Same(onMutate, defaulted.OnMutate);
         Assert.NotNull(defaulted.MutationFn);
+    }
+
+
+    [Fact]
+    public void ClientDefaults_ApplyToMutations()
+    {
+        var client = CreateQueryClient();
+        client.DefaultOptions = new QueryClientDefaultOptions
+        {
+            Mutations = new MutationDefaults { Retry = 2, NetworkMode = NetworkMode.Always },
+        };
+
+        var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>());
+
+        Assert.Equal(2, defaulted.Retry);
+        Assert.Equal(NetworkMode.Always, defaulted.NetworkMode);
+    }
+
+    [Fact]
+    public void KeyPrefixDefaults_OverrideClientDefaults()
+    {
+        var client = CreateQueryClient();
+        client.DefaultOptions = new QueryClientDefaultOptions
+        {
+            Mutations = new MutationDefaults { Retry = 2, GcTime = TimeSpan.FromSeconds(1) },
+        };
+        client.SetMutationDefaults(["todos"], new MutationDefaults { Retry = 4 });
+
+        var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos", "create"],
+        });
+
+        Assert.Equal(4, defaulted.Retry);
+        Assert.Equal(TimeSpan.FromSeconds(1), defaulted.GcTime);
+    }
+
+    [Fact]
+    public void ExplicitOnlineNetworkMode_OverridesKeyPrefixDefault()
+    {
+        var client = CreateQueryClient();
+        client.SetMutationDefaults(["todos"], new MutationDefaults { NetworkMode = NetworkMode.Always });
+
+        var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos"],
+            NetworkMode = NetworkMode.Online,
+        });
+
+        Assert.Equal(NetworkMode.Online, defaulted.NetworkMode);
+    }
+
+    [Fact]
+    public void ExplicitFiveMinuteGcTime_OverridesKeyPrefixDefault()
+    {
+        var client = CreateQueryClient();
+        client.SetMutationDefaults(["todos"], new MutationDefaults { GcTime = TimeSpan.FromSeconds(1) });
+
+        var defaulted = client.DefaultMutationOptions(new MutationOptions<string, Exception, string, object?>
+        {
+            MutationKey = ["todos"],
+            GcTime = TimeSpan.FromMinutes(5),
+        });
+
+        Assert.Equal(TimeSpan.FromMinutes(5), defaulted.GcTime);
+    }
+
+    [Fact]
+    public async Task ExplicitOnlineNetworkMode_PausesOfflineMutation_DespiteKeyPrefixAlways()
+    {
+        var onlineManager = new OnlineManager();
+        onlineManager.SetOnline(false);
+        using var client = new QueryClient(new QueryCache(), onlineManager: onlineManager);
+        client.SetMutationDefaults(["todos"], new MutationDefaults { NetworkMode = NetworkMode.Always });
+        var paused = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cacheSubscription = client.MutationCache.Subscribe(_ =>
+        {
+            if (client.MutationCache.GetAll().Any(m => m.CurrentIsPaused))
+            {
+                paused.TrySetResult();
+            }
+        });
+        var observer = new MutationObserver<string, Exception, string, object?>(client,
+            new MutationOptions<string, Exception, string, object?>
+            {
+                MutationKey = ["todos"],
+                NetworkMode = NetworkMode.Online,
+                MutationFn = (input, _, _) => Task.FromResult(input),
+            });
+
+        var mutation = observer.MutateAsync("todo", cancellationToken: TestContext.Current.CancellationToken);
+        await paused.Task;
+
+        Assert.False(mutation.IsCompleted);
+        onlineManager.SetOnline(true);
+        Assert.Equal("todo", await mutation);
     }
 
     private static QueryClient CreateQueryClient()

@@ -40,19 +40,13 @@ public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
     /// </summary>
     public int MaxPages { get; init; }
 
-    /// <summary>
-    /// Data older than this duration is considered stale and will be refetched.
-    /// Null means use the default (<see cref="TimeSpan.Zero"/> = always stale).
-    /// </summary>
+    /// <inheritdoc cref="FetchQueryOptions{TData}.StaleTime"/>
     public TimeSpan? StaleTime { get; init; }
 
-    /// <summary>Garbage collection duration. Null uses the default (5 min).</summary>
+    /// <inheritdoc cref="FetchQueryOptions{TData}.GcTime"/>
     public TimeSpan? GcTime { get; init; }
 
-    /// <summary>
-    /// Number of retries. Null uses the default (0 for imperative fetch, matching
-    /// TanStack's <c>fetchQuery</c> behavior where retry defaults to <c>false</c>).
-    /// </summary>
+    /// <inheritdoc cref="FetchQueryOptions{TData}.Retry"/>
     public int? Retry { get; init; }
 
     /// <summary>
@@ -74,4 +68,11 @@ public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
     /// still returning the existing data immediately.
     /// </summary>
     public bool RevalidateIfStale { get; init; }
+
+    internal QueryDefaults ToQueryDefaults() => new()
+    {
+        StaleTime = StaleTime,
+        GcTime = GcTime,
+        Retry = Retry,
+    };
 }

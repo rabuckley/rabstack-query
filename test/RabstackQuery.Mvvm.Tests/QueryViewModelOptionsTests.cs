@@ -393,6 +393,53 @@ public sealed class QueryViewModelOptionsTests : SyncContextTestBase
         Assert.Equal("two-param-data", vm.Data);
     }
 
+    [Fact]
+    public async Task UseQuery_WithoutStaleTime_InheritsClientDefault()
+    {
+        var timeProvider = new FakeTimeProvider();
+        var client = CreateQueryClient(timeProvider);
+        client.DefaultOptions = new QueryClientDefaultOptions
+        {
+            Queries = new QueryDefaults { StaleTime = TimeSpan.FromSeconds(30) },
+        };
+
+        using var vm = client.UseQuery(["inherits-stale-time"], _ => Task.FromResult("data"));
+        await WaitForAsync(() => vm.IsSuccess);
+
+        Assert.False(vm.IsStale);
+    }
+
+    [Fact]
+    public async Task UseQuery_WithSelectAndWithoutStaleTime_InheritsKeyPrefixDefault()
+    {
+        var timeProvider = new FakeTimeProvider();
+        var client = CreateQueryClient(timeProvider);
+        client.SetQueryDefaults(["select-inherits"], new QueryDefaults { StaleTime = TimeSpan.FromSeconds(30) });
+
+        using var vm = client.UseQuery(
+            ["select-inherits"], _ => Task.FromResult("data"), select: data => data.Length);
+        await WaitForAsync(() => vm.IsSuccess);
+
+        Assert.False(vm.IsStale);
+    }
+
+    [Fact]
+    public async Task UseQuery_ExplicitZeroStaleTime_OverridesClientDefault()
+    {
+        var timeProvider = new FakeTimeProvider();
+        var client = CreateQueryClient(timeProvider);
+        client.DefaultOptions = new QueryClientDefaultOptions
+        {
+            Queries = new QueryDefaults { StaleTime = TimeSpan.FromSeconds(30) },
+        };
+
+        using var vm = client.UseQuery(
+            ["explicit-zero"], _ => Task.FromResult("data"), enabled: true, staleTime: TimeSpan.Zero);
+        await WaitForAsync(() => vm.IsSuccess);
+
+        Assert.True(vm.IsStale);
+    }
+
     // ── UseQueryCollection extension overload ────────────────────────
 
     [Fact]

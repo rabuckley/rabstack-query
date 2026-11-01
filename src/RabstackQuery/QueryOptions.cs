@@ -1,16 +1,11 @@
 namespace RabstackQuery;
 
 /// <summary>
-/// Bundles a query key, query function, and common configuration into a single
-/// reusable, typed object. Analogous to TanStack Query v5's <c>queryOptions()</c>
-/// helper — the return value can be passed to <see cref="QueryClient.FetchQueryAsync{TData}"/>,
-/// <see cref="QueryClient.GetQueryData{TData}(QueryOptions{TData})"/>, and MVVM
-/// <c>UseQuery</c> overloads, with <typeparamref name="TData"/> inferred from the
-/// query function.
-/// <para>
-/// Nullable properties mean "use default" — the consuming method fills in framework
-/// defaults (matching <see cref="QueryDefaults"/> and <see cref="FetchQueryOptions{TData}"/>).
-/// </para>
+/// Bundles a typed query key, function and options for use with
+/// <see cref="QueryClient.FetchQueryAsync{TData}"/>,
+/// <see cref="QueryClient.GetQueryData{TData}(QueryOptions{TData})"/> and MVVM <c>UseQuery</c> overloads.
+/// Unset defaultable options inherit from key-prefix and client-wide <see cref="QueryDefaults"/>,
+/// then framework defaults.
 /// </summary>
 public sealed class QueryOptions<TData>
 {
@@ -20,22 +15,20 @@ public sealed class QueryOptions<TData>
     /// <summary>The async function that fetches data for this query.</summary>
     public required Func<QueryFunctionContext, Task<TData>> QueryFn { get; init; }
 
-    /// <summary>
-    /// Data older than this duration is considered stale. Null uses the default
-    /// (<see cref="TimeSpan.Zero"/> = always stale).
-    /// </summary>
+    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.StaleTime"/>
     public TimeSpan? StaleTime { get; init; }
 
-    /// <summary>Garbage collection duration. Null uses the default (5 min).</summary>
+    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.GcTime"/>
     public TimeSpan? GcTime { get; init; }
 
     /// <summary>
-    /// Number of retry attempts for imperative fetches. Null uses the method default
-    /// (0 for <see cref="QueryClient.FetchQueryAsync{TData}"/>).
+    /// Number of retries after a failed fetch. <see langword="null"/> inherits from
+    /// <see cref="QueryClient.SetQueryDefaults"/> and <see cref="QueryClientDefaultOptions.Queries"/>,
+    /// falling back to 3 for observers and 0 for <see cref="QueryClient.FetchQueryAsync{TData}"/>.
     /// </summary>
     public int? Retry { get; init; }
 
-    /// <summary>Custom retry delay function. Receives failure count and exception.</summary>
+    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.RetryDelay"/>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.NetworkMode"/>
@@ -60,16 +53,12 @@ public sealed class QueryOptions<TData>
     /// </summary>
     public static implicit operator QueryKey(QueryOptions<TData> opts) => opts.QueryKey;
 
-    /// <summary>
-    /// Converts to <see cref="FetchQueryOptions{TData}"/> for imperative fetch methods.
-    /// FetchQueryOptions defaults Retry to 0 (no retries), matching TanStack's fetchQuery.
-    /// </summary>
     internal QueryObserverOptions<TData> ToObserverOptions() => new()
     {
         QueryKey = QueryKey,
         QueryFn = QueryFn,
-        StaleTime = StaleTime ?? TimeSpan.Zero,
-        GcTime = GcTime ?? TimeSpan.FromMinutes(5),
+        StaleTime = StaleTime,
+        GcTime = GcTime,
         NetworkMode = NetworkMode,
         Retry = Retry,
         RetryDelay = RetryDelay,
@@ -83,8 +72,8 @@ public sealed class QueryOptions<TData>
         QueryKey = QueryKey,
         QueryFn = QueryFn,
         Select = select,
-        StaleTime = StaleTime ?? TimeSpan.Zero,
-        GcTime = GcTime ?? TimeSpan.FromMinutes(5),
+        StaleTime = StaleTime,
+        GcTime = GcTime,
         NetworkMode = NetworkMode,
         Retry = Retry,
         RetryDelay = RetryDelay,
@@ -98,7 +87,7 @@ public sealed class QueryOptions<TData>
         QueryFn = QueryFn,
         StaleTime = StaleTime,
         GcTime = GcTime,
-        Retry = Retry ?? 0,
+        Retry = Retry,
         RetryDelay = RetryDelay,
         Meta = Meta,
         NetworkMode = NetworkMode,

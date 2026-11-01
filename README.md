@@ -34,11 +34,18 @@ builder.Services.AddRabstackQuery(options =>
 {
     options.DefaultOptions = new QueryClientDefaultOptions
     {
-        StaleTime = TimeSpan.FromSeconds(30),
-        Retry = 2,
+        Queries = new QueryDefaults
+        {
+            StaleTime = TimeSpan.FromSeconds(30),
+            Retry = 2,
+        },
     };
+    options.SetQueryDefaults(["todos"], new QueryDefaults { StaleTime = TimeSpan.FromMinutes(5) });
 });
 ```
+
+Per-query options override key-prefix defaults, which override client-wide defaults. Leave an
+option unset (`null`) to inherit it.
 
 Use `Scoped` (default) for Blazor, `Singleton` for MAUI:
 

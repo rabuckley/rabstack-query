@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace RabstackQuery;
@@ -10,7 +9,8 @@ namespace RabstackQuery;
 public sealed class QueryResult<TData> : IQueryResult<TData>
 {
     private readonly QueryState<TData> _state;
-    private readonly QueryObserverOptions<TData, TData>? _options;
+    private readonly bool _isEnabled;
+    private readonly TimeSpan _staleTime;
     private readonly TimeProvider _timeProvider;
     private readonly bool _isPlaceholderData;
     private readonly RefetchDelegate<TData>? _refetch;
@@ -20,23 +20,20 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
     private readonly int _initialDataUpdateCount;
     private readonly int _initialErrorUpdateCount;
 
-    public QueryResult(
+    internal QueryResult(
         QueryState<TData> state,
-        QueryObserverOptions<TData, TData>? options = null,
-        TimeProvider? timeProvider = null,
+        bool isEnabled,
+        TimeSpan staleTime,
+        TimeProvider timeProvider,
         bool isPlaceholderData = false,
         RefetchDelegate<TData>? refetch = null,
         int initialDataUpdateCount = 0,
         int initialErrorUpdateCount = 0)
     {
-        // All production call sites pass a TimeProvider from QueryClient. The
-        // fallback to TimeProvider.System exists only for backward compatibility
-        // but silently bypasses the fake clock in tests — flag it during development.
-        Debug.Assert(timeProvider is not null, "TimeProvider should be explicitly provided; falling back to System clock");
-
         _state = state;
-        _options = options;
-        _timeProvider = timeProvider ?? TimeProvider.System;
+        _isEnabled = isEnabled;
+        _staleTime = staleTime;
+        _timeProvider = timeProvider;
         _isPlaceholderData = isPlaceholderData;
         _refetch = refetch;
         _initialDataUpdateCount = initialDataUpdateCount;
@@ -101,12 +98,10 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
     {
         get
         {
-            if (_options is null) return true;
-
             // Disabled observers are never considered stale — they don't participate
             // in automatic refetching, so reporting stale would be misleading.
             // Mirrors TanStack's behavior where disabled observers report isStale=false.
-            if (!_options.Enabled) return false;
+            if (!_isEnabled) return false;
 
             // No data = always stale, regardless of staleTime.
             // TanStack checks `this.state.data === undefined` without a timestamp
@@ -116,14 +111,14 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
             if (_state.Data is null && _state.DataUpdatedAt == 0) return true;
 
             return QueryTimeDefaults.IsStale(
-                _state.DataUpdatedAt, _options.StaleTime, _state.IsInvalidated, _timeProvider.GetUtcNowMs());
+                _state.DataUpdatedAt, _staleTime, _state.IsInvalidated, _timeProvider.GetUtcNowMs());
         }
     }
 
     [MemberNotNullWhen(true, nameof(Data))]
     public bool IsSuccess => _state.Status == QueryStatus.Succeeded;
 
-    public bool IsEnabled => _options?.Enabled ?? true;
+    public bool IsEnabled => _isEnabled;
 
     /// <inheritdoc />
     public Task<IQueryResult<TData>> RefetchAsync(

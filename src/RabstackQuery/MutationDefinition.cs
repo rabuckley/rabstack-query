@@ -26,10 +26,10 @@ public sealed class MutationDefinition<TData, TVariables>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.GcTime"/>
-    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
+    public TimeSpan? GcTime { get; init; }
 
     /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.NetworkMode"/>
-    public NetworkMode NetworkMode { get; init; } = NetworkMode.Online;
+    public NetworkMode? NetworkMode { get; init; }
 
     /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.Meta"/>
     public Meta? Meta { get; init; }
@@ -113,10 +113,10 @@ public sealed class OptimisticMutationDefinition<TData, TVariables, TOnMutateRes
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.GcTime"/>
-    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
+    public TimeSpan? GcTime { get; init; }
 
     /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.NetworkMode"/>
-    public NetworkMode NetworkMode { get; init; } = NetworkMode.Online;
+    public NetworkMode? NetworkMode { get; init; }
 
     /// <inheritdoc cref="MutationOptions{TData, TError, TVariables, TOnMutateResult}.Meta"/>
     public Meta? Meta { get; init; }

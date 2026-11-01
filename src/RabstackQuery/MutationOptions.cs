@@ -36,9 +36,11 @@ public record MutationOptions<TData, TError, TVariables, TOnMutateResult>
 
     /// <summary>
     /// Defines how this mutation behaves in relation to network connectivity.
-    /// Default is Online.
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetMutationDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Mutations"/>, falling back to
+    /// <see cref="RabstackQuery.NetworkMode.Online"/>.
     /// </summary>
-    public NetworkMode NetworkMode { get; init; } = NetworkMode.Online;
+    public NetworkMode? NetworkMode { get; init; }
 
     /// <summary>
     /// Called before the mutation function is fired.
@@ -63,33 +65,41 @@ public record MutationOptions<TData, TError, TVariables, TOnMutateResult>
     public Func<TData?, TError?, TVariables, TOnMutateResult?, MutationFunctionContext, Task>? OnSettled { get; init; }
 
     /// <summary>
-    /// Number of retry attempts. 0 means no retries. Null means "not explicitly set" —
-    /// the framework applies key/global defaults via the <c>??</c> chain in
-    /// <see cref="QueryClient.DefaultMutationOptions{TData,TError,TVariables,TOnMutateResult}"/>.
-    /// The final fallback is 0 for mutations.
+    /// Number of retries after a failed attempt. 0 means no retries.
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetMutationDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Mutations"/>, falling back to 0.
     /// </summary>
     public int? Retry { get; init; }
 
     /// <summary>
     /// Custom retry delay function. Receives failure count and exception.
-    /// Returns delay as a <see cref="TimeSpan"/>. If null, uses default exponential backoff.
+    /// Returns delay as a <see cref="TimeSpan"/>. <see langword="null"/> (default) inherits
+    /// from the key-prefix and client-wide defaults, falling back to exponential backoff.
     /// </summary>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <summary>
     /// Duration before inactive mutations are garbage collected.
-    /// Default is 5 minutes.
+    /// <see cref="TimeSpan.Zero"/> removes the mutation as soon as it is unused.
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetMutationDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Mutations"/>, falling back to 5 minutes.
     /// </summary>
-    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
+    public TimeSpan? GcTime { get; init; }
 
     /// <summary>
-    /// Set to true after <see cref="QueryClient.DefaultMutationOptions{TData,TError,TVariables,TOnMutateResult}"/>
-    /// has merged key-prefix and global defaults into these options. Prevents
-    /// double-merging when both <see cref="MutationObserver{TData,TError,TVariables,TOnMutateResult}"/>
-    /// and <see cref="MutationCache.GetOrCreate{TData,TError,TVariables,TOnMutateResult}"/>
-    /// apply defaults.
+    /// Gets or initializes a value that indicates whether defaults have already been applied.
+    /// When <see langword="true"/>, <see cref="QueryClient.DefaultMutationOptions{TData,TError,TVariables,TOnMutateResult}"/>
+    /// returns these options unchanged.
     /// </summary>
     public bool Defaulted { get; init; }
+
+    internal MutationDefaults ToMutationDefaults() => new()
+    {
+        Retry = Retry,
+        RetryDelay = RetryDelay,
+        GcTime = GcTime,
+        NetworkMode = NetworkMode,
+    };
 }
 
 /// <summary>

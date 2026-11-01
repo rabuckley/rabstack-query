@@ -162,7 +162,6 @@ public sealed class Query<TData> : Query
     private readonly ILogger _logger;
     private readonly QueryMetrics? _metrics;
     private QueryState<TData> _initialState;
-    private readonly QueryConfiguration<TData>? _defaultOptions;
 
     // Cached delegates to avoid per-fetch allocations in FetchCore.
     private readonly Action<int, Exception> _onRetryerFail;
@@ -256,7 +255,6 @@ public sealed class Query<TData> : Query
 
     public Query(QueryConfig<TData> config) : base(config.Client.TimeProvider)
     {
-        _defaultOptions = config.DefaultOptions;
         _client = config.Client;
         _logger = _client.LoggerFactory.CreateLogger<Query<TData>>();
         _metrics = config.Metrics;
@@ -275,6 +273,9 @@ public sealed class Query<TData> : Query
         ScheduleGc();
     }
 
+    /// <summary>
+    /// Gets the query's cache-level options. Fetches read these values when they start.
+    /// </summary>
     public QueryConfiguration<TData> Options { get; private set; } = null!;
 
     // Volatile: State is written by Dispatch (any thread via Retryer callbacks) and
@@ -588,7 +589,7 @@ public sealed class Query<TData> : Query
 
     private void SetOptions(QueryConfiguration<TData>? configOptions)
     {
-        Options = configOptions ?? new QueryConfiguration<TData> { GcTime = QueryTimeDefaults.GcTime };
+        Options = configOptions ?? _client.DefaultQueryOptions(new QueryConfiguration<TData> { QueryKey = QueryKey });
         UpdateGcTime(Options.GcTime);
 
         if (this.State is not null && this.State.Data is null)
@@ -724,13 +725,13 @@ public sealed class Query<TData> : Query
                 var ctx = new QueryFunctionContext(ct, () => _abortSignalConsumed = true, _client, QueryKey!);
                 return queryFn(ctx);
             },
-            MaxRetries = Options.Retry is > 0 and var r ? r + 1 : 1, // MaxRetries includes initial attempt
+            MaxRetries = (Options.Retry ?? OptionsDefaulting.FallbackQueryRetry) is > 0 and var r ? r + 1 : 1,
             RetryDelay = Options.RetryDelay,
             TimeProvider = _client.TimeProvider,
             LoggerFactory = _client.LoggerFactory,
             Metrics = _metrics,
             RetrySource = "query",
-            NetworkMode = Options.NetworkMode,
+            NetworkMode = Options.NetworkMode ?? OptionsDefaulting.FallbackNetworkMode,
             CanRun = AlwaysCanRun, // Queries always allow running; mutations use this for scope coordination
             OnlineManager = _client.OnlineManager,
             FocusManager = _client.FocusManager,
@@ -927,7 +928,11 @@ public sealed class Query<TData> : Query
     {
         int observerCount;
         lock (_observerLock) { observerCount = _observers.Count; }
-        if (observerCount == 0 && State is not null && State.FetchStatus == FetchStatus.Idle)
+        // The constructor schedules GC before the query enters the cache. A zero-delay timer
+        // must not remove a different query cached under the same hash.
+        if (observerCount == 0 && State is not null && State.FetchStatus == FetchStatus.Idle
+            && QueryHash is not null
+            && ReferenceEquals(_cache.GetByHash(QueryHash), this))
         {
             _logger.QueryGcRemoved(QueryHash);
             _metrics?.CacheGcRemovedTotal?.Add(1);
@@ -963,7 +968,7 @@ public sealed class Query<TData> : Query
                 {
                     FetchMeta = fetchAction.Meta,
                     IsInvalidated = false,
-                    FetchStatus = NetworkModeHelper.CanFetch(Options.NetworkMode, _client.OnlineManager)
+                    FetchStatus = NetworkModeHelper.CanFetch(Options.NetworkMode ?? OptionsDefaulting.FallbackNetworkMode, _client.OnlineManager)
                         ? FetchStatus.Fetching
                         : FetchStatus.Paused
                 },

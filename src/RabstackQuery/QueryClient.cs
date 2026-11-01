@@ -11,8 +11,8 @@ public sealed class QueryClient : IDisposable
     private readonly QueryCache _queryCache;
     private readonly MutationCache _mutationCache;
     private readonly ILogger _logger;
-    private readonly List<QueryDefaults> _queryDefaults = [];
-    private readonly List<MutationDefaults> _mutationDefaults = [];
+    private readonly List<(QueryKey Key, QueryDefaults Defaults)> _queryDefaults = [];
+    private readonly List<(QueryKey Key, MutationDefaults Defaults)> _mutationDefaults = [];
     private QueryClientDefaultOptions? _defaultOptions;
     private bool _disposed;
 
@@ -179,13 +179,14 @@ public sealed class QueryClient : IDisposable
     // ── Imperative fetch methods ──────────────────────────────────────
 
     /// <summary>
-    /// Fetches a query imperatively. If the query exists in the cache and is
+    /// Asynchronously fetches a query. If the query exists in the cache and is
     /// not stale, returns the cached data without fetching. Otherwise fetches
     /// fresh data. Does not create a persistent observer subscription.
     /// </summary>
     /// <remarks>
-    /// Retry defaults to 0 (no retries), matching TanStack's <c>fetchQuery</c>.
-    /// Errors are propagated to the caller.
+    /// Options left <see langword="null"/> inherit from the key-prefix and client-wide
+    /// <see cref="QueryDefaults"/>. When no layer sets <c>Retry</c>, it is 0 (no retries).
+    /// Errors propagate to the caller.
     /// </remarks>
     public async Task<TData> FetchQueryAsync<TData>(
         FetchQueryOptions<TData> options,
@@ -196,17 +197,14 @@ public sealed class QueryClient : IDisposable
         var queryHash = hasher.HashQueryKey(options.QueryKey);
         _logger.FetchQuery(queryHash);
 
+        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
         var queryOptions = new QueryConfiguration<TData>
         {
             QueryKey = options.QueryKey,
             QueryKeyHasher = hasher,
-            GcTime = options.GcTime ?? QueryTimeDefaults.GcTime,
-            // FetchQuery defaults to 0 retries (matching TanStack's fetchQuery where retry = false)
-            Retry = options.Retry ?? 0,
-            RetryDelay = options.RetryDelay,
             Meta = options.Meta,
-            NetworkMode = options.NetworkMode ?? NetworkMode.Online,
         };
+        settings.CopyTo(queryOptions);
 
         var query = _queryCache.GetOrCreate<TData, TData>(this, queryOptions);
         query.SetQueryFn(options.QueryFn);
@@ -215,7 +213,7 @@ public sealed class QueryClient : IDisposable
         // The ! operator is justified: Data is logically present when status is
         // Succeeded, but TData is unconstrained so the compiler can't narrow TData?.
         if (query.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, options.StaleTime ?? TimeSpan.Zero, state.IsInvalidated))
+            && !IsDataStale(state.DataUpdatedAt, settings.StaleTime, state.IsInvalidated))
         {
             _logger.FetchQueryCacheHit(queryHash);
             Metrics.CacheHitTotal?.Add(1);
@@ -265,9 +263,10 @@ public sealed class QueryClient : IDisposable
         _logger.EnsureQueryData(queryHash);
 
         var query = _queryCache.Get<TData>(queryHash);
+        var staleTime = ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults()).StaleTime;
 
         if (query?.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, options.StaleTime ?? TimeSpan.Zero, state.IsInvalidated))
+            && !IsDataStale(state.DataUpdatedAt, staleTime, state.IsInvalidated))
         {
             _logger.EnsureQueryDataCacheHit(queryHash);
             Metrics.CacheHitTotal?.Add(1);
@@ -310,13 +309,14 @@ public sealed class QueryClient : IDisposable
     // ── Imperative infinite query fetch methods ─────────────────────────
 
     /// <summary>
-    /// Fetches an infinite query imperatively. If the query exists in the cache
+    /// Asynchronously fetches an infinite query. If the query exists in the cache
     /// and is not stale, returns the cached data without fetching. Otherwise
     /// fetches the first page. Does not create a persistent observer subscription.
     /// </summary>
     /// <remarks>
-    /// Retry defaults to 0 (no retries), matching TanStack's <c>fetchQuery</c>.
-    /// Errors are propagated to the caller.
+    /// Options left <see langword="null"/> inherit from the key-prefix and client-wide
+    /// <see cref="QueryDefaults"/>. When no layer sets <c>Retry</c>, it is 0 (no retries).
+    /// Errors propagate to the caller.
     /// </remarks>
     public async Task<InfiniteData<TData, TPageParam>> FetchInfiniteQueryAsync<TData, TPageParam>(
         FetchInfiniteQueryOptions<TData, TPageParam> options,
@@ -327,14 +327,13 @@ public sealed class QueryClient : IDisposable
         var queryHash = hasher.HashQueryKey(options.QueryKey);
         _logger.FetchInfiniteQuery(queryHash);
 
+        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
         var queryOptions = new QueryConfiguration<InfiniteData<TData, TPageParam>>
         {
             QueryKey = options.QueryKey,
             QueryKeyHasher = hasher,
-            GcTime = options.GcTime ?? QueryTimeDefaults.GcTime,
-            // FetchInfiniteQuery defaults to 0 retries (matching TanStack's fetchQuery where retry = false)
-            Retry = options.Retry ?? 0
         };
+        settings.CopyTo(queryOptions);
 
         var query = _queryCache.GetOrCreate<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>>(this, queryOptions);
 
@@ -354,7 +353,7 @@ public sealed class QueryClient : IDisposable
 
         // If the cache has fresh data, return it directly.
         if (query.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, options.StaleTime ?? TimeSpan.Zero, state.IsInvalidated))
+            && !IsDataStale(state.DataUpdatedAt, settings.StaleTime, state.IsInvalidated))
         {
             _logger.FetchInfiniteQueryCacheHit(queryHash);
             Metrics.CacheHitTotal?.Add(1);
@@ -405,9 +404,10 @@ public sealed class QueryClient : IDisposable
         _logger.EnsureInfiniteQueryData(queryHash);
 
         var query = _queryCache.Get<InfiniteData<TData, TPageParam>>(queryHash);
+        var staleTime = ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults()).StaleTime;
 
         if (query?.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, options.StaleTime ?? TimeSpan.Zero, state.IsInvalidated))
+            && !IsDataStale(state.DataUpdatedAt, staleTime, state.IsInvalidated))
         {
             _logger.EnsureInfiniteQueryDataCacheHit(queryHash);
             Metrics.CacheHitTotal?.Add(1);
@@ -463,7 +463,8 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Global default options that apply to all queries.
+    /// Gets or sets the client-wide default options. A change applies to queries and
+    /// mutations whose options are defaulted afterwards; existing cache entries keep theirs.
     /// </summary>
     public QueryClientDefaultOptions? DefaultOptions
     {
@@ -472,126 +473,107 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Registers per-key-prefix defaults. Any query whose key starts with
-    /// <paramref name="queryKey"/> will inherit these defaults (unless
-    /// overridden by per-query options).
+    /// Registers defaults for every query whose key starts with <paramref name="queryKey"/>.
     /// </summary>
+    /// <remarks>
+    /// Registering again for the same key replaces the earlier registration in place. When
+    /// several registrations match a query they apply in registration order, so register
+    /// broader prefixes first. Per-query options override these defaults, and these override
+    /// <see cref="QueryClientDefaultOptions.Queries"/>.
+    /// </remarks>
+    /// <param name="queryKey">The key prefix that query keys are matched against.</param>
+    /// <param name="defaults">The defaults to apply to matching queries.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="queryKey"/> or <paramref name="defaults"/> is <see langword="null"/>.
+    /// </exception>
     public void SetQueryDefaults(QueryKey queryKey, QueryDefaults defaults)
     {
         ArgumentNullException.ThrowIfNull(queryKey);
         ArgumentNullException.ThrowIfNull(defaults);
         ThrowIfDisposed();
-        // Replace existing defaults for this exact key, or append
-        var index = _queryDefaults.FindIndex(d =>
-            QueryKeyMatcher.ExactMatchKey(d.QueryKey, queryKey));
 
-        var entry = new QueryDefaults
-        {
-            QueryKey = queryKey,
-            StaleTime = defaults.StaleTime,
-            GcTime = defaults.GcTime,
-            Retry = defaults.Retry,
-            RetryDelay = defaults.RetryDelay,
-            RefetchOnWindowFocus = defaults.RefetchOnWindowFocus,
-            RefetchOnReconnect = defaults.RefetchOnReconnect,
-            RefetchOnMount = defaults.RefetchOnMount
-        };
-
+        // Replace in place so re-registering a key does not change its precedence.
+        var index = _queryDefaults.FindIndex(d => QueryKeyMatcher.ExactMatchKey(d.Key, queryKey));
         if (index >= 0)
         {
-            _queryDefaults[index] = entry;
+            _queryDefaults[index] = (queryKey, defaults);
         }
         else
         {
-            _queryDefaults.Add(entry);
+            _queryDefaults.Add((queryKey, defaults));
         }
     }
 
+    /// <summary>
+    /// Returns the key-prefix defaults that apply to <paramref name="queryKey"/>, merged in
+    /// registration order. Client-wide defaults are not included.
+    /// </summary>
+    /// <param name="queryKey">The query key to look up registered defaults for.</param>
+    /// <returns>
+    /// The merged defaults, with every property <see langword="null"/> when no registration matches.
+    /// </returns>
+    public QueryDefaults GetQueryDefaults(QueryKey queryKey)
+    {
+        ArgumentNullException.ThrowIfNull(queryKey);
+        ThrowIfDisposed();
+        return OptionsDefaulting.MergeQueryLayers(null, _queryDefaults, queryKey, perQuery: null);
+    }
+
+    /// <summary>
+    /// Returns a copy of <paramref name="options"/> with defaultable options resolved
+    /// through client-wide defaults, key-prefix defaults and framework fallbacks.
+    /// </summary>
+    /// <remarks>
+    /// Per-query values override key-prefix defaults, which override client-wide defaults.
+    /// A <see cref="SkipToken"/> query function sets
+    /// <see cref="QueryObserverOptions{TData,TQueryData}.Enabled"/> to <see langword="false"/>.
+    /// </remarks>
     public QueryObserverOptions<TData, TQueryData> DefaultQueryOptions<TData, TQueryData>(
         QueryObserverOptions<TData, TQueryData> options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         ThrowIfDisposed();
         if (options.QueryKey is null)
         {
             throw new ArgumentException("QueryKey must be provided.", nameof(options));
         }
 
-        var queryKey = options.QueryKey;
-        var keyDefaults = GetMergedQueryDefaults(queryKey);
+        var settings = ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults());
 
-        // Resolve StaleTime through the three-level merge:
-        // per-query → per-key-prefix → global → framework default
-        var resolvedStaleTime = options.StaleTime;
-        if (resolvedStaleTime == TimeSpan.Zero)
+        return options with
         {
-            resolvedStaleTime = keyDefaults.StaleTime ?? _defaultOptions?.StaleTime ?? TimeSpan.Zero;
-        }
-
-        // Resolve RefetchOnWindowFocus / RefetchOnReconnect through the same merge.
-        // We can't distinguish "explicitly set to WhenStale" from "left at default",
-        // so we only override from defaults when the per-query value is WhenStale.
-        var refetchOnWindowFocus = options.RefetchOnWindowFocus is not RefetchOnBehavior.WhenStale
-            ? options.RefetchOnWindowFocus
-            : keyDefaults.RefetchOnWindowFocus ?? RefetchOnBehavior.WhenStale;
-
-        var refetchOnReconnect = options.RefetchOnReconnect is not RefetchOnBehavior.WhenStale
-            ? options.RefetchOnReconnect
-            : keyDefaults.RefetchOnReconnect ?? RefetchOnBehavior.WhenStale;
-
-        var refetchOnMount = options.RefetchOnMount is not RefetchOnBehavior.WhenStale
-            ? options.RefetchOnMount
-            : keyDefaults.RefetchOnMount ?? RefetchOnBehavior.WhenStale;
-
-        return new QueryObserverOptions<TData, TQueryData>
-        {
-            QueryKey = queryKey,
-            Enabled = SkipToken.IsSkipToken(options.QueryFn) ? false : options.Enabled,
-            EnabledFn = options.EnabledFn,
-            Select = options.Select,
-            StaleTime = resolvedStaleTime,
-            StaleTimeFn = options.StaleTimeFn,
-            GcTime = options.GcTime,
-            QueryFn = options.QueryFn,
-            RefetchOnWindowFocus = refetchOnWindowFocus,
-            RefetchOnReconnect = refetchOnReconnect,
-            RefetchOnMount = refetchOnMount,
-            RefetchInterval = options.RefetchInterval,
-            RefetchIntervalFn = options.RefetchIntervalFn,
-            RefetchIntervalInBackground = options.RefetchIntervalInBackground,
-            PlaceholderData = options.PlaceholderData,
-            NetworkMode = options.NetworkMode
+            Enabled = options.Enabled && !SkipToken.IsSkipToken(options.QueryFn),
+            StaleTime = settings.StaleTime,
+            GcTime = settings.GcTime,
+            Retry = settings.Retry,
+            RetryDelay = settings.RetryDelay,
+            RefetchOnWindowFocus = settings.RefetchOnWindowFocus,
+            RefetchOnReconnect = settings.RefetchOnReconnect,
+            RefetchOnMount = settings.RefetchOnMount,
+            NetworkMode = settings.NetworkMode,
         };
     }
 
     /// <summary>
-    /// Merges global defaults and per-key-prefix defaults into the given
-    /// <see cref="QueryOptions{TData}"/>. Three-level merge:
-    /// per-query options → per-key-prefix defaults → global defaults → framework defaults.
+    /// Returns a copy of <paramref name="options"/> with <c>GcTime</c>, <c>Retry</c>,
+    /// <c>RetryDelay</c> and <c>NetworkMode</c> resolved through client-wide defaults,
+    /// key-prefix defaults and framework fallbacks.
     /// </summary>
+    /// <remarks>
+    /// Per-query values override key-prefix defaults, which override client-wide defaults.
+    /// Options without a
+    /// <see cref="QueryConfiguration{TData}.QueryKey"/> are returned unchanged.
+    /// </remarks>
     public QueryConfiguration<TData> DefaultQueryOptions<TData>(QueryConfiguration<TData> options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         ThrowIfDisposed();
         if (options.QueryKey is null)
         {
             return options;
         }
 
-        var keyDefaults = GetMergedQueryDefaults(options.QueryKey);
-
-        // GcTime: per-query wins if explicitly set (non-zero), else key defaults, else global
-        var gcTime = options.GcTime > TimeSpan.Zero
-            ? options.GcTime
-            : keyDefaults.GcTime ?? _defaultOptions?.GcTime ?? QueryTimeDefaults.GcTime;
-
-        // Retry: null means "not explicitly set" — fall through to key/global defaults.
-        var retry = options.Retry
-            ?? keyDefaults.Retry
-            ?? _defaultOptions?.Retry
-            ?? 3;
-
-        var retryDelay = options.RetryDelay
-            ?? keyDefaults.RetryDelay
-            ?? _defaultOptions?.RetryDelay;
+        var settings = ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults());
 
         var result = new QueryConfiguration<TData>
         {
@@ -602,10 +584,6 @@ public sealed class QueryClient : IDisposable
             InitialDataFactory = options.InitialDataFactory,
             InitialDataUpdatedAt = options.InitialDataUpdatedAt,
             InitialDataUpdatedAtFactory = options.InitialDataUpdatedAtFactory,
-            GcTime = gcTime,
-            Retry = retry,
-            RetryDelay = retryDelay,
-            NetworkMode = options.NetworkMode,
             Meta = options.Meta,
         };
 
@@ -617,200 +595,96 @@ public sealed class QueryClient : IDisposable
             result.InitialData = options.InitialData;
         }
 
+        settings.CopyTo(result);
         return result;
     }
 
-    public QueryConfiguration<TData>? GetQueryDefaults<TData>(QueryKey queryKey)
+    internal ResolvedQuerySettings ResolveQuerySettings(QueryKey queryKey, QueryDefaults perQuery)
+        => ResolvedQuerySettings.From(
+            OptionsDefaulting.MergeQueryLayers(_defaultOptions?.Queries, _queryDefaults, queryKey, perQuery));
+
+    private ResolvedQuerySettings ResolveFetchSettings(QueryKey queryKey, QueryDefaults perQuery)
     {
-        ThrowIfDisposed();
-        var merged = GetMergedQueryDefaults(queryKey);
+        var merged = OptionsDefaulting.MergeQueryLayers(_defaultOptions?.Queries, _queryDefaults, queryKey, perQuery);
 
-        return new QueryConfiguration<TData>
-        {
-            GcTime = merged.GcTime ?? QueryTimeDefaults.GcTime,
-            Retry = merged.Retry,
-            RetryDelay = merged.RetryDelay
-        };
-    }
-
-    /// <summary>
-    /// Iterates all registered per-key-prefix defaults whose key is a prefix
-    /// of <paramref name="queryKey"/> and merges them in registration order.
-    /// Later registrations override earlier ones for the same property.
-    /// </summary>
-    private QueryDefaults GetMergedQueryDefaults(QueryKey queryKey)
-    {
-        TimeSpan? staleTime = null;
-        TimeSpan? gcTime = null;
-        int? retry = null;
-        Func<int, Exception, TimeSpan>? retryDelay = null;
-        RefetchOnBehavior? refetchOnWindowFocus = null;
-        RefetchOnBehavior? refetchOnReconnect = null;
-        RefetchOnBehavior? refetchOnMount = null;
-
-        foreach (var defaults in _queryDefaults)
-        {
-            if (!QueryKeyMatcher.PartialMatchKey(queryKey, defaults.QueryKey))
-            {
-                continue;
-            }
-
-            staleTime = defaults.StaleTime ?? staleTime;
-            gcTime = defaults.GcTime ?? gcTime;
-            retry = defaults.Retry ?? retry;
-            retryDelay = defaults.RetryDelay ?? retryDelay;
-            refetchOnWindowFocus = defaults.RefetchOnWindowFocus ?? refetchOnWindowFocus;
-            refetchOnReconnect = defaults.RefetchOnReconnect ?? refetchOnReconnect;
-            refetchOnMount = defaults.RefetchOnMount ?? refetchOnMount;
-        }
-
-        return new QueryDefaults
-        {
-            QueryKey = queryKey,
-            StaleTime = staleTime,
-            GcTime = gcTime,
-            Retry = retry,
-            RetryDelay = retryDelay,
-            RefetchOnWindowFocus = refetchOnWindowFocus,
-            RefetchOnReconnect = refetchOnReconnect,
-            RefetchOnMount = refetchOnMount
-        };
+        return ResolvedQuerySettings.From(merged with { Retry = merged.Retry ?? 0 });
     }
 
     // ── Mutation defaults ───────────────────────────────────────────────
 
     /// <summary>
-    /// Registers per-key-prefix defaults for mutations. Any mutation whose key
-    /// starts with <paramref name="mutationKey"/> will inherit these defaults
-    /// (unless overridden by per-mutation options).
+    /// Registers defaults for every mutation whose key starts with <paramref name="mutationKey"/>.
     /// </summary>
+    /// <remarks>
+    /// Registering again for the same key replaces the earlier registration in place. When
+    /// several registrations match a mutation they apply in registration order. Per-mutation
+    /// options override these defaults, and these override
+    /// <see cref="QueryClientDefaultOptions.Mutations"/>.
+    /// </remarks>
+    /// <param name="mutationKey">The key prefix that mutation keys are matched against.</param>
+    /// <param name="defaults">The defaults to apply to matching mutations.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="mutationKey"/> or <paramref name="defaults"/> is <see langword="null"/>.
+    /// </exception>
     public void SetMutationDefaults(QueryKey mutationKey, MutationDefaults defaults)
     {
         ArgumentNullException.ThrowIfNull(mutationKey);
         ArgumentNullException.ThrowIfNull(defaults);
         ThrowIfDisposed();
-        // Replace existing defaults for this exact key, or append
-        var index = _mutationDefaults.FindIndex(d =>
-            QueryKeyMatcher.ExactMatchKey(d.MutationKey, mutationKey));
 
-        var entry = new MutationDefaults
-        {
-            MutationKey = mutationKey,
-            Retry = defaults.Retry,
-            RetryDelay = defaults.RetryDelay,
-            GcTime = defaults.GcTime,
-            NetworkMode = defaults.NetworkMode,
-        };
-
+        var index = _mutationDefaults.FindIndex(d => QueryKeyMatcher.ExactMatchKey(d.Key, mutationKey));
         if (index >= 0)
         {
-            _mutationDefaults[index] = entry;
+            _mutationDefaults[index] = (mutationKey, defaults);
         }
         else
         {
-            _mutationDefaults.Add(entry);
+            _mutationDefaults.Add((mutationKey, defaults));
         }
     }
 
     /// <summary>
-    /// Returns the merged per-key-prefix mutation defaults for a given key.
-    /// All defaults whose key is a prefix of <paramref name="mutationKey"/>
-    /// are merged in registration order. Returns null when no defaults match.
+    /// Returns the key-prefix defaults that apply to <paramref name="mutationKey"/>, merged in
+    /// registration order. Client-wide defaults are not included.
     /// </summary>
-    public MutationDefaults? GetMutationDefaults(QueryKey mutationKey)
+    /// <param name="mutationKey">The mutation key to look up registered defaults for.</param>
+    /// <returns>
+    /// The merged defaults, with every property <see langword="null"/> when no registration matches.
+    /// </returns>
+    public MutationDefaults GetMutationDefaults(QueryKey mutationKey)
     {
+        ArgumentNullException.ThrowIfNull(mutationKey);
         ThrowIfDisposed();
-        var merged = GetMergedMutationDefaults(mutationKey);
-        if (merged is null)
-        {
-            return null;
-        }
-
-        return merged;
+        return OptionsDefaulting.MergeMutationLayers(null, _mutationDefaults, mutationKey, perMutation: null);
     }
 
     /// <summary>
-    /// Merges per-key-prefix mutation defaults into the given options.
-    /// Short-circuits if the options have already been defaulted.
+    /// Returns a copy of <paramref name="options"/> with <c>Retry</c>, <c>RetryDelay</c>,
+    /// <c>GcTime</c> and <c>NetworkMode</c> resolved through client-wide defaults, key-prefix
+    /// defaults and framework fallbacks. Options already defaulted are returned unchanged.
     /// </summary>
     public MutationOptions<TData, TError, TVariables, TOnMutateResult>
         DefaultMutationOptions<TData, TError, TVariables, TOnMutateResult>(
             MutationOptions<TData, TError, TVariables, TOnMutateResult> options)
         where TError : Exception
     {
+        ArgumentNullException.ThrowIfNull(options);
         ThrowIfDisposed();
         if (options.Defaulted)
         {
             return options;
         }
 
-        var mutationKey = options.MutationKey;
-        var keyDefaults = mutationKey is not null ? GetMergedMutationDefaults(mutationKey) : null;
-
-        // Retry: null means "not explicitly set" — fall through to key/global defaults.
-        var retry = options.Retry
-            ?? keyDefaults?.Retry
-            ?? 0;
-
-        var retryDelay = options.RetryDelay ?? keyDefaults?.RetryDelay;
-
-        var gcTime = options.GcTime != QueryTimeDefaults.GcTime
-            ? options.GcTime
-            : keyDefaults?.GcTime ?? QueryTimeDefaults.GcTime;
-
-        var networkMode = options.NetworkMode != NetworkMode.Online
-            ? options.NetworkMode
-            : keyDefaults?.NetworkMode ?? NetworkMode.Online;
+        var merged = OptionsDefaulting.MergeMutationLayers(
+            _defaultOptions?.Mutations, _mutationDefaults, options.MutationKey, options.ToMutationDefaults());
 
         return options with
         {
-            NetworkMode = networkMode,
-            Retry = retry,
-            RetryDelay = retryDelay,
-            GcTime = gcTime,
+            Retry = merged.Retry ?? OptionsDefaulting.FallbackMutationRetry,
+            RetryDelay = merged.RetryDelay,
+            GcTime = merged.GcTime ?? OptionsDefaulting.FallbackGcTime,
+            NetworkMode = merged.NetworkMode ?? OptionsDefaulting.FallbackNetworkMode,
             Defaulted = true,
-        };
-    }
-
-    /// <summary>
-    /// Iterates all registered per-key-prefix mutation defaults whose key is a
-    /// prefix of <paramref name="mutationKey"/> and merges them in registration order.
-    /// Returns null when no defaults match.
-    /// </summary>
-    private MutationDefaults? GetMergedMutationDefaults(QueryKey mutationKey)
-    {
-        int? retry = null;
-        Func<int, Exception, TimeSpan>? retryDelay = null;
-        TimeSpan? gcTime = null;
-        NetworkMode? networkMode = null;
-        var found = false;
-
-        foreach (var defaults in _mutationDefaults)
-        {
-            if (!QueryKeyMatcher.PartialMatchKey(mutationKey, defaults.MutationKey))
-            {
-                continue;
-            }
-
-            found = true;
-            retry = defaults.Retry ?? retry;
-            retryDelay = defaults.RetryDelay ?? retryDelay;
-            gcTime = defaults.GcTime ?? gcTime;
-            networkMode = defaults.NetworkMode ?? networkMode;
-        }
-
-        if (!found)
-        {
-            return null;
-        }
-
-        return new MutationDefaults
-        {
-            MutationKey = mutationKey,
-            Retry = retry,
-            RetryDelay = retryDelay,
-            GcTime = gcTime,
-            NetworkMode = networkMode,
         };
     }
 
@@ -1185,16 +1059,12 @@ public sealed class QueryClient : IDisposable
                 return;
             }
 
-            // Query doesn't exist yet, create it via Build with an explicit initial
-            // state. Deliberately omit InitialData on the options — data set through
-            // SetQueryData is not "initial data" in the TanStack sense. Keeping
-            // InitialData unset means GetDefaultState(Options) produces Status=Pending
-            // with Data=null, which is the correct reset target when Reset() is called.
+            // Leave InitialData unset so Reset() clears data written by SetQueryData.
+            // Assigning it here would make that data the reset target.
             var options = new QueryConfiguration<TData>
             {
                 QueryKey = queryKey,
                 QueryHash = queryHash,
-                GcTime = QueryTimeDefaults.GcTime
             };
 
             var now = TimeProvider.GetUtcNowMs();
@@ -1524,7 +1394,7 @@ public sealed class QueryClient : IDisposable
                     MutationKey = dehydratedMutation.MutationKey,
                     Meta = dehydratedMutation.Meta,
                     Scope = dehydratedMutation.Scope,
-                    GcTime = mutationDefaults?.GcTime ?? QueryTimeDefaults.GcTime,
+                    GcTime = mutationDefaults?.GcTime,
                     Retry = mutationDefaults?.Retry,
                     RetryDelay = mutationDefaults?.RetryDelay,
                     MutationFn = mutationDefaults?.MutationFn,
@@ -1596,15 +1466,11 @@ public sealed class QueryClient : IDisposable
                         FetchStatus = FetchStatus.Idle,
                     };
 
-                    var gcTime = queryDefaults?.GcTime
-                        ?? _defaultOptions?.GcTime
-                        ?? QueryTimeDefaults.GcTime;
-
                     var queryOptions = new QueryConfiguration<object>
                     {
                         QueryKey = dehydratedQuery.QueryKey,
                         QueryHash = dehydratedQuery.QueryHash,
-                        GcTime = gcTime,
+                        GcTime = queryDefaults?.GcTime,
                         Retry = queryDefaults?.Retry,
                         RetryDelay = queryDefaults?.RetryDelay,
                         Meta = dehydratedQuery.Meta,
@@ -1617,7 +1483,6 @@ public sealed class QueryClient : IDisposable
                         QueryHash = dehydratedQuery.QueryHash,
                         Options = DefaultQueryOptions(queryOptions),
                         State = typedState,
-                        DefaultOptions = GetQueryDefaults<object>(dehydratedQuery.QueryKey),
                         Metrics = Metrics,
                         IsHydratedPlaceholder = true,
                     };

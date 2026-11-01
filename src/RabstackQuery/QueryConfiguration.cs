@@ -6,7 +6,13 @@ namespace RabstackQuery;
 /// </summary>
 public sealed class QueryConfiguration<TData>
 {
-    public TimeSpan GcTime { get; set; }
+    /// <summary>
+    /// Duration an unused query stays cached before garbage collection.
+    /// <see cref="TimeSpan.Zero"/> removes the query as soon as it is unused.
+    /// <see langword="null"/> inherits from <see cref="QueryClient.SetQueryDefaults"/> and
+    /// <see cref="QueryClientDefaultOptions.Queries"/>, falling back to 5 minutes.
+    /// </summary>
+    public TimeSpan? GcTime { get; set; }
 
     public string? QueryHash { get; set; }
 
@@ -16,11 +22,12 @@ public sealed class QueryConfiguration<TData>
 
     /// <summary>
     /// Controls whether fetch execution is gated on network connectivity.
-    /// Defaults to <see cref="NetworkMode.Online"/> — fetches pause when offline
-    /// and resume when connectivity is restored. Mirrors TanStack's
-    /// <c>queryOptions.networkMode</c>.
+    /// <see langword="null"/> inherits from <see cref="QueryClient.SetQueryDefaults"/> and
+    /// <see cref="QueryClientDefaultOptions.Queries"/>, falling back to
+    /// <see cref="RabstackQuery.NetworkMode.Online"/>: fetches pause when offline
+    /// and resume when connectivity is restored.
     /// </summary>
-    public NetworkMode NetworkMode { get; set; } = NetworkMode.Online;
+    public NetworkMode? NetworkMode { get; set; }
 
     private TData? _initialData;
 
@@ -69,14 +76,15 @@ public sealed class QueryConfiguration<TData>
     public Func<long?>? InitialDataUpdatedAtFactory { get; set; }
 
     /// <summary>
-    /// Number of retry attempts. 0 means no retries. Null means "not explicitly set" —
-    /// the framework applies key/global defaults via the <c>??</c> chain in
-    /// <see cref="QueryClient.DefaultQueryOptions{TData}"/>. The final fallback is 3.
+    /// Number of retries after a failed fetch. 0 means no retries.
+    /// <see langword="null"/> inherits from <see cref="QueryClient.SetQueryDefaults"/> and
+    /// <see cref="QueryClientDefaultOptions.Queries"/>, falling back to 3.
     /// </summary>
     public int? Retry { get; set; }
 
     /// <summary>
     /// Custom retry delay function. Receives failure count and exception, returns delay.
+    /// <see langword="null"/> inherits from the key-prefix and client-wide defaults.
     /// </summary>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; set; }
 
@@ -84,4 +92,12 @@ public sealed class QueryConfiguration<TData>
     /// Optional metadata for this query.
     /// </summary>
     public Meta? Meta { get; set; }
+
+    internal QueryDefaults ToQueryDefaults() => new()
+    {
+        GcTime = GcTime,
+        Retry = Retry,
+        RetryDelay = RetryDelay,
+        NetworkMode = NetworkMode,
+    };
 }

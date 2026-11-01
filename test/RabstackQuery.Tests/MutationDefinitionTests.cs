@@ -99,7 +99,7 @@ public sealed class MutationDefinitionTests
     }
 
     [Fact]
-    public void ToMutationOptions_UsesDefaults_WhenNotSet()
+    public void ToMutationOptions_LeavesDefaultableOptionsUnset_WhenNotSet()
     {
         var def = new MutationDefinition<string, int>
         {
@@ -108,8 +108,8 @@ public sealed class MutationDefinitionTests
 
         var options = def.ToMutationOptions();
 
-        Assert.Equal(QueryTimeDefaults.GcTime, options.GcTime);
-        Assert.Equal(NetworkMode.Online, options.NetworkMode);
+        Assert.Null(options.GcTime);
+        Assert.Null(options.NetworkMode);
         Assert.Null(options.MutationKey);
         Assert.Null(options.Retry);
     }

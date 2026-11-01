@@ -68,7 +68,7 @@ public class ServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddRabstackQuery(options =>
         {
-            options.DefaultOptions = new QueryClientDefaultOptions { Retry = 1 };
+            options.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 1 } };
         });
 
         using var provider = services.BuildServiceProvider();
@@ -92,8 +92,11 @@ public class ServiceCollectionExtensionsTests
         {
             options.DefaultOptions = new QueryClientDefaultOptions
             {
-                StaleTime = TimeSpan.FromSeconds(30),
-                Retry = 2,
+                Queries = new QueryDefaults
+                {
+                    StaleTime = TimeSpan.FromSeconds(30),
+                    Retry = 2,
+                },
             };
         });
 
@@ -106,8 +109,8 @@ public class ServiceCollectionExtensionsTests
 
         // Assert
         Assert.NotNull(defaults);
-        Assert.Equal(TimeSpan.FromSeconds(30), defaults!.StaleTime);
-        Assert.Equal(2, defaults.Retry);
+        Assert.Equal(TimeSpan.FromSeconds(30), defaults!.Queries?.StaleTime);
+        Assert.Equal(2, defaults.Queries?.Retry);
     }
 
     [Fact]
@@ -117,9 +120,8 @@ public class ServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddRabstackQuery(options =>
         {
-            options.SetQueryDefaults(new QueryDefaults
+            options.SetQueryDefaults(["products"], new QueryDefaults
             {
-                QueryKey = ["products"],
                 GcTime = TimeSpan.FromMinutes(10),
             });
         });
@@ -144,9 +146,8 @@ public class ServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddRabstackQuery(options =>
         {
-            options.SetMutationDefaults(new MutationDefaults
+            options.SetMutationDefaults(["orders"], new MutationDefaults
             {
-                MutationKey = ["orders"],
                 Retry = 5,
             });
         });
@@ -285,13 +286,13 @@ public class ServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddRabstackQuery(options =>
         {
-            options.DefaultOptions = new QueryClientDefaultOptions { Retry = 1 };
+            options.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 1 } };
         });
 
         // Second call should be ignored
         services.AddRabstackQuery(options =>
         {
-            options.DefaultOptions = new QueryClientDefaultOptions { Retry = 99 };
+            options.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 99 } };
         });
 
         using var provider = services.BuildServiceProvider();
@@ -299,7 +300,7 @@ public class ServiceCollectionExtensionsTests
         var client = scope.ServiceProvider.GetRequiredService<QueryClient>();
 
         // Assert — first registration wins
-        Assert.Equal(1, client.DefaultOptions?.Retry);
+        Assert.Equal(1, client.DefaultOptions?.Queries?.Retry);
     }
 
     [Fact]
@@ -353,8 +354,9 @@ public class ServiceCollectionExtensionsTests
         // Arrange
         var options = new RabstackQueryOptions();
 
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => options.SetQueryDefaults(null!));
+        void Act() => options.SetQueryDefaults(["todos"], null!);
+
+        Assert.Throws<ArgumentNullException>(Act);
     }
 
     [Fact]
@@ -363,7 +365,8 @@ public class ServiceCollectionExtensionsTests
         // Arrange
         var options = new RabstackQueryOptions();
 
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => options.SetMutationDefaults(null!));
+        void Act() => options.SetMutationDefaults(["todos"], null!);
+
+        Assert.Throws<ArgumentNullException>(Act);
     }
 }

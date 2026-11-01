@@ -90,7 +90,7 @@ public abstract class Removable : IDisposable
         return a >= b ? a : b;
     }
 
-    private static bool IsValidTimeout(TimeSpan t) => t != Timeout.InfiniteTimeSpan && t > TimeSpan.Zero;
+    private static bool IsValidTimeout(TimeSpan t) => t != Timeout.InfiniteTimeSpan && t >= TimeSpan.Zero;
 
     /// <summary>
     /// Called when the GC timer fires after no observer has resubscribed within

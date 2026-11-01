@@ -30,12 +30,14 @@ public record QueryObserverOptions<TData, TQueryData>
 
     /// <summary>
     /// Duration after which data becomes stale.
-    /// <see cref="TimeSpan.Zero"/> means data is always stale (default).
+    /// <see cref="TimeSpan.Zero"/> means data is always stale.
     /// <see cref="Timeout.InfiniteTimeSpan"/> means data is never stale, not
-    /// even after invalidation — equivalent to TanStack's <c>staleTime: 'static'</c>.
+    /// even after invalidation.
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetQueryDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Queries"/>, falling back to <see cref="TimeSpan.Zero"/>.
     /// Ignored when <see cref="StaleTimeFn"/> is set.
     /// </summary>
-    public TimeSpan StaleTime { get; init; } = TimeSpan.Zero;
+    public TimeSpan? StaleTime { get; init; }
 
     /// <summary>
     /// Dynamic stale time callback that receives the current query and returns
@@ -53,9 +55,12 @@ public record QueryObserverOptions<TData, TQueryData>
 
     /// <summary>
     /// Duration before inactive queries are garbage collected.
-    /// Defaults to 5 minutes.
+    /// <see cref="TimeSpan.Zero"/> removes the query as soon as it is unused.
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetQueryDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Queries"/>, falling back to 5 minutes.
+    /// Applies only when this observer creates the query.
     /// </summary>
-    public TimeSpan GcTime { get; init; } = QueryTimeDefaults.GcTime;
+    public TimeSpan? GcTime { get; init; }
 
     /// <summary>
     /// Query function to execute.
@@ -64,22 +69,29 @@ public record QueryObserverOptions<TData, TQueryData>
 
     /// <summary>
     /// Controls refetching when the window regains focus.
-    /// Defaults to <see cref="RefetchOnBehavior.WhenStale"/> (refetch if data is stale).
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetQueryDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Queries"/>, falling back to
+    /// <see cref="RefetchOnBehavior.WhenStale"/>.
     /// </summary>
-    public RefetchOnBehavior RefetchOnWindowFocus { get; init; } = RefetchOnBehavior.WhenStale;
+    public RefetchOnBehavior? RefetchOnWindowFocus { get; init; }
 
     /// <summary>
     /// Controls refetching when network connectivity is restored.
-    /// Defaults to <see cref="RefetchOnBehavior.WhenStale"/> (refetch if data is stale).
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetQueryDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Queries"/>. When no layer sets it, the default is
+    /// <see cref="RefetchOnBehavior.Never"/> if the resolved <see cref="NetworkMode"/> is
+    /// <see cref="RabstackQuery.NetworkMode.Always"/>, and <see cref="RefetchOnBehavior.WhenStale"/> otherwise.
     /// </summary>
-    public RefetchOnBehavior RefetchOnReconnect { get; init; } = RefetchOnBehavior.WhenStale;
+    public RefetchOnBehavior? RefetchOnReconnect { get; init; }
 
     /// <summary>
     /// Controls refetching when a new observer subscribes and the query already has data.
     /// Has no effect on the initial load (when no data exists — that always fetches).
-    /// Defaults to <see cref="RefetchOnBehavior.WhenStale"/> (refetch if data is stale).
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetQueryDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Queries"/>, falling back to
+    /// <see cref="RefetchOnBehavior.WhenStale"/>.
     /// </summary>
-    public RefetchOnBehavior RefetchOnMount { get; init; } = RefetchOnBehavior.WhenStale;
+    public RefetchOnBehavior? RefetchOnMount { get; init; }
 
     /// <summary>
     /// Interval between automatic refetches (polling).
@@ -121,24 +133,28 @@ public record QueryObserverOptions<TData, TQueryData>
     public Func<TQueryData?, Query<TQueryData>?, TQueryData?>? PlaceholderData { get; init; }
 
     /// <summary>
-    /// Number of retry attempts. Null uses the query-level default (3).
+    /// Number of retries after a failed fetch. <see langword="null"/> (default) inherits
+    /// from <see cref="QueryClient.SetQueryDefaults"/> and
+    /// <see cref="QueryClientDefaultOptions.Queries"/>, falling back to 3.
+    /// Applies only when this observer creates the query.
     /// </summary>
     public int? Retry { get; init; }
 
-    /// <summary>Custom retry delay function. Receives failure count and exception.</summary>
+    /// <summary>
+    /// Custom retry delay function. Receives failure count and exception.
+    /// <see langword="null"/> (default) inherits from the key-prefix and client-wide defaults.
+    /// Applies only when this observer creates the query.
+    /// </summary>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.Meta"/>
     public Meta? Meta { get; init; }
 
     /// <summary>
-    /// Per-observer override for <see cref="RabstackQuery.NetworkMode"/>.
-    /// When <c>null</c> (default), the query uses its own <see cref="QueryConfiguration{TData}.NetworkMode"/>.
-    /// When set, overrides the query-level network mode for this observer's fetches.
-    /// <para>
-    /// Mirrors TanStack's <c>queryObserverOptions.networkMode</c> which inherits
-    /// from the base <c>QueryOptions</c> interface and flows through to the query.
-    /// </para>
+    /// Controls whether fetches wait for network connectivity.
+    /// <see langword="null"/> (default) inherits from <see cref="QueryClient.SetQueryDefaults"/>
+    /// and <see cref="QueryClientDefaultOptions.Queries"/>, falling back to
+    /// <see cref="RabstackQuery.NetworkMode.Online"/>. Applies only when this observer creates the query.
     /// </summary>
     public NetworkMode? NetworkMode { get; init; }
 
@@ -167,6 +183,18 @@ public record QueryObserverOptions<TData, TQueryData>
     /// </para>
     /// </summary>
     public Func<TData, TData, TData>? StructuralSharing { get; init; }
+
+    internal QueryDefaults ToQueryDefaults() => new()
+    {
+        StaleTime = StaleTime,
+        GcTime = GcTime,
+        Retry = Retry,
+        RetryDelay = RetryDelay,
+        RefetchOnWindowFocus = RefetchOnWindowFocus,
+        RefetchOnReconnect = RefetchOnReconnect,
+        RefetchOnMount = RefetchOnMount,
+        NetworkMode = NetworkMode,
+    };
 }
 
 /// <summary>

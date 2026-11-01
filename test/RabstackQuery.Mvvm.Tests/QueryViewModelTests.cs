@@ -16,7 +16,7 @@ public sealed class QueryViewModelTests : SyncContextTestBase
     {
         // Arrange — a query that always fails; Retry=0 to avoid 7s backoff wait
         var client = CreateQueryClient();
-        client.SetQueryDefaults(["refetch-error-test"], new QueryDefaults { QueryKey = ["refetch-error-test"], Retry = 0 });
+        client.SetQueryDefaults(["refetch-error-test"], new QueryDefaults { Retry = 0 });
         using var vm = new QueryViewModel<string, string>(
             client,
             queryKey: ["refetch-error-test"],
@@ -69,7 +69,7 @@ public sealed class QueryViewModelTests : SyncContextTestBase
     {
         // Arrange — Retry=0 to avoid 7s backoff wait
         var client = CreateQueryClient();
-        client.SetQueryDefaults(["manual-refresh-error-test"], new QueryDefaults { QueryKey = ["manual-refresh-error-test"], Retry = 0 });
+        client.SetQueryDefaults(["manual-refresh-error-test"], new QueryDefaults { Retry = 0 });
         using var vm = new QueryViewModel<string, string>(
             client,
             queryKey: ["manual-refresh-error-test"],

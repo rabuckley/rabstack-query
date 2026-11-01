@@ -99,20 +99,14 @@ public static class ServiceCollectionExtensions
             client.DefaultOptions = options.DefaultOptions;
         }
 
-        if (options.QueryDefaults is not null)
+        foreach (var (queryKey, defaults) in options.QueryDefaults)
         {
-            foreach (var defaults in options.QueryDefaults)
-            {
-                client.SetQueryDefaults(defaults.QueryKey, defaults);
-            }
+            client.SetQueryDefaults(queryKey, defaults);
         }
 
-        if (options.MutationDefaults is not null)
+        foreach (var (mutationKey, defaults) in options.MutationDefaults)
         {
-            foreach (var defaults in options.MutationDefaults)
-            {
-                client.SetMutationDefaults(defaults.MutationKey, defaults);
-            }
+            client.SetMutationDefaults(mutationKey, defaults);
         }
 
         return client;

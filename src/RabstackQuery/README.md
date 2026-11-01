@@ -146,24 +146,28 @@ OnlineManager.Instance.SetOnline(true);
 ## Configuration
 
 ```csharp
-// Global defaults
-client.SetDefaultOptions(new DefaultOptions
+// Client-wide defaults
+client.DefaultOptions = new QueryClientDefaultOptions
 {
-    Queries = new QueryConfiguration<object>
+    Queries = new QueryDefaults
     {
         StaleTime = TimeSpan.FromMinutes(1),
         GcTime = TimeSpan.FromMinutes(10),
         Retry = 3,
         NetworkMode = NetworkMode.Online
-    }
-});
+    },
+    Mutations = new MutationDefaults { Retry = 1 }
+};
 
-// Per-key defaults
-client.SetQueryDefaults(["todos"], new QueryConfiguration<object>
+// Key-prefix defaults: apply to every query whose key starts with ["todos"]
+client.SetQueryDefaults(["todos"], new QueryDefaults
 {
     StaleTime = TimeSpan.FromMinutes(5)
 });
 ```
+
+Per-query options override key-prefix defaults, which override client-wide defaults. An option
+left `null` inherits; any value you set, including `TimeSpan.Zero`, overrides the layers below.
 
 ## Documentation
 

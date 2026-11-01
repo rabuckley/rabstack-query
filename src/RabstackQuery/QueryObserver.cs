@@ -35,6 +35,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     private readonly QueryClient _client;
     private readonly ILogger _logger;
     private QueryObserverOptions<TData, TQueryData> _options;
+
+    private ResolvedQuerySettings _settings;
     private Query<TQueryData>? _currentQuery;
     private IQueryResult<TData>? _currentResult;
     private ITimer? _refetchIntervalTimer;
@@ -76,6 +78,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.QueryObserver");
         _options = options;
+        _settings = client.ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults());
         UpdateQuery();
     }
 
@@ -105,6 +108,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         var prevOptions = _options;
         var prevEnabled = ResolveEnabled();
         _options = options;
+        _settings = _client.ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults());
 
         // If query key changed, update the query
         if (!QueryKeyEquals(prevOptions.QueryKey, options.QueryKey))
@@ -190,17 +194,10 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         var queryOptions = new QueryConfiguration<TQueryData>
         {
             QueryKey = _options.QueryKey,
-            GcTime = _options.GcTime,
             QueryKeyHasher = _options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance,
-            NetworkMode = _options.NetworkMode ?? NetworkMode.Online
+            Meta = _options.Meta,
         };
-
-        if (_options.Retry is { } retry)
-            queryOptions.Retry = retry;
-        if (_options.RetryDelay is { } retryDelay)
-            queryOptions.RetryDelay = retryDelay;
-        if (_options.Meta is { } meta)
-            queryOptions.Meta = meta;
+        _settings.CopyTo(queryOptions);
 
         _currentQuery = queryCache.GetOrCreate<TQueryData, TQueryData>(_client, queryOptions);
 
@@ -388,7 +385,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         };
 
         _currentResult = new QueryResult<TData>(
-            transformedState, ConvertOptions(), _client.TimeProvider, isPlaceholderData,
+            transformedState, ResolveEnabled(), ResolveStaleTime(), _client.TimeProvider, isPlaceholderData,
             refetch: RefetchAsync,
             initialDataUpdateCount: _currentQueryInitialState?.DataUpdateCount ?? 0,
             initialErrorUpdateCount: _currentQueryInitialState?.ErrorUpdateCount ?? 0);
@@ -444,26 +441,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             && _currentResult.IsFetchedAfterMount == isFetchedAfterMount;
     }
 
-    private QueryObserverOptions<TData, TData>? ConvertOptions()
-    {
-        // Create options for QueryResult to access stale time.
-        // Pass the resolved Enabled and StaleTime values so QueryResult.IsEnabled
-        // and QueryResult.IsStale reflect EnabledFn/StaleTimeFn when present.
-        return new QueryObserverOptions<TData, TData>
-        {
-            QueryKey = _options.QueryKey,
-            Enabled = ResolveEnabled(),
-            StaleTime = ResolveStaleTime(),
-            GcTime = _options.GcTime,
-            RefetchOnWindowFocus = _options.RefetchOnWindowFocus,
-            RefetchOnReconnect = _options.RefetchOnReconnect,
-            RefetchOnMount = _options.RefetchOnMount,
-            RefetchInterval = _options.RefetchInterval,
-            RefetchIntervalInBackground = _options.RefetchIntervalInBackground,
-            NetworkMode = _options.NetworkMode
-        };
-    }
-
     private void NotifyListeners()
     {
         if (_currentResult is null) return;
@@ -498,7 +475,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             FetchStatus = FetchStatus.Idle
         };
 
-        return new QueryResult<TData>(initialState, ConvertOptions(), _client.TimeProvider,
+        return new QueryResult<TData>(initialState, ResolveEnabled(), ResolveStaleTime(), _client.TimeProvider,
             refetch: RefetchAsync,
             initialDataUpdateCount: _currentQueryInitialState?.DataUpdateCount ?? 0,
             initialErrorUpdateCount: _currentQueryInitialState?.ErrorUpdateCount ?? 0);
@@ -607,7 +584,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // We can't use `Data is not null` directly because TQueryData is unconstrained.
         var hasData = _currentQuery?.State is { } state && state.DataUpdatedAt > 0;
 
-        return ShouldLoadOnMount() || (hasData && ShouldFetchOn(_options.RefetchOnMount));
+        return ShouldLoadOnMount() || (hasData && ShouldFetchOn(_settings.RefetchOnMount));
     }
 
     /// <summary>
@@ -636,10 +613,10 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         => QueryTimeDefaults.IsStale(state.DataUpdatedAt, staleTime, state.IsInvalidated, _client.TimeProvider.GetUtcNowMs());
 
     public bool ShouldFetchOnWindowFocus() =>
-        ShouldFetchOn(_options.RefetchOnWindowFocus);
+        ShouldFetchOn(_settings.RefetchOnWindowFocus);
 
     public bool ShouldFetchOnReconnect() =>
-        ShouldFetchOn(_options.RefetchOnReconnect);
+        ShouldFetchOn(_settings.RefetchOnReconnect);
 
     /// <summary>
     /// Shared predicate for focus/reconnect refetch decisions. Mirrors TanStack's
@@ -674,12 +651,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     /// </summary>
     private bool ResolveEnabled()
     {
-        // skipToken as QueryFn means "explicitly disabled" — checked before
-        // EnabledFn so it unconditionally wins. Mirrors TanStack's
-        // defaultQueryOptions setting enabled=false when queryFn === skipToken
-        // (queryClient.ts:616-618). The C# observer doesn't pass through a
-        // DefaultQueryOptions defaulting step at construction, so
-        // ResolveEnabled() is the correct place.
+        // Check before EnabledFn so a callback cannot enable a SkipToken query.
         if (SkipToken.IsSkipToken(_options.QueryFn))
             return false;
 
@@ -691,13 +663,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         return _options.Enabled;
     }
 
-    /// <summary>
-    /// Resolves the effective stale time from either
-    /// <see cref="QueryObserverOptions{TData,TQueryData}.StaleTimeFn"/> (dynamic) or
-    /// <see cref="QueryObserverOptions{TData,TQueryData}.StaleTime"/> (static).
-    /// Returns <see cref="Timeout.InfiniteTimeSpan"/> for "static" behavior (never stale,
-    /// not even after invalidation). Mirrors TanStack's <c>resolveStaleTime()</c>.
-    /// </summary>
     private TimeSpan ResolveStaleTime()
     {
         if (_options.StaleTimeFn is { } fn && _currentQuery is not null)
@@ -705,7 +670,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             return fn(_currentQuery);
         }
 
-        return _options.StaleTime;
+        return _settings.StaleTime;
     }
 
     /// <summary>

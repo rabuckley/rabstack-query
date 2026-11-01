@@ -14,8 +14,6 @@ public sealed class QueryConfig<TData>
 
     public QueryConfiguration<TData>? Options { get; init; }
 
-    public QueryConfiguration<TData>? DefaultOptions { get; init; }
-
     public QueryState<TData>? State { get; init; }
 
     /// <summary>

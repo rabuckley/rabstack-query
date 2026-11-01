@@ -14,12 +14,14 @@ builder.Services.AddRabstackQuery(options =>
 {
     options.DefaultOptions = new QueryClientDefaultOptions
     {
-        StaleTime = TimeSpan.FromSeconds(30),
-        Retry = 2,
+        Queries = new QueryDefaults
+        {
+            StaleTime = TimeSpan.FromSeconds(30),
+            Retry = 2,
+        },
     };
-    options.SetQueryDefaults(new QueryDefaults
+    options.SetQueryDefaults(["projects"], new QueryDefaults
     {
-        QueryKey = ["projects"],
         GcTime = TimeSpan.FromMinutes(10),
     });
 });

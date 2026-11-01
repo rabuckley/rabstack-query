@@ -12,14 +12,47 @@ Orchestrator   Storage    State Machine      Subscription Layer              MVV
 
 ## Options Type Hierarchy Rationale
 
-TanStack Query uses a single mega-object for all options. C# splits this into four types because each serves a different layer with different lifetime and composition needs:
+TanStack Query uses a single mega-object for all options. C# splits this into purpose-specific types because each serves a different layer with different lifetime and composition needs:
 
 | Type | Why it exists |
 |------|---------------|
-| `QueryConfiguration<TData>` | Cache-level config (`GcTime`, `Retry`, `InitialData`, `NetworkMode`) passed to `QueryCache.Build`. Separating this from observer options lets multiple observers share cache config without re-specifying it. |
+| `QueryConfiguration<TData>` | Cache-level config (`GcTime`, `Retry`, `InitialData`, `NetworkMode`) passed to `QueryCache.GetOrCreate`. Separating this from observer options lets multiple observers share cache config without re-specifying it. |
 | `QueryOptions<TData>` | Reusable query definition (key + fn + config). Analogous to TanStack v5's `queryOptions()` helper. Covers the 80% case where no `Select` transform or observer-level options are needed. |
 | `QueryObserverOptions<TData, TQueryData>` | Observer-level config (`Select`, `RefetchInterval`, `Enabled`, `PlaceholderData`). A `record` so `with` expressions can toggle individual properties (e.g., switching polling on/off). |
-| `FetchQueryOptions<TData>` | Imperative fetch config for `FetchQueryAsync`/`PrefetchQueryAsync`/`EnsureQueryDataAsync`. Exists because these methods don't create persistent observer subscriptions and need different defaults (e.g., `Retry = 0`). |
+| `FetchQueryOptions<TData>` | Imperative fetch config for `FetchQueryAsync`/`PrefetchQueryAsync`/`EnsureQueryDataAsync`. Exists because these methods don't create persistent observer subscriptions and fall back to different defaults (no retries). |
+| `QueryDefaults` / `MutationDefaults` | The defaultable subset, shared by client-wide defaults (`QueryClientDefaultOptions.Queries`/`.Mutations`) and key-prefix defaults (`SetQueryDefaults`/`SetMutationDefaults`), as TanStack shares one shape between `defaultOptions.queries` and `setQueryDefaults`. |
+
+## Option Defaulting
+
+TanStack's `defaultQueryOptions` spreads `{ ...defaultOptions.queries, ...getQueryDefaults(queryKey), ...options }`,
+so any property the caller leaves `undefined` inherits. C# expresses "unset" as `null`: the
+defaultable options (`StaleTime`, `GcTime`, `Retry`, `RetryDelay`, `RefetchOnWindowFocus`,
+`RefetchOnReconnect`, `RefetchOnMount`, `NetworkMode`) are nullable on every input type, and
+every set value wins, including `TimeSpan.Zero` and `RefetchOnBehavior.WhenStale`. Never treat a
+particular value as "unset"; that made explicit framework defaults impossible to set.
+
+`QueryClient` owns the only query merge (`ResolveQuerySettings`, folding layers through the pure
+`OptionsDefaulting` helper):
+
+1. Fold client-wide defaults, then each partially matching key-prefix registration in registration
+   order, then the per-query values, with `??`.
+2. Apply framework fallbacks: `StaleTime` 0, `GcTime` 5 minutes, `Retry` 3, `NetworkMode.Online`,
+   `RefetchOn*` `WhenStale`. TanStack applies these at the point of use; applying them once keeps
+   readers free of null checks.
+3. Apply TanStack's dependent defaults: an unset `RefetchOnReconnect` is `Never` when `NetworkMode`
+   is `Always`; a `SkipToken` query function disables the query.
+
+The result is the internal `ResolvedQuerySettings`, the analogue of `DefaultedQueryObserverOptions`.
+`QueryObserver` recomputes it in its constructor and `SetOptions` and reads only from it. `Query`
+receives already defaulted `QueryConfiguration` options from `QueryCache.GetOrCreate` and reads them
+when each fetch starts. Imperative fetches merge the same way and then default an unset `Retry` to 0,
+as `fetchQuery` does after `defaultQueryOptions`. Hydration passes the hydrate defaults as the
+per-query layer. Mutations fold the same way in `DefaultMutationOptions` and fill the fallbacks
+(`Retry` 0, `GcTime` 5 minutes, `NetworkMode.Online`) into the defaulted options.
+
+Cache-level settings (`GcTime`, `Retry`, `RetryDelay`, `NetworkMode`) apply when a query is created.
+A later observer with different values does not change an existing query; TanStack's
+`query.setOptions` on each fetch has no C# equivalent yet.
 
 ## Hydration / Dehydration
 

@@ -10,8 +10,7 @@ namespace RabstackQuery;
 public sealed class RabstackQueryOptions
 {
     /// <summary>
-    /// Global default options applied to all queries via
-    /// <see cref="QueryClient.DefaultOptions"/>.
+    /// Client-wide default options, assigned to <see cref="QueryClient.DefaultOptions"/>.
     /// </summary>
     public QueryClientDefaultOptions? DefaultOptions { get; set; }
 
@@ -21,34 +20,40 @@ public sealed class RabstackQueryOptions
     /// </summary>
     public MutationCacheConfig? MutationCacheConfig { get; set; }
 
-    internal List<QueryDefaults>? QueryDefaults { get; private set; }
-    internal List<MutationDefaults>? MutationDefaults { get; private set; }
+    internal List<(QueryKey Key, QueryDefaults Defaults)> QueryDefaults { get; } = [];
+    internal List<(QueryKey Key, MutationDefaults Defaults)> MutationDefaults { get; } = [];
 
     /// <summary>
-    /// Registers per-key-prefix defaults for queries. Any query whose key starts
-    /// with the key in <paramref name="defaults"/> inherits these defaults (unless
-    /// overridden by per-query options). Mirrors <see cref="QueryClient.SetQueryDefaults"/>.
+    /// Registers defaults for every query whose key starts with <paramref name="queryKey"/>.
+    /// Applied with <see cref="QueryClient.SetQueryDefaults"/> in registration order.
     /// </summary>
-    /// <param name="defaults">The defaults to register, including the key prefix they apply to.</param>
-    public void SetQueryDefaults(QueryDefaults defaults)
+    /// <param name="queryKey">The key prefix that query keys are matched against.</param>
+    /// <param name="defaults">The defaults to apply to matching queries.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="queryKey"/> or <paramref name="defaults"/> is <see langword="null"/>.
+    /// </exception>
+    public void SetQueryDefaults(QueryKey queryKey, QueryDefaults defaults)
     {
+        ArgumentNullException.ThrowIfNull(queryKey);
         ArgumentNullException.ThrowIfNull(defaults);
 
-        QueryDefaults ??= [];
-        QueryDefaults.Add(defaults);
+        QueryDefaults.Add((queryKey, defaults));
     }
 
     /// <summary>
-    /// Registers per-key-prefix defaults for mutations. Any mutation whose key
-    /// starts with the key in <paramref name="defaults"/> inherits these defaults.
-    /// Mirrors <see cref="QueryClient.SetMutationDefaults"/>.
+    /// Registers defaults for every mutation whose key starts with <paramref name="mutationKey"/>.
+    /// Applied with <see cref="QueryClient.SetMutationDefaults"/> in registration order.
     /// </summary>
-    /// <param name="defaults">The defaults to register, including the mutation key prefix they apply to.</param>
-    public void SetMutationDefaults(MutationDefaults defaults)
+    /// <param name="mutationKey">The key prefix that mutation keys are matched against.</param>
+    /// <param name="defaults">The defaults to apply to matching mutations.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="mutationKey"/> or <paramref name="defaults"/> is <see langword="null"/>.
+    /// </exception>
+    public void SetMutationDefaults(QueryKey mutationKey, MutationDefaults defaults)
     {
+        ArgumentNullException.ThrowIfNull(mutationKey);
         ArgumentNullException.ThrowIfNull(defaults);
 
-        MutationDefaults ??= [];
-        MutationDefaults.Add(defaults);
+        MutationDefaults.Add((mutationKey, defaults));
     }
 }

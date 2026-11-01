@@ -290,13 +290,13 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
         var retryerOptions = new RetryerOptions<TData>
         {
             Fn = ct => _options.MutationFn(variables, functionContext, ct),
-            MaxRetries = (_options.Retry ?? 0) + 1,
+            MaxRetries = (_options.Retry ?? OptionsDefaulting.FallbackMutationRetry) + 1,
             RetryDelay = _options.RetryDelay,
             TimeProvider = _client.TimeProvider,
             LoggerFactory = _client.LoggerFactory,
             Metrics = _client.Metrics,
             RetrySource = "mutation",
-            NetworkMode = _options.NetworkMode,
+            NetworkMode = _options.NetworkMode ?? OptionsDefaulting.FallbackNetworkMode,
             OnlineManager = _client.OnlineManager,
             FocusManager = _client.FocusManager,
             CanRun = AlwaysCanRun,

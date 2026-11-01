@@ -2873,7 +2873,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange — set Retry=0 globally so the query fails immediately
         var client = CreateQueryClient();
-        client.DefaultOptions = new QueryClientDefaultOptions { Retry = 0 };
+        client.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 0 } };
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
@@ -2899,7 +2899,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.DefaultOptions = new QueryClientDefaultOptions { Retry = 0 };
+        client.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 0 } };
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
@@ -2926,7 +2926,7 @@ public sealed class QueryObserverFullTests
     {
         // Arrange
         var client = CreateQueryClient();
-        client.DefaultOptions = new QueryClientDefaultOptions { Retry = 0 };
+        client.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 0 } };
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
@@ -2992,7 +2992,7 @@ public sealed class QueryObserverFullTests
         // Arrange
         var client = CreateQueryClient();
         // Not testing retry — avoid 7s backoff wait
-        client.SetQueryDefaults(["focus-bg-error"], new QueryDefaults { QueryKey = ["focus-bg-error"], Retry = 0 });
+        client.SetQueryDefaults(["focus-bg-error"], new QueryDefaults { Retry = 0 });
         var callCount = 0;
         var initialFetchDone = new SemaphoreSlim(0, 1);
 

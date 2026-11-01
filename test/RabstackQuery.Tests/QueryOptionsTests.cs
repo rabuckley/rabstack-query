@@ -71,7 +71,7 @@ public sealed class QueryOptionsTests
     }
 
     [Fact]
-    public void ToFetchQueryOptions_DefaultsRetryToZero_WhenNull()
+    public void ToFetchQueryOptions_LeavesRetryUnset_WhenNull()
     {
         var options = new QueryOptions<string>
         {
@@ -81,7 +81,7 @@ public sealed class QueryOptionsTests
 
         var fetchOptions = options.ToFetchQueryOptions();
 
-        Assert.Equal(0, fetchOptions.Retry);
+        Assert.Null(fetchOptions.Retry);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public sealed class QueryOptionsTests
     }
 
     [Fact]
-    public void ToObserverOptions_AppliesDefaults_WhenNull()
+    public void ToObserverOptions_LeavesDefaultableOptionsUnset_WhenNull()
     {
         var options = new QueryOptions<string>
         {
@@ -145,8 +145,8 @@ public sealed class QueryOptionsTests
 
         var observer = options.ToObserverOptions();
 
-        Assert.Equal(TimeSpan.Zero, observer.StaleTime);
-        Assert.Equal(TimeSpan.FromMinutes(5), observer.GcTime);
+        Assert.Null(observer.StaleTime);
+        Assert.Null(observer.GcTime);
         Assert.Null(observer.Retry);
         Assert.Null(observer.RetryDelay);
         Assert.Null(observer.Meta);

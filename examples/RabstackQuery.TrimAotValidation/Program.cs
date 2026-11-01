@@ -135,12 +135,14 @@ diServices.AddRabstackQuery(options =>
 {
     options.DefaultOptions = new QueryClientDefaultOptions
     {
-        StaleTime = TimeSpan.FromSeconds(30),
-        Retry = 2,
+        Queries = new QueryDefaults
+        {
+            StaleTime = TimeSpan.FromSeconds(30),
+            Retry = 2,
+        },
     };
-    options.SetQueryDefaults(new QueryDefaults
+    options.SetQueryDefaults(["validation"], new QueryDefaults
     {
-        QueryKey = ["validation"],
         GcTime = TimeSpan.FromMinutes(5),
     });
 });
@@ -148,7 +150,7 @@ var diProvider = diServices.BuildServiceProvider();
 QueryClient diClient = diProvider.GetRequiredService<QueryClient>();
 
 Console.WriteLine($"DI client created: true");
-Console.WriteLine($"DI defaults applied: {diClient.DefaultOptions is { Retry: 2 }}");
+Console.WriteLine($"DI defaults applied: {diClient.DefaultOptions is { Queries.Retry: 2 }}");
 
 diClient.Dispose();
 diProvider.Dispose();

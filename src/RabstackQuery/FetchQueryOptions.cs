@@ -15,20 +15,28 @@ public sealed class FetchQueryOptions<TData>
 
     /// <summary>
     /// Data older than this duration is considered stale and will be refetched.
-    /// Null means use the default (<see cref="TimeSpan.Zero"/> = always stale).
+    /// <see langword="null"/> inherits from <see cref="QueryClient.SetQueryDefaults"/> and
+    /// <see cref="QueryClientDefaultOptions.Queries"/>, falling back to
+    /// <see cref="TimeSpan.Zero"/> (always stale).
     /// </summary>
     public TimeSpan? StaleTime { get; init; }
 
-    /// <summary>Garbage collection duration. Null uses the default (5 min).</summary>
+    /// <summary>
+    /// Garbage collection duration. <see langword="null"/> inherits from the key-prefix and
+    /// client-wide defaults, falling back to 5 minutes. Applies only when this call creates the query.
+    /// </summary>
     public TimeSpan? GcTime { get; init; }
 
     /// <summary>
-    /// Number of retries. Null uses the default (0 for imperative fetch, matching
-    /// TanStack's <c>fetchQuery</c> behavior where retry defaults to <c>false</c>).
+    /// Gets or initializes the number of retries. <see langword="null"/> inherits from key-prefix
+    /// and client-wide defaults, falling back to 0. Applies only when this call creates the query.
     /// </summary>
     public int? Retry { get; init; }
 
-    /// <summary>Custom retry delay function. Receives failure count and exception.</summary>
+    /// <summary>
+    /// Custom retry delay function. Receives failure count and exception.
+    /// <see langword="null"/> inherits from the key-prefix and client-wide defaults.
+    /// </summary>
     public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
     /// <inheritdoc cref="QueryConfiguration{TData}.Meta"/>
@@ -57,6 +65,15 @@ public sealed class FetchQueryOptions<TData>
     /// <c>revalidateIfStale</c> option on <c>ensureQueryData</c>.
     /// </summary>
     public bool RevalidateIfStale { get; init; }
+
+    internal QueryDefaults ToQueryDefaults() => new()
+    {
+        StaleTime = StaleTime,
+        GcTime = GcTime,
+        Retry = Retry,
+        RetryDelay = RetryDelay,
+        NetworkMode = NetworkMode,
+    };
 }
 
 /// <summary>

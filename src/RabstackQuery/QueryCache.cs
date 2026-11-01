@@ -103,7 +103,6 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
                 QueryHash = queryHash,
                 Options = client.DefaultQueryOptions(options),
                 State = state,
-                DefaultOptions = client.GetQueryDefaults<TData>(queryKey),
                 Metrics = _metrics,
             });
 
