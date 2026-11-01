@@ -71,8 +71,7 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     /// Initializes a new instance of the <see cref="InfiniteQueryViewModel{TData, TPageParam}"/> class with observer options.
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
-    /// <param name="options">The infinite query observer options, including key, query function,
-    /// initial page parameter, and page navigation callbacks.</param>
+    /// <param name="options">The infinite query observer options.</param>
     /// <exception cref="InvalidOperationException">
     /// No <see cref="SynchronizationContext"/> is present on the calling thread.
     /// </exception>
