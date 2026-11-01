@@ -186,86 +186,59 @@ public sealed class ThreadMarshallingTests
     [Fact]
     public async Task QueryViewModel_Deferred_Post_Should_Not_Update_Properties_After_Dispose()
     {
-        // Arrange — use a DeferredSyncContext that queues Post callbacks
-        // instead of executing them, so we can control execution timing.
         var syncContext = new DeferredSynchronizationContext();
-
         var client = CreateQueryClient();
-        var fetchCount = 0;
+        var fetchGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var vm = WithSyncContext(syncContext, () =>
             new QueryViewModel<string, string>(
                 client,
                 queryKey: ["ghost-qvm"],
-                queryFn: ct =>
-                {
-                    fetchCount++;
-                    return Task.FromResult($"data-{fetchCount}");
-                }));
-
-        // Execute any initial callbacks so construction state settles
+                queryFn: _ => fetchGate.Task));
         syncContext.DrainQueue();
 
-        await WaitForAsync(() => vm.IsSuccess || fetchCount >= 1);
+        // Fetch continuations use this queue. Stop when the cache updates;
+        // draining the queue would also deliver the success notification before disposal.
+        fetchGate.SetResult("data");
+        while (client.GetQueryData<string>(["ghost-qvm"]) is null)
+        {
+            await WaitForAsync(() => syncContext.QueuedCount > 0);
+            syncContext.RunNext();
+        }
 
-        // Drain again to process all pending state
-        syncContext.DrainQueue();
-        var dataBeforeInvalidation = vm.Data;
-
-        await Task.Run(() => client.InvalidateQueriesAsync(["ghost-qvm"]), TestContext.Current.CancellationToken);
-
-        // Give the fire-and-forget refetch time to complete on the thread pool
-        await Task.Delay(200, TestContext.Current.CancellationToken);
-
-        // Dispose BEFORE draining the queued callbacks — simulates the
-        // race where the user navigates away (disposing the ViewModel)
-        // while a notification is still in the dispatcher queue.
         vm.Dispose();
-
-        // Execute ghost callbacks
+        var changed = RecordPropertyChanges(vm);
         var ghostCount = syncContext.DrainQueue();
 
-        if (ghostCount > 0)
-        {
-            Assert.Equal(dataBeforeInvalidation, vm.Data);
-        }
+        Assert.True(ghostCount > 0);
+        Assert.Empty(changed);
+        Assert.Null(vm.Data);
+        Assert.False(vm.IsSuccess);
     }
 
     [Fact]
     public async Task MutationViewModel_Deferred_Post_Should_Not_Update_Properties_After_Dispose()
     {
         var syncContext = new DeferredSynchronizationContext();
-
         var client = CreateQueryClient();
 
         var vm = WithSyncContext(syncContext, () =>
             new MutationViewModel<string, Exception, string, object?>(
                 client,
                 mutationFn: (input, _, _) => Task.FromResult(input.ToUpper())));
-
         syncContext.DrainQueue();
 
-        // Act — start mutation from background thread, then dispose before
-        // the queued Post callback executes.
-        var mutateTask = Task.Run(async () =>
-            await vm.MutateCommand.ExecuteAsync("hello"), TestContext.Current.CancellationToken);
+        // Run off-context so mutation completion does not require draining UI notifications.
+        await Task.Run(() => vm.MutateCommand.ExecuteAsync("hello"), TestContext.Current.CancellationToken);
 
-        // Wait for the mutation to complete on the thread pool
-        await mutateTask;
-        await Task.Delay(50, TestContext.Current.CancellationToken);
-
-        // Dispose before draining
         vm.Dispose();
-
+        var changed = RecordPropertyChanges(vm);
         var ghostCount = syncContext.DrainQueue();
 
-        // Assert — ghost callbacks should not update the disposed ViewModel
-        if (ghostCount > 0)
-        {
-            Assert.True(vm.IsIdle,
-                "Ghost callback updated a disposed MutationViewModel. " +
-                "Expected properties to remain at pre-Dispose state.");
-        }
+        Assert.True(ghostCount > 0);
+        Assert.Empty(changed);
+        Assert.Null(vm.Data);
+        Assert.True(vm.IsIdle);
     }
 
     [Fact]
