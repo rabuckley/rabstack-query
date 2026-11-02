@@ -40,6 +40,53 @@ public sealed class InfiniteQueryObserverTests
         Assert.False(result.HasPreviousPage);
     }
 
+    /// <summary>
+    /// A resubscribe after eviction moves the inner observer to a new query, so the page
+    /// fetch function must read the state of that query and not the evicted one.
+    /// </summary>
+    [Fact(Timeout = 10_000)]
+    public async Task Resubscribe_After_Eviction_Should_Fetch_Pages_Into_New_Query()
+    {
+        // Arrange
+        var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
+        var observer = new InfiniteQueryObserver<string, int>(client, new InfiniteQueryObserverOptions<string, int>
+        {
+            QueryKey = ["infinite-eviction"],
+            QueryFn = ctx => Task.FromResult($"page-{ctx.PageParam}"),
+            InitialPageParam = 0,
+            GetNextPageParam = ctx => ctx.PageParam < 5 ? ctx.PageParam + 1 : PageParamResult<int>.None,
+            GcTime = TimeSpan.FromSeconds(5),
+        });
+
+        var firstLoad = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstSubscription = observer.Subscribe(result =>
+        {
+            if (result.Data is not null) firstLoad.TrySetResult();
+        });
+        await firstLoad.Task;
+        await observer.FetchNextPageAsync();
+        firstSubscription.Dispose();
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        Assert.Empty(client.QueryCache.GetAll());
+
+        // Act
+        var reload = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = observer.Subscribe(result =>
+        {
+            if (result.Status is QueryStatus.Succeeded or QueryStatus.Errored) reload.TrySetResult();
+        });
+        await reload.Task;
+        await observer.FetchNextPageAsync();
+
+        // Assert
+        Assert.Null(observer.CurrentResult.Error);
+        var data = observer.CurrentResult.Data;
+        Assert.NotNull(data);
+        Assert.Equal(["page-0", "page-1"], data.Pages);
+        Assert.Equal(1, Assert.Single(client.QueryCache.GetAll()).ObserverCount);
+    }
+
     [Fact]
     public async Task Should_Compute_HasNextPage_And_HasPreviousPage()
     {

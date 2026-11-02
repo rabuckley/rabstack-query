@@ -3616,6 +3616,211 @@ public sealed class QueryObserverFullTests
         Assert.False(observer2.CurrentResult.IsStale);
     }
 
+    // SetQueryData would give the query the default GcTime, and an observer's GcTime does
+    // not change a query that already exists, so seed through a fetch with the short GcTime.
+    private static Task SeedEvictableQuery(QueryClient client, QueryKey key) =>
+        client.FetchQueryAsync(new FetchQueryOptions<string>
+        {
+            QueryKey = key,
+            QueryFn = _ => Task.FromResult("seeded"),
+            GcTime = TimeSpan.FromSeconds(5),
+        });
+
+    private static QueryObserverOptions<string, string> EvictionOptions(
+        QueryKey key,
+        Func<QueryFunctionContext, Task<string>> queryFn,
+        bool enabled = true) => new()
+        {
+            QueryKey = key,
+            QueryFn = queryFn,
+            Enabled = enabled,
+            StaleTime = TimeSpan.FromMinutes(10),
+            GcTime = TimeSpan.FromSeconds(5),
+        };
+
+    /// <summary>
+    /// An observer that resubscribes after its query was garbage collected must attach
+    /// to the query the client now holds, or later cache updates never reach it. TanStack's
+    /// <c>onSubscribe</c> reattaches to <c>#currentQuery</c> (queryObserver.ts), relying on
+    /// the React adapter's per-render <c>setOptions</c> to look the query up again. Observers
+    /// here have no render pass, so the resubscribe path does the lookup.
+    /// </summary>
+    [Fact(Timeout = 10_000)]
+    public async Task Resubscribe_After_Gc_Eviction_Should_Receive_Client_Updates()
+    {
+        // Arrange
+        var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
+        QueryKey key = ["eviction-updates"];
+        await SeedEvictableQuery(client, key);
+
+        var observer = new QueryObserver<string, string>(
+            client, EvictionOptions(key, _ => new TaskCompletionSource<string>().Task));
+
+        observer.Subscribe(_ => { }).Dispose();
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        Assert.Empty(client.QueryCache.GetAll());
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+        client.SetQueryData(key, "updated");
+
+        // Assert
+        Assert.Equal("updated", observer.CurrentResult.Data);
+        Assert.Equal(1, Assert.Single(client.QueryCache.GetAll()).ObserverCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task Resubscribe_After_Gc_Eviction_Should_Fetch_And_Answer_Invalidation()
+    {
+        // Arrange
+        var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
+        var fetchCount = 0;
+        var firstFetchAfterEviction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        QueryKey key = ["eviction-invalidate"];
+        await SeedEvictableQuery(client, key);
+
+        var observer = new QueryObserver<string, string>(client, EvictionOptions(key, _ =>
+        {
+            var count = Interlocked.Increment(ref fetchCount);
+            firstFetchAfterEviction.TrySetResult();
+            return Task.FromResult($"fetch-{count}");
+        }));
+
+        observer.Subscribe(_ => { }).Dispose();
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        Assert.Empty(client.QueryCache.GetAll());
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+        await firstFetchAfterEviction.Task;
+        await client.InvalidateQueriesAsync(key);
+
+        // Assert
+        Assert.Equal(2, Volatile.Read(ref fetchCount));
+        Assert.Equal("fetch-2", observer.CurrentResult.Data);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public void Resubscribe_After_Removal_Should_Attach_To_Replacement_Query()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+        var fetchCount = 0;
+        QueryKey key = ["eviction-replaced"];
+        client.SetQueryData(key, "original");
+
+        var observer = new QueryObserver<string, string>(client, EvictionOptions(key, _ =>
+        {
+            Interlocked.Increment(ref fetchCount);
+            return Task.FromResult("fetched");
+        }));
+
+        observer.Subscribe(_ => { }).Dispose();
+        client.QueryCache.Clear();
+        client.SetQueryData(key, "replacement");
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+
+        // Assert
+        Assert.Equal("replacement", observer.CurrentResult.Data);
+        Assert.Equal(0, Volatile.Read(ref fetchCount));
+        Assert.Equal(1, Assert.Single(client.QueryCache.GetAll()).ObserverCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task Resubscribe_After_Eviction_Should_Not_Fetch_When_Disabled()
+    {
+        // Arrange
+        var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
+        var fetchCount = 0;
+        QueryKey key = ["eviction-disabled"];
+        await SeedEvictableQuery(client, key);
+
+        var observer = new QueryObserver<string, string>(client, EvictionOptions(
+            key,
+            _ =>
+            {
+                Interlocked.Increment(ref fetchCount);
+                return Task.FromResult("fetched");
+            },
+            enabled: false));
+
+        observer.Subscribe(_ => { }).Dispose();
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        Assert.Empty(client.QueryCache.GetAll());
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+
+        // Assert
+        Assert.Equal(0, Volatile.Read(ref fetchCount));
+        Assert.Null(observer.CurrentResult.Data);
+        Assert.Equal(QueryStatus.Pending, observer.CurrentResult.Status);
+        Assert.Equal(1, Assert.Single(client.QueryCache.GetAll()).ObserverCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task Resubscribe_After_Eviction_Should_Use_QueryFn_Set_While_Unsubscribed()
+    {
+        // Arrange
+        var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
+        var latestFnCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        QueryKey key = ["eviction-setoptions"];
+        await SeedEvictableQuery(client, key);
+
+        var observer = new QueryObserver<string, string>(
+            client, EvictionOptions(key, _ => Task.FromResult("original-fn")));
+
+        observer.Subscribe(_ => { }).Dispose();
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        Assert.Empty(client.QueryCache.GetAll());
+        observer.SetOptions(EvictionOptions(key, _ =>
+        {
+            latestFnCalled.TrySetResult();
+            return Task.FromResult("latest-fn");
+        }));
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+
+        // Assert
+        await latestFnCalled.Task;
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task Resubscribe_Before_Eviction_Should_Keep_Query_And_Data()
+    {
+        // Arrange
+        var timeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
+        var fetchCount = 0;
+        QueryKey key = ["eviction-none"];
+        await SeedEvictableQuery(client, key);
+
+        var observer = new QueryObserver<string, string>(client, EvictionOptions(key, _ =>
+        {
+            Interlocked.Increment(ref fetchCount);
+            return Task.FromResult("fetched");
+        }));
+
+        observer.Subscribe(_ => { }).Dispose();
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+
+        // Assert
+        Assert.Equal("seeded", observer.CurrentResult.Data);
+        Assert.Equal(0, Volatile.Read(ref fetchCount));
+        Assert.Equal(1, Assert.Single(client.QueryCache.GetAll()).ObserverCount);
+    }
+
     /// <summary>
     /// UpdateStaleTimeout should schedule a timer that notifies listeners when
     /// data transitions from fresh to stale. Validates queryObserver.ts:354-376.

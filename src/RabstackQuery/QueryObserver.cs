@@ -545,10 +545,22 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             _client.Metrics.ActiveObservers?.Add(1);
             _logger.ObserverSubscribed(_currentQuery?.QueryHash, ListenerCount);
 
-            // Re-add observer to the query (OnUnsubscribe removes it when all
-            // listeners leave). AddObserver is idempotent so this is safe on the
-            // first subscribe too.
-            _currentQuery?.AddObserver(this);
+            // The query may have been garbage collected or removed while this observer had
+            // no listeners. TanStack's onSubscribe reattaches to #currentQuery without
+            // checking, because React's useBaseQuery calls setOptions on every render and
+            // that looks the query up in the cache again. Observers here have no render
+            // pass, so a stale reference would never see another client update.
+            if (_currentQuery is { QueryHash: { } hash } query
+                && ReferenceEquals(_client.QueryCache.GetByHash(hash), query))
+            {
+                // AddObserver is idempotent so this is safe on the first subscribe too.
+                query.AddObserver(this);
+            }
+            else
+            {
+                // Attaches to the cached query, creating one if needed.
+                UpdateQuery();
+            }
 
             lock (_refetchIntervalLock) { _isMounted = true; }
 

@@ -26,27 +26,17 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
         _client = client;
         _options = options;
 
-        // Build the fetch function via InfiniteQueryBehavior. We need the query
-        // reference to read State.FetchMeta at execution time, but the query
-        // doesn't exist yet (it's created inside QueryObserver's constructor).
-        // So we create the inner observer first with a temporary query function,
-        // then replace it once we have the query reference.
-
-        // Temporary query function — will be replaced immediately after construction.
-        Func<QueryFunctionContext, Task<InfiniteData<TData, TPageParam>>> tempFn =
-            _ => throw new InvalidOperationException("Query function not initialized");
-
-        var innerOptions = options.ToInnerOptions(tempFn);
+        // The fetch function reads the state of the query it fetches into, which doesn't exist
+        // until QueryObserver's constructor creates it and changes if the inner observer
+        // resubscribes after eviction. Resolve it per call rather than capturing one instance.
         _inner = new QueryObserver<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>>(
-            client, innerOptions);
-
-        // Now we have the query reference — set the real fetch function.
-        var query = _inner.CurrentQuery;
-        if (query is not null)
-        {
-            var fetchFn = InfiniteQueryBehavior.CreateFetchFn(options, query);
-            query.SetQueryFn(fetchFn);
-        }
+            client,
+            options.ToInnerOptions(ctx =>
+            {
+                var query = _inner?.CurrentQuery
+                    ?? throw new InvalidOperationException("Infinite query observer has no query.");
+                return InfiniteQueryBehavior.CreateFetchFn(options, query)(ctx);
+            }));
     }
 
     /// <summary>
