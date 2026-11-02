@@ -16,12 +16,8 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     private readonly QueryClient _client;
     private readonly ILogger _logger;
     private readonly InfiniteQueryObserver<TData, TPageParam> _observer;
-    private readonly SynchronizationContext _syncContext;
     private readonly string _queryKeyDisplay;
-    private IDisposable? _subscription;
-
-    // Dispose may run off the UI thread, so posted callbacks need a volatile guard.
-    private volatile bool _disposed;
+    private readonly ReversibleSubscription<IInfiniteQueryResult<TData, TPageParam>> _subscription;
 
     [ObservableProperty]
     public partial InfiniteData<TData, TPageParam>? Data { get; set; }
@@ -89,7 +85,7 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.InfiniteQueryViewModel");
         _queryKeyDisplay = options.QueryKey.ToString();
-        _syncContext = SynchronizationContext.Current
+        var syncContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException(
                 "InfiniteQueryViewModel must be constructed on a thread with a " +
                 "SynchronizationContext (the UI thread) so that property changes can be " +
@@ -97,17 +93,37 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
                 "thread — check for a Task.Run factory or a background DI scope.");
         _observer = new InfiniteQueryObserver<TData, TPageParam>(client, options);
 
-        _subscription = _observer.Subscribe(OnResultChanged);
-        UpdateFromResult(_observer.CurrentResult);
+        _subscription = new ReversibleSubscription<IInfiniteQueryResult<TData, TPageParam>>(
+            this,
+            syncContext,
+            listener => _observer.Subscribe(result => listener(result)),
+            () => _observer.CurrentResult,
+            UpdateFromResult);
+        _subscription.SetActive(true);
         _logger.InfiniteQueryViewModelSubscribed(_queryKeyDisplay);
     }
 
-    private void OnResultChanged(IInfiniteQueryResult<TData, TPageParam> result) =>
-        _syncContext.Post(_ =>
+    /// <summary>
+    /// Gets or sets a value that indicates whether this ViewModel listens to its infinite query.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to receive updates; <see langword="false"/> to detach from the query, as TanStack's <c>subscribed: false</c> does
+    /// while keeping this ViewModel's state. The default is <see langword="true"/>.
+    /// </value>
+    /// <exception cref="ObjectDisposedException">
+    /// The value is set to <see langword="true"/> after this ViewModel is disposed.
+    /// </exception>
+    /// <remarks>
+    /// Set this on the UI thread. Setting <see langword="true"/> shows the current cached result and refetches according to the mount options, such as when the data is stale. Setting <see langword="false"/> after disposal has no effect.
+    /// </remarks>
+    public bool Subscribed
+    {
+        get => _subscription.IsActive;
+        set
         {
-            if (_disposed) return;
-            UpdateFromResult(result);
-        }, null);
+            if (_subscription.SetActive(value)) OnPropertyChanged();
+        }
+    }
 
     private void UpdateFromResult(IInfiniteQueryResult<TData, TPageParam> result)
     {
@@ -189,9 +205,7 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         _logger.InfiniteQueryViewModelDisposed(_queryKeyDisplay);
         // Disposing the subscription triggers OnUnsubscribe → Destroy() cascade
         // on the inner QueryObserver, which handles all cleanup.
-        _disposed = true;
-        _subscription?.Dispose();
-        _subscription = null;
+        _subscription.Dispose();
         GC.SuppressFinalize(this);
     }
 }

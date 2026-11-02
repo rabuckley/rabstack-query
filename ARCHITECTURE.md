@@ -116,6 +116,22 @@ if it is null, and post observer updates through it.
   unsubscribing. No posted update starts applying after `Dispose` returns, though one
   already running on the UI thread may finish.
 
+## Pausing MVVM ViewModels
+
+`Subscribed` ports the `subscribed` option from TanStack's `useBaseQuery`, which its React Native guide
+pairs with screen focus. A hidden page keeps its ViewModel state but holds no subscriptions, so nothing in
+the client references a page that is later popped. MAUI raises `Unloaded` at different times on each platform
+and has no signal that a page has left for good, so `Dispose` cannot be tied to page lifetime.
+
+`MutationViewModel` also has `Subscribed`, which TanStack's `useMutation` does not. React's unmount releases
+that observer, but a subscribed observer here would keep its finished mutation in `MutationCache`.
+
+A queued update from before unsubscribing is discarded on resume, because resuming has already applied a
+newer result.
+
+While unsubscribed, `QueryViewModel.SetOptions` shows the state of the query its new options select, because
+TanStack's `useBaseQuery` reads `getOptimisticResult` on every render and ViewModels have no render pass.
+
 ## Omitted property tracking
 
 TanStack uses `trackResult` and `notifyOnChangeProps` to suppress React re-renders based

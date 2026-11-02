@@ -24,11 +24,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
 {
     private readonly MutationObserver<TData, TError, TVariables, TOnMutateResult> _observer;
     private readonly ILogger _logger;
-    private readonly SynchronizationContext _syncContext;
-    private IDisposable? _subscription;
-
-    // Dispose may run off the UI thread, so posted callbacks need a volatile guard.
-    private volatile bool _disposed;
+    private readonly ReversibleSubscription<IMutationResult<TData, TError>> _subscription;
 
     [ObservableProperty]
     public partial TData? Data { get; set; }
@@ -96,7 +92,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         }
 
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.MutationViewModel");
-        _syncContext = SynchronizationContext.Current
+        var syncContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException(
                 "MutationViewModel must be constructed on a thread with a " +
                 "SynchronizationContext (the UI thread) so that property changes can be " +
@@ -104,18 +100,41 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
                 "thread — check for a Task.Run factory or a background DI scope.");
 
         _observer = new MutationObserver<TData, TError, TVariables, TOnMutateResult>(client, options);
-        _subscription = _observer.Subscribe(OnResultChanged);
+        _subscription = new ReversibleSubscription<IMutationResult<TData, TError>>(
+            this,
+            syncContext,
+            listener => _observer.Subscribe(result => listener(result)),
+            () => _observer.CurrentResult,
+            UpdateFromResult);
+        _subscription.SetActive(true);
 
-        UpdateFromResult(_observer.CurrentResult);
         _logger.MutationViewModelCreated();
     }
 
-    private void OnResultChanged(IMutationResult<TData, TError> result) =>
-        _syncContext.Post(_ =>
+    // TanStack's useMutation has no subscribed option because React's unmount releases its
+    // observer. MAUI has no unmount signal, and a subscribed observer keeps its finished
+    // mutation in MutationCache, so a page popped while subscribed would leave it there forever.
+    /// <summary>
+    /// Gets or sets a value that indicates whether this ViewModel listens to its current mutation.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to receive updates; <see langword="false"/> to detach from the mutation
+    /// while keeping this ViewModel's state. The default is <see langword="true"/>.
+    /// </value>
+    /// <exception cref="ObjectDisposedException">
+    /// The value is set to <see langword="true"/> after this ViewModel is disposed.
+    /// </exception>
+    /// <remarks>
+    /// Set this on the UI thread. Unsubscribing does not cancel a mutation in progress. Setting <see langword="true"/> shows the mutation's current state. Setting <see langword="false"/> after disposal has no effect.
+    /// </remarks>
+    public bool Subscribed
+    {
+        get => _subscription.IsActive;
+        set
         {
-            if (_disposed) return;
-            UpdateFromResult(result);
-        }, null);
+            if (_subscription.SetActive(value)) OnPropertyChanged();
+        }
+    }
 
     private void UpdateFromResult(IMutationResult<TData, TError> result)
     {
@@ -211,9 +230,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         if (disposing)
         {
             _logger.MutationViewModelDisposed();
-            _disposed = true;
-            _subscription?.Dispose();
-            _subscription = null;
+            _subscription.Dispose();
         }
     }
 }

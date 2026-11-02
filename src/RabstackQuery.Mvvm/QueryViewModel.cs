@@ -26,12 +26,8 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     private readonly QueryClient _client;
     private readonly ILogger _logger;
     private readonly QueryObserver<TData, TQueryData> _observer;
-    private readonly SynchronizationContext _syncContext;
     private readonly string _queryKeyDisplay;
-    private IDisposable? _subscription;
-
-    // Dispose may run off the UI thread, so posted callbacks need a volatile guard.
-    private volatile bool _disposed;
+    private readonly ReversibleSubscription<IQueryResult<TData>> _subscription;
 
     [ObservableProperty]
     public partial TData? Data { get; set; }
@@ -113,7 +109,7 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
         _client = client;
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.QueryViewModel");
         _queryKeyDisplay = options.QueryKey.ToString();
-        _syncContext = SynchronizationContext.Current
+        var syncContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException(
                 "QueryViewModel must be constructed on a thread with a " +
                 "SynchronizationContext (the UI thread) so that property changes can be " +
@@ -121,9 +117,36 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
                 "thread — check for a Task.Run factory or a background DI scope.");
         _observer = new QueryObserver<TData, TQueryData>(client, options);
 
-        _subscription = _observer.Subscribe(OnResultChanged);
-        UpdateFromResult(_observer.CurrentResult);
+        _subscription = new ReversibleSubscription<IQueryResult<TData>>(
+            this,
+            syncContext,
+            listener => _observer.Subscribe(result => listener(result)),
+            () => _observer.CurrentResult,
+            UpdateFromResult);
+        _subscription.SetActive(true);
         _logger.QueryViewModelSubscribed(_queryKeyDisplay);
+    }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether this ViewModel listens to its query.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to receive updates; <see langword="false"/> to detach from the query, as TanStack's <c>subscribed: false</c> does
+    /// while keeping this ViewModel's state. The default is <see langword="true"/>.
+    /// </value>
+    /// <exception cref="ObjectDisposedException">
+    /// The value is set to <see langword="true"/> after this ViewModel is disposed.
+    /// </exception>
+    /// <remarks>
+    /// Set this on the UI thread. Setting <see langword="true"/> shows the current cached result and refetches according to the mount options, such as when the data is stale. Setting <see langword="false"/> after disposal has no effect.
+    /// </remarks>
+    public bool Subscribed
+    {
+        get => _subscription.IsActive;
+        set
+        {
+            if (_subscription.SetActive(value)) OnPropertyChanged();
+        }
     }
 
     /// <summary>
@@ -134,19 +157,19 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     /// <param name="options">The new options to apply.</param>
     /// <remarks>
     /// Pass a new options object to update configuration at runtime. Options are replaced
-    /// atomically rather than mutated in place.
+    /// atomically rather than mutated in place. Call this on the UI thread. While
+    /// <see cref="Subscribed"/> is <see langword="false"/>, this shows the current state of the query
+    /// that the new options select, without attaching or fetching.
     /// </remarks>
     public void SetOptions(QueryObserverOptions<TData, TQueryData> options)
     {
         _observer.SetOptions(options);
-    }
 
-    private void OnResultChanged(IQueryResult<TData> result) =>
-        _syncContext.Post(_ =>
-        {
-            if (_disposed) return;
-            UpdateFromResult(result);
-        }, null);
+        // TanStack's useBaseQuery reads getOptimisticResult on every render, so a component with
+        // subscribed: false still shows the result for its new options. ViewModels have no render
+        // pass, so a detached one has to apply that result here.
+        _subscription.RefreshIfInactive();
+    }
 
     private void UpdateFromResult(IQueryResult<TData> result)
     {
@@ -201,9 +224,7 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     public void Dispose()
     {
         _logger.QueryViewModelDisposed(_queryKeyDisplay);
-        _disposed = true;
-        _subscription?.Dispose();
-        _subscription = null;
+        _subscription.Dispose();
         GC.SuppressFinalize(this);
     }
 

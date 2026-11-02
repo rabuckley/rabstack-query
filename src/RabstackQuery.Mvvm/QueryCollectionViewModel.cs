@@ -231,6 +231,30 @@ public sealed partial class QueryCollectionViewModel<TData, TQueryFnData> : Obse
     }
 
     /// <summary>
+    /// Gets or sets a value that indicates whether this ViewModel listens to its query.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to receive updates; <see langword="false"/> to detach from the query, as TanStack's <c>subscribed: false</c> does
+    /// while keeping this ViewModel's state. The default is <see langword="true"/>.
+    /// </value>
+    /// <exception cref="ObjectDisposedException">
+    /// The value is set to <see langword="true"/> after this ViewModel is disposed.
+    /// </exception>
+    /// <remarks>
+    /// Set this on the UI thread. Setting <see langword="true"/> brings <see cref="Items"/> up to date with the cached result and refetches according to the mount options, such as when the data is stale. Setting <see langword="false"/> after disposal has no effect.
+    /// </remarks>
+    public bool Subscribed
+    {
+        get => _queryViewModel.Subscribed;
+        set
+        {
+            if (_queryViewModel.Subscribed == value) return;
+            _queryViewModel.Subscribed = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
     /// Disposes the QueryCollectionViewModel and unsubscribes from updates.
     /// </summary>
     public void Dispose()
