@@ -651,8 +651,6 @@ public sealed class QueryTests
         var query = BuildQuery<string>(client, ["dedup-cancel"], retry: 0);
         var callCount = 0;
 
-        // The query function must respect the cancellation token, otherwise
-        // Cancel() cannot interrupt it.
         query.SetQueryFn(async ctx =>
         {
             callCount++;

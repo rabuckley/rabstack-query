@@ -254,6 +254,105 @@ public class QueryCancellationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch2);
     }
 
+    // TanStack retryer.ts cancel.
+    [Fact(Timeout = 10_000)]
+    public async Task CancelQueriesAsync_WhenQueryFnIgnoresToken_SettlesFetchBeforeReturning()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["settles"], "original");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["settles"]))!;
+        var fetchStarted = new TaskCompletionSource();
+        var neverCompletes = new TaskCompletionSource<string>();
+        query.SetQueryFn(_ =>
+        {
+            fetchStarted.TrySetResult();
+            return neverCompletes.Task;
+        });
+
+        var fetch = query.Fetch();
+        await fetchStarted.Task;
+        await client.CancelQueriesAsync(new QueryFilters { QueryKey = ["settles"] }, new CancelOptions { Revert = false });
+
+        Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
+        Assert.Equal(QueryStatus.Errored, query.State.Status);
+        Assert.IsAssignableFrom<OperationCanceledException>(query.State.Error);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
+    }
+
+    // TanStack retryer.ts resolve ignores results after cancellation.
+    [Fact(Timeout = 10_000)]
+    public async Task CancelQueriesAsync_WhenQueryFnFinishesLate_DiscardsItsResult()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["late-result"], "original");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["late-result"]))!;
+        var fetchStarted = new TaskCompletionSource();
+        var gate = new TaskCompletionSource<string>();
+        query.SetQueryFn(_ =>
+        {
+            fetchStarted.TrySetResult();
+            return gate.Task;
+        });
+
+        var fetch = query.Fetch();
+        await fetchStarted.Task;
+        await client.CancelQueriesAsync(["late-result"]);
+        client.SetQueryData(["late-result"], "optimistic");
+        gate.SetResult("stale");
+        await fetch;
+
+        Assert.Equal("optimistic", query.State!.Data);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task Cancel_WhenQueryFnFailsLate_DoesNotChangeState()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["late-failure"], "original");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["late-failure"]))!;
+        var fetchStarted = new TaskCompletionSource();
+        var gate = new TaskCompletionSource<string>();
+        query.SetQueryFn(_ =>
+        {
+            fetchStarted.TrySetResult();
+            return gate.Task;
+        });
+
+        var fetch = query.Fetch();
+        await fetchStarted.Task;
+        await query.Cancel(new CancelOptions { Revert = true });
+        gate.SetException(new InvalidOperationException("late failure"));
+        await fetch;
+
+        Assert.Equal("original", query.State!.Data);
+        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
+        Assert.Null(query.State.Error);
+    }
+
+    // TanStack retryer.ts cancel rejects without awaiting the query function.
+    [Fact(Timeout = 10_000)]
+    public async Task CancelQueriesAsync_FromInsideQueryFn_DoesNotDeadlock()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["self-cancel"], "original");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["self-cancel"]))!;
+        var cancelReturned = new TaskCompletionSource();
+        query.SetQueryFn(async _ =>
+        {
+            await Task.Yield();
+            await client.CancelQueriesAsync(["self-cancel"]);
+            cancelReturned.TrySetResult();
+            return "unused";
+        });
+
+        var fetch = query.Fetch();
+        await cancelReturned.Task;
+        await fetch;
+
+        Assert.Equal("original", query.State!.Data);
+        Assert.Equal(FetchStatus.Idle, query.State.FetchStatus);
+    }
+
     [Fact]
     public async Task Fetch_Cancellation_DoesNotDispatchErrorAction()
     {

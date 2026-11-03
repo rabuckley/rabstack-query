@@ -421,6 +421,55 @@ public sealed class StreamedQueryTests
         subscription.Dispose();
     }
 
+    // TanStack streamedQuery.ts finalization.
+    [Fact]
+    public async Task ReplaceRefetch_WhenCancelled_KeepsPreviousData()
+    {
+        var client = CreateQueryClient();
+        var gate = new SemaphoreSlim(0);
+        var chunkEmitted = new SemaphoreSlim(0);
+        var invocation = 0;
+
+        async IAsyncEnumerable<int> Stream(
+            int start,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            for (var i = start; i < start + 2; i++)
+            {
+                await gate.WaitAsync(cancellationToken);
+                yield return i;
+                chunkEmitted.Release();
+            }
+        }
+
+        var observer = new QueryObserver<IReadOnlyList<int>, IReadOnlyList<int>>(
+            client,
+            new QueryObserverOptions<IReadOnlyList<int>, IReadOnlyList<int>>
+            {
+                QueryKey = ["stream-replace-cancel"],
+                QueryFn = StreamedQuery.Create(
+                    ctx => Stream(Interlocked.Increment(ref invocation) == 1 ? 0 : 10, ctx.CancellationToken),
+                    refetchMode: StreamRefetchMode.Replace)
+            });
+
+        var subscription = observer.Subscribe(_ => { });
+        gate.Release(2);
+        await WaitForCondition(() => observer.CurrentResult is { Data.Count: 2, FetchStatus: FetchStatus.Idle });
+
+        var refetch = observer.RefetchAsync();
+        gate.Release();
+        await chunkEmitted.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await chunkEmitted.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await chunkEmitted.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["stream-replace-cancel"]);
+        await refetch.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal([0, 1], observer.CurrentResult.Data);
+        Assert.Equal(FetchStatus.Idle, observer.CurrentResult.FetchStatus);
+
+        subscription.Dispose();
+    }
+
     /// <summary>
     /// TanStack: "should abort when unsubscribed"
     /// When signal is consumed and all observers unsubscribe, the stream is
@@ -466,11 +515,6 @@ public sealed class StreamedQueryTests
         // Act — unsubscribe (should abort the stream because signal was consumed)
         subscription.Dispose();
 
-        // Wait for the streaming function to finish returning the partial data.
-        // Cancel(Revert=true) fires synchronously and briefly sets state to
-        // Pending/Idle, but the streaming function catches the cancellation and
-        // returns the partial data — the retryer resolves successfully, and
-        // FetchCore dispatches the success state.
         await WaitForCondition(() =>
         {
             var s = GetQueryState<IReadOnlyList<int>>(client, ["stream-abort-unsub"]);

@@ -1186,6 +1186,13 @@ public sealed class QueryClient : IDisposable
     /// Cancels in-flight fetches for all queries matching the given filters.
     /// By default, reverts query state to its pre-fetch snapshot.
     /// </summary>
+    /// <param name="filters">The queries to cancel; <see langword="null"/> matches all queries.</param>
+    /// <param name="options">How the cancellation affects query state; <see langword="null"/> reverts it.</param>
+    /// <remarks>
+    /// The returned task completes once the matching fetches have settled, so a result from a cancelled
+    /// fetch cannot overwrite data written afterwards. It does not wait for a query function that ignores
+    /// its token; that function's eventual result is discarded.
+    /// </remarks>
     public async Task CancelQueriesAsync(QueryFilters? filters, CancelOptions? options)
     {
         ThrowIfDisposed();

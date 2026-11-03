@@ -150,30 +150,13 @@ public static class StreamedQuery
 
             var isReplaceRefetch = isRefetch && refetchMode is StreamRefetchMode.Replace;
 
-            // Track accumulated result locally. Used for replace-refetch buffering
-            // and as the return value. C# divergence: TanStack reads from cache
-            // at the end (getQueryData), but our Cancel(revert: true) dispatches
-            // synchronously (unlike TanStack where it's in the async catch chain),
-            // so by the time this function returns, cache data may have been
-            // reverted. Tracking locally ensures partial data survives cancellation.
-            // When the retryer resolves with this value, FetchCore dispatches
-            // success which overwrites the reverted state with the correct data.
-            //
-            // For append mode on refetch, seed from existing cache data so new
-            // chunks are appended to what's already there.
             var result = isRefetch && refetchMode is StreamRefetchMode.Append
                 ? client.GetQueryData<TData>(queryKey) ?? initialValue
                 : initialValue;
 
-            // Mirrors streamedQuery.ts:100-113
-            //
-            // C# divergence: wrap in try-catch for OperationCanceledException.
-            // In TanStack, the `cancelled` bool is the only break mechanism. In C#,
-            // the CancellationToken may propagate through the IAsyncEnumerator's
-            // MoveNextAsync, throwing OperationCanceledException. We catch it and
-            // treat it the same as `cancelled = true` — the function returns the
-            // partial data gracefully rather than letting the exception propagate
-            // (which would cause the retryer to revert state).
+            // TanStack streamedQuery.ts checks a cancellation flag between chunks.
+            // C# enumeration can also throw on cancellation. Catch it to prevent
+            // finalization from writing an incomplete replace-refetch buffer.
             try
             {
                 await foreach (var chunk in streamFn(innerContext))
@@ -210,8 +193,6 @@ public static class StreamedQuery
                 client.SetQueryData(queryKey, result);
             }
 
-            // Return locally tracked result. See comment above for why we don't
-            // read from cache here (C# cancel-revert timing divergence).
             return result;
         };
     }

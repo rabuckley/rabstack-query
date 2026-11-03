@@ -96,6 +96,11 @@ public abstract class Query : Removable
     /// <summary>
     /// Cancels any in-flight fetch for this query.
     /// </summary>
+    /// <param name="options">The cancellation settings; <see langword="null"/> does not revert query state.</param>
+    /// <remarks>
+    /// The returned task completes once the fetch has settled and never faults. It does not wait for a
+    /// query function that ignores its token. That function's eventual result is discarded.
+    /// </remarks>
     public abstract Task Cancel(CancelOptions? options);
 
     /// <summary>Zero-argument overload for binary-stable API evolution.</summary>
@@ -201,6 +206,10 @@ public sealed class Query<TData> : Query
 
         // Set before cancelling so inline completion sees the first cancellation's options.
         public CancelOptions? Cancellation;
+
+        // FetchCore's task is unavailable during its synchronous preamble and can fault.
+        // Cancel needs a non-faulting completion signal available to the query function.
+        public TaskCompletionSource Settled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // Cancellation can resume FetchCore before its replacement exists. Waiting for it here
         // avoids making the cancelled fetch await itself through _currentFetchTask.
@@ -444,9 +453,8 @@ public sealed class Query<TData> : Query
         _logger.QueryCancelled(QueryHash, options?.Revert ?? false);
         var op = _activeFetch;
 
-        // Revert before cancelling. StreamedQuery returns partial data on cancellation,
-        // and C# async continuations can dispatch that success inline. Reverting afterwards
-        // would discard it.
+        // Revert before cancelling. Cancellation can resume FetchCore inline, and it reads the
+        // reverted state to decide whether the fetch resolves or throws.
         if (options?.Revert is true && op is not null && _revertState is { } revertState)
         {
             Dispatch(new SetStateAction<TData>
@@ -456,9 +464,10 @@ public sealed class Query<TData> : Query
             });
         }
 
-        if (op is not null) CancelOperation(op, options ?? PlainCancel);
+        if (op is null) return Task.CompletedTask;
 
-        return Task.CompletedTask;
+        CancelOperation(op, options ?? PlainCancel);
+        return op.Settled.Task;
     }
 
     /// <summary>
@@ -667,19 +676,9 @@ public sealed class Query<TData> : Query
             // existing task.
             if (state.Data is not null && cancelRefetch)
             {
-                // C# concurrency guard: TanStack is single-threaded, so the
-                // old fetch's handlers run in microtask order and never race
-                // with the new fetch. In C#, the old FetchCore's completion
-                // can run on a thread pool thread concurrently with the new
-                // FetchCore. If the old one dispatches SuccessState (e.g.,
-                // StreamedQuery catches OperationCanceledException and returns
-                // partial data), it overwrites the new fetch's state.
-                //
-                // Null _activeFetch BEFORE cancelling so the old FetchCore can
-                // detect it's been superseded via the identity check, even if
-                // its completion runs inline during retryer.Cancel().
-                // For non-refetch cancels (e.g., unsubscribe), _activeFetch is
-                // NOT nulled, so partial data is preserved — matching TanStack.
+                // Unlike TanStack's microtasks, C# fetch completions can run concurrently.
+                // Clear _activeFetch before cancelling so even inline completion detects
+                // replacement and cannot overwrite the new fetch's state.
                 _logger.QueryCancelled(QueryHash, false);
                 _activeFetch = null;
                 replacement = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -739,7 +738,7 @@ public sealed class Query<TData> : Query
             Fn = ct =>
             {
                 var ctx = new QueryFunctionContext(ct, () => _abortSignalConsumed = true, _client, QueryKey!);
-                return queryFn(ctx);
+                return StopWaitingOnCancel(queryFn(ctx), ct);
             },
             MaxRetries = (Options.Retry ?? OptionsDefaulting.FallbackQueryRetry) is > 0 and var r ? r + 1 : 1,
             RetryDelay = Options.RetryDelay,
@@ -781,16 +780,6 @@ public sealed class Query<TData> : Query
         {
             var data = await retryer.ExecuteAsync();
 
-            // C# concurrency guard (see FetchInternal comment for full
-            // context): StreamedQuery catches OperationCanceledException and
-            // returns partial data, so ExecuteAsync can succeed even when the
-            // retryer was cancelled. If a refetch superseded this fetch,
-            // FetchInternal nulled _retryer before cancelling — so _retryer
-            // no longer matches our local. Skip the success dispatch to
-            // prevent stale data from overwriting the new fetch's state.
-            // For non-refetch cancels (e.g., unsubscribe), _retryer still
-            // references this retryer, so partial data is dispatched normally
-            // — matching TanStack's behavior.
             if (retryer.IsCancelled && _activeFetch?.Retryer != retryer)
             {
                 _metrics?.QueryFetchCancelledTotal?.Add(1, queryHashTag);
@@ -868,6 +857,28 @@ public sealed class Query<TData> : Query
             {
                 ScheduleGc();
             }
+
+            operation.Settled.TrySetResult();
+        }
+    }
+
+    // TanStack retryer.ts cancel rejects without waiting for the query function. WaitAsync
+    // gives queries that behavior without making disposal of a mutation's shared Retryer
+    // abandon an unfinished write.
+    private static async Task<TData> StopWaitingOnCancel(Task<TData> attempt, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await attempt.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (!attempt.IsCompleted)
+        {
+            _ = attempt.ContinueWith(
+                static t => _ = t.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            throw;
         }
     }
 
