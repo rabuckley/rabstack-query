@@ -487,3 +487,5 @@ $RECYCLE.BIN/
 .maui/
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+.claude/settings.local.json
