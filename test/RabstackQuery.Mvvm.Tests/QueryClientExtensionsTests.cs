@@ -137,7 +137,7 @@ public sealed class QueryClientExtensionsTests : SyncContextTestBase
         var client = CreateQueryClient();
         var options = new MutationOptions<string, InvalidOperationException, string, object?>
         {
-            MutationFn = (input, context, ct) => Task.FromResult(input.ToUpper()),
+            MutationFn = (input, context) => Task.FromResult(input.ToUpper()),
         };
 
         // Act
@@ -160,7 +160,7 @@ public sealed class QueryClientExtensionsTests : SyncContextTestBase
         // Act
         using MutationViewModel<string, string> vm = client.UseMutation(new MutationOptions<string, string>
         {
-            MutationFn = (input, context, ct) => Task.FromResult(input.ToUpper()),
+            MutationFn = (input, context) => Task.FromResult(input.ToUpper()),
             OnSuccess = (data, variables, onMutateResult, context) =>
             {
                 onSuccessCalled = true;
@@ -185,7 +185,7 @@ public sealed class QueryClientExtensionsTests : SyncContextTestBase
         var current = 1;
         int? rolledBackTo = null;
         var options = MutationOptions.Create(
-            (int next, MutationFunctionContext _, CancellationToken _) =>
+            (int next, MutationFunctionContext _) =>
                 Task.FromException<string>(new InvalidOperationException("rejected")),
             onMutate: (next, _) =>
             {

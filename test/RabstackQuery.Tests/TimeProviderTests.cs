@@ -240,7 +240,7 @@ public sealed class TimeProviderTests
         var mutationCache = client.MutationCache;
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = (vars, ctx, ct) => Task.FromResult($"result-{vars}")
+            MutationFn = (vars, ctx) => Task.FromResult($"result-{vars}")
         };
         var mutation = mutationCache.GetOrCreate(client, options);
 

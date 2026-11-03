@@ -300,7 +300,7 @@ public static class QueryClientExtensions
     /// </remarks>
     public static MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
         this QueryClient client,
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
+        Func<TVariables, MutationFunctionContext, Task<TData>> mutationFn)
         => client.UseMutation(MutationOptions.Create(mutationFn));
 
     /// <summary>
@@ -317,7 +317,7 @@ public static class QueryClientExtensions
     /// <code>
     /// AddTodoMutation = client.UseMutation(
     ///     MutationOptions.Create(
-    ///         (string title, MutationFunctionContext _, CancellationToken ct) => api.AddTodoAsync(title, ct))
+    ///         (string title, MutationFunctionContext _) => api.AddTodoAsync(title))
     ///     with
     ///     {
     ///         OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
@@ -345,8 +345,8 @@ public static class QueryClientExtensions
     /// <code>
     /// StatusMutation = client.UseMutation(
     ///     MutationOptions.Create(
-    ///         (TaskItemStatus status, MutationFunctionContext _, CancellationToken ct) =>
-    ///             api.UpdateStatusAsync(id, status, ct),
+    ///         (TaskItemStatus status, MutationFunctionContext _) =>
+    ///             api.UpdateStatusAsync(id, status),
     ///         onMutate: (status, _) =>
     ///         {
     ///             var previous = Status;

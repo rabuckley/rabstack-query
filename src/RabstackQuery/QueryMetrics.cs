@@ -41,7 +41,6 @@ internal sealed class QueryMetrics
     internal Counter<long>? MutationTotal { get; }
     internal Counter<long>? MutationSuccessTotal { get; }
     internal Counter<long>? MutationErrorTotal { get; }
-    internal Counter<long>? MutationCancelledTotal { get; }
     internal Histogram<double>? MutationDuration { get; }
 
     // ── Retry ───────────────────────────────────────────────
@@ -140,10 +139,6 @@ internal sealed class QueryMetrics
         MutationErrorTotal = meter.CreateCounter<long>(
             "rabstackquery.mutation.error_total", "{mutations}",
             "Mutations failed permanently");
-
-        MutationCancelledTotal = meter.CreateCounter<long>(
-            "rabstackquery.mutation.cancelled_total", "{mutations}",
-            "Mutations cancelled via CancellationToken");
 
         MutationDuration = meter.CreateHistogram(
             "rabstackquery.mutation.duration", "s",

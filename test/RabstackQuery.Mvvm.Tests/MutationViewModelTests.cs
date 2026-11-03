@@ -20,7 +20,7 @@ public sealed class MutationViewModelTests : SyncContextTestBase
             client,
             new()
             {
-                MutationFn = (_, _, _) => throw new InvalidOperationException("Simulated network error"),
+                MutationFn = (_, _) => throw new InvalidOperationException("Simulated network error"),
             });
 
         // Act — the command must not throw; errors are surfaced via IsError/Error
@@ -42,7 +42,7 @@ public sealed class MutationViewModelTests : SyncContextTestBase
             client,
             new()
             {
-                MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+                MutationFn = (input, _) => Task.FromResult(input.ToUpper()),
             });
 
         // Act
@@ -66,7 +66,7 @@ public sealed class MutationViewModelTests : SyncContextTestBase
             client,
             new()
             {
-                MutationFn = (_, _, _) => throw new InvalidOperationException("fail"),
+                MutationFn = (_, _) => throw new InvalidOperationException("fail"),
                 OnError = async (error, variables, context, functionContext) =>
                 {
                     onErrorCalled = true;
@@ -90,7 +90,7 @@ public sealed class MutationViewModelTests : SyncContextTestBase
             client,
             new()
             {
-                MutationFn = (_, _, _) => throw new InvalidOperationException("fail"),
+                MutationFn = (_, _) => throw new InvalidOperationException("fail"),
             });
 
         await vm.MutateCommand.ExecuteAsync("input");
@@ -106,67 +106,6 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         Assert.Null(vm.Data);
     }
 
-    // No TanStack equivalent: its mutations cannot be cancelled. Closest is mutate(), whose
-    // catch(noop) keeps failures off the caller; binding invokes Execute, whose async void wrapper
-    // would otherwise rethrow on the UI context.
-    [Fact]
-    public async Task MutateCancelCommand_Should_Not_Crash_UI_Context()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var uiContext = new CrashRecordingSynchronizationContext();
-        var vm = WithSyncContext(uiContext, () => new MutationViewModel<string, Exception, string, object?>(
-            client,
-            new()
-            {
-                MutationFn = async (_, _, ct) =>
-                {
-                    await new TaskCompletionSource().Task.WaitAsync(ct);
-                    return "unreachable";
-                },
-            }));
-        using var _ = vm;
-
-        // Act
-        var execution = WithSyncContext<Task>(uiContext, () =>
-        {
-            vm.MutateCommand.Execute("input");
-            return vm.MutateCommand.ExecutionTask ?? Task.CompletedTask;
-        });
-        vm.MutateCancelCommand.Execute(null);
-        await Task.WhenAny(execution).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Empty(uiContext.Escaped);
-        Assert.Equal(TaskStatus.RanToCompletion, execution.Status);
-        Assert.False(vm.MutateCommand.IsRunning);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_Should_Throw_When_Callers_Token_Is_Cancelled()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        using var vm = new MutationViewModel<string, Exception, string, object?>(
-            client,
-            new()
-            {
-                MutationFn = async (_, _, ct) =>
-                {
-                    await new TaskCompletionSource().Task.WaitAsync(ct);
-                    return "unreachable";
-                },
-            });
-        using var cts = new CancellationTokenSource();
-
-        // Act
-        var invocation = vm.InvokeAsync("input", cts.Token);
-        await cts.CancelAsync();
-
-        // Assert
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invocation);
-    }
-
     [Fact]
     public async Task MutateCommand_Should_Show_Error_When_MutationFn_Times_Out()
     {
@@ -174,7 +113,7 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         var timeout = new TaskCanceledException("HttpClient.Timeout elapsed");
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
-            new() { MutationFn = (_, _, _) => Task.FromException<string>(timeout) });
+            new() { MutationFn = (_, _) => Task.FromException<string>(timeout) });
 
         await vm.MutateCommand.ExecuteAsync("input");
 

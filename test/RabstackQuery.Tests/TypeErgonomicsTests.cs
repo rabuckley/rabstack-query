@@ -7,7 +7,7 @@ public class TypeErgonomicsTests
     {
         var twoParam = new MutationOptions<string, int>
         {
-            MutationFn = async (v, ctx, ct) => v.ToString()
+            MutationFn = async (v, ctx) => v.ToString()
         };
 
         MutationOptions<string, Exception, int, object?> fourParam = twoParam;
@@ -93,7 +93,7 @@ public class TypeErgonomicsTests
     public void MutationOptions_Create_InfersType()
     {
         var options = MutationOptions.Create(
-            async (int variables, MutationFunctionContext ctx, CancellationToken ct) => variables.ToString());
+            async (int variables, MutationFunctionContext ctx) => variables.ToString());
 
         Assert.IsType<MutationOptions<string, int>>(options);
         Assert.NotNull(options.MutationFn);
@@ -106,7 +106,7 @@ public class TypeErgonomicsTests
 
         var options = new MutationOptions<string, string>
         {
-            MutationFn = async (variables, context, ct) => $"result:{variables}"
+            MutationFn = async (variables, context) => $"result:{variables}"
         };
 
         var observer = MutationObserver.Create(client, options);

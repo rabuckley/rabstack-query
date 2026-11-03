@@ -19,7 +19,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -51,7 +51,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -89,7 +89,7 @@ public sealed class MutationObserverTests
 
         var options = new MutationOptions<string, Exception, string, int>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 callOrder.Add("mutationFn");
                 return input.ToUpper();
@@ -160,7 +160,7 @@ public sealed class MutationObserverTests
 
         var options = new MutationOptions<string, Exception, string, string>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 callOrder.Add("mutationFn");
                 throw expectedException;
@@ -223,7 +223,7 @@ public sealed class MutationObserverTests
         var options = new MutationOptions<string, Exception, string, object?>
         {
             Meta = new Meta(new Dictionary<string, object?> { ["initialKey"] = "initialValue" }),
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 mutationStarted.Release();
                 await tcs.Task;
@@ -241,7 +241,7 @@ public sealed class MutationObserverTests
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
             Meta = new Meta(new Dictionary<string, object?> { ["initialKey"] = "updatedValue" }),
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         });
 
         // Assert — the pending mutation's meta was updated in-place
@@ -261,7 +261,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -299,7 +299,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -332,7 +332,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Test error")
+            MutationFn = async (input, context) => throw new InvalidOperationException("Test error")
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -370,7 +370,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -396,7 +396,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Test error")
+            MutationFn = async (input, context) => throw new InvalidOperationException("Test error")
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -429,7 +429,7 @@ public sealed class MutationObserverTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             OnSuccess = async (data, variables, context, functionContext) =>
             {
                 defaultOnSuccessCalled = true;
@@ -461,7 +461,7 @@ public sealed class MutationObserverTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -499,7 +499,7 @@ public sealed class MutationObserverTests
 
         var options = new MutationOptions<string, Exception, string, int>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             OnMutate = async (input, context) => 999, // Return context value
             OnSuccess = async (data, variables, context, functionContext) =>
             {
@@ -531,7 +531,7 @@ public sealed class MutationObserverTests
 
         var options = new MutationOptions<string, Exception, string, string>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Test"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("Test"),
             OnMutate = async (input, context) => "error-context",
             OnError = async (error, variables, context, functionContext) =>
             {
@@ -577,7 +577,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["setOptions", "1"],
-                MutationFn = async (input, context, ct) => input.ToUpper()
+                MutationFn = async (input, context) => input.ToUpper()
             });
 
         using var subscription = observer.Subscribe(_ => { });
@@ -591,7 +591,7 @@ public sealed class MutationObserverTests
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
             MutationKey = ["setOptions", "2"],
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         });
 
         // Assert — observer is reset to idle
@@ -614,7 +614,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 MutationKey = ["existing", "1"],
-                MutationFn = async (input, context, ct) => input.ToUpper()
+                MutationFn = async (input, context) => input.ToUpper()
             });
 
         using var subscription = observer.Subscribe(_ => { });
@@ -625,7 +625,7 @@ public sealed class MutationObserverTests
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
             MutationKey = ["existing", "2"],
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         });
 
         // Assert — the original mutation in the cache is untouched
@@ -653,7 +653,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
-                MutationFn = async (input, context, ct) => input.ToUpper()
+                MutationFn = async (input, context) => input.ToUpper()
             });
 
         using var subscription = observer.Subscribe(_ => { });
@@ -664,7 +664,7 @@ public sealed class MutationObserverTests
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
             Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         });
 
         // Assert — the completed mutation still has the original meta
@@ -689,7 +689,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
-                MutationFn = async (input, context, ct) =>
+                MutationFn = async (input, context) =>
                     throw new InvalidOperationException("err")
             });
 
@@ -702,7 +702,7 @@ public sealed class MutationObserverTests
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
             Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
                 throw new InvalidOperationException("err")
         });
 
@@ -723,8 +723,8 @@ public sealed class MutationObserverTests
     public async Task SetOptions_Should_Produce_Different_Meta_Between_Mutations()
     {
         // Arrange
-        Func<string, MutationFunctionContext, CancellationToken, Task<string>> mutationFn =
-            async (input, context, ct) => input.ToUpper();
+        Func<string, MutationFunctionContext, Task<string>> mutationFn =
+            async (input, context) => input.ToUpper();
 
         var client = CreateQueryClient();
         var observer = new MutationObserver<string, Exception, string, object?>(client,
@@ -783,7 +783,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Meta = new Meta(new Dictionary<string, object?> { ["a"] = 1 }),
-                MutationFn = async (input, context, ct) =>
+                MutationFn = async (input, context) =>
                 {
                     mutationStarted.Release();
                     return await gate.Task;
@@ -806,7 +806,7 @@ public sealed class MutationObserverTests
         observer.SetOptions(new MutationOptions<string, Exception, string, object?>
         {
             Meta = new Meta(new Dictionary<string, object?> { ["a"] = 2 }),
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         });
 
         // Assert — the pending mutation now has updated meta
@@ -843,7 +843,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (input, ctx, ct) =>
+                MutationFn = async (input, ctx) =>
                 {
                     results.Add("start-A");
                     firstStarted.Release();
@@ -858,7 +858,7 @@ public sealed class MutationObserverTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (input, ctx, ct) =>
+                MutationFn = async (input, ctx) =>
                 {
                     results.Add("start-B");
                     results.Add("finish-B");

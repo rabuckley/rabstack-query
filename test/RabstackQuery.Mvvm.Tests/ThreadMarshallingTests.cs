@@ -77,7 +77,7 @@ public sealed class ThreadMarshallingTests
                 client,
                 new()
                 {
-                    MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+                    MutationFn = (input, _) => Task.FromResult(input.ToUpper()),
                 }));
 
         syncContext.Reset();
@@ -230,7 +230,7 @@ public sealed class ThreadMarshallingTests
                 client,
                 new()
                 {
-                    MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+                    MutationFn = (input, _) => Task.FromResult(input.ToUpper()),
                 }));
         syncContext.DrainQueue();
 
@@ -387,7 +387,7 @@ public sealed class ThreadMarshallingTests
             client,
             new()
             {
-                MutationFn = (input, _, _) => Task.FromResult(input.ToUpper()),
+                MutationFn = (input, _) => Task.FromResult(input.ToUpper()),
             }));
 
         Assert.IsType<InvalidOperationException>(exception);

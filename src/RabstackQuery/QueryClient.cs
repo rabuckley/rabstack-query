@@ -971,27 +971,23 @@ public sealed class QueryClient : IDisposable
 
     /// <summary>
     /// Manually updates query data in the cache.
-    /// Useful for optimistic updates or seeding cache with data from other sources.
     /// </summary>
     /// <typeparam name="TData">The type of data to set.</typeparam>
     /// <param name="queryKey">The query key to update.</param>
     /// <param name="data">The data to set in the cache.</param>
     /// <example>
     /// <code>
-    /// // Optimistic update
     /// var addTodoMutation = client.UseMutation(new MutationOptions&lt;Todo, Todo&gt;
     /// {
-    ///     MutationFn = async (newTodo, context, ct) => await api.CreateTodo(newTodo, ct),
+    ///     MutationFn = async (newTodo, context) => await api.CreateTodo(newTodo),
     ///     OnMutate = async (newTodo, context) =>
     ///     {
-    ///         // Optimistically add to cache
     ///         var todos = client.GetQueryData&lt;List&lt;Todo&gt;&gt;(["todos"]) ?? [];
     ///         client.SetQueryData(["todos"], todos.Append(newTodo).ToList());
     ///         return null;
     ///     },
     ///     OnError = async (error, variables, _, context) =>
     ///     {
-    ///         // Rollback on error
     ///         await client.InvalidateQueriesAsync(["todos"]);
     ///     },
     /// });

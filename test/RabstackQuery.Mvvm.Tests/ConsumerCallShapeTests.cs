@@ -152,7 +152,7 @@ public sealed class ConsumerCallShapeTests : SyncContextTestBase
         var client = CreateClient();
 
         using MutationViewModel<string, int> vm = client.UseMutation(
-            MutationOptions.Create((int id, MutationFunctionContext _, CancellationToken _) =>
+            MutationOptions.Create((int id, MutationFunctionContext _) =>
                 Task.FromResult($"saved-{id}")));
 
         Assert.Equal("saved-4", await vm.InvokeAsync(4));
@@ -166,7 +166,7 @@ public sealed class ConsumerCallShapeTests : SyncContextTestBase
 
         using MutationViewModel<string, Exception, string, string> vm = client.UseMutation(
             MutationOptions.Create(
-                (string next, MutationFunctionContext _, CancellationToken _) => Task.FromResult(next),
+                (string next, MutationFunctionContext _) => Task.FromResult(next),
                 onMutate: (next, _) =>
                 {
                     var previous = name;

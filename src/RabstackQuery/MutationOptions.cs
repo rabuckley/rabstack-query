@@ -7,16 +7,13 @@ public record MutationOptions<TData, TError, TVariables, TOnMutateResult>
     where TError : Exception
 {
     /// <summary>
-    /// The mutation function to execute.
+    /// Gets or initializes the mutation function.
     /// </summary>
     /// <remarks>
-    /// The parameter order (<c>TVariables, MutationFunctionContext, CancellationToken</c>)
-    /// mirrors TanStack's mutation function signature rather than the .NET convention of
-    /// placing <see cref="CancellationToken"/> last. This keeps the most frequently used
-    /// parameter (<c>TVariables</c>) first and groups the two framework-provided parameters
-    /// together, matching the mental model from the TypeScript source.
+    /// Exceptions from this function, including <see cref="OperationCanceledException"/>,
+    /// follow normal mutation error handling.
     /// </remarks>
-    public Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>>? MutationFn { get; init; }
+    public Func<TVariables, MutationFunctionContext, Task<TData>>? MutationFn { get; init; }
 
     /// <summary>
     /// Optional mutation key for identifying this mutation.
@@ -123,7 +120,7 @@ public record MutationOptions<TData, TVariables>
 /// <example>
 /// <code>
 /// var addTodo = MutationOptions.Create(
-///     (string title, MutationFunctionContext _, CancellationToken ct) => api.AddTodoAsync(title, ct))
+///     (string title, MutationFunctionContext _) => api.AddTodoAsync(title))
 ///     with
 ///     {
 ///         OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
@@ -142,7 +139,7 @@ public static class MutationOptions
     /// <returns>Options whose <c>MutationFn</c> is <paramref name="mutationFn"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="mutationFn"/> is <see langword="null"/>.</exception>
     public static MutationOptions<TData, TVariables> Create<TData, TVariables>(
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
+        Func<TVariables, MutationFunctionContext, Task<TData>> mutationFn)
     {
         ArgumentNullException.ThrowIfNull(mutationFn);
         return new MutationOptions<TData, TVariables> { MutationFn = mutationFn };
@@ -170,7 +167,7 @@ public static class MutationOptions
     /// </remarks>
     public static MutationOptions<TData, Exception, TVariables, TOnMutateResult>
         Create<TData, TVariables, TOnMutateResult>(
-            Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn,
+            Func<TVariables, MutationFunctionContext, Task<TData>> mutationFn,
             Func<TVariables, MutationFunctionContext, Task<TOnMutateResult>> onMutate)
     {
         ArgumentNullException.ThrowIfNull(mutationFn);

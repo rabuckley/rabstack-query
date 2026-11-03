@@ -65,11 +65,7 @@ public sealed class IntegrationTests : SyncContextTestBase
             client,
             new()
             {
-                MutationFn = (input, _, ct) =>
-                {
-                    ct.ThrowIfCancellationRequested();
-                    return Task.FromResult(input.ToUpper());
-                },
+                MutationFn = (input, _) => Task.FromResult(input.ToUpper()),
                 OnSuccess = async (data, variables, context, functionContext) =>
                 {
                     var count = Interlocked.Increment(ref completionCount);

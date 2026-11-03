@@ -185,7 +185,7 @@ TodoCountQuery = client.UseQuery(
 ```csharp
 CreateTodoMutation = client.UseMutation(new MutationOptions<Todo, string>
 {
-    MutationFn = async (title, context, ct) => await api.CreateTodoAsync(title, ct),
+    MutationFn = async (title, context) => await api.CreateTodoAsync(title),
     OnSuccess = async (todo, title, _, context) =>
     {
         await context.Client.InvalidateQueriesAsync(["todos"]);
@@ -208,8 +208,8 @@ Update the cache before the server responds and roll back on error. `MutationOpt
 ```csharp
 UpdateStatusMutation = client.UseMutation(
     MutationOptions.Create(
-        async (TaskItemStatus status, MutationFunctionContext context, CancellationToken ct) =>
-            await api.UpdateStatusAsync(taskId, status, ct),
+        async (TaskItemStatus status, MutationFunctionContext context) =>
+            await api.UpdateStatusAsync(taskId, status),
         onMutate: async (newStatus, context) =>
         {
             await context.Client.CancelQueriesAsync(["tasks", taskId]);

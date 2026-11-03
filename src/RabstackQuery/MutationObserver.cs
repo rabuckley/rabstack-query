@@ -65,8 +65,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
     /// </summary>
     public async Task<TData> MutateAsync(
         TVariables variables,
-        MutateOptions<TData, TError, TVariables, TOnMutateResult>? options = null,
-        CancellationToken cancellationToken = default)
+        MutateOptions<TData, TError, TVariables, TOnMutateResult>? options = null)
     {
         var mutationCache = _client.MutationCache;
         var previousMutation = _currentMutation;
@@ -85,7 +84,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
 
         try
         {
-            var result = await _currentMutation.Execute(variables, options, cancellationToken, NotifyListeners);
+            var result = await _currentMutation.Execute(variables, options, NotifyListeners);
             NotifyListeners();
             return result;
         }

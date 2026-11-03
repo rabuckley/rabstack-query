@@ -33,7 +33,7 @@ public sealed class PageViewModelTests : SyncContextTestBase
         {
             Client = client;
             StringQuery = UseQuery(["test"], _ => Task.FromResult("hello"));
-            EchoMutation = UseMutation<string, string>((input, _, _) => Task.FromResult(input));
+            EchoMutation = UseMutation<string, string>((input, _) => Task.FromResult(input));
         }
 
         public QueryViewModel<string> AddLateQuery() =>
@@ -472,7 +472,7 @@ public sealed class PageViewModelTests : SyncContextTestBase
 
             UpperMutation = UseMutation(new MutationOptions<string, string>
             {
-                MutationFn = (input, _, _) => Task.FromResult(input.ToUpperInvariant()),
+                MutationFn = (input, _) => Task.FromResult(input.ToUpperInvariant()),
                 OnSuccess = (data, vars, _, ctx) =>
                 {
                     onSuccess();
@@ -493,7 +493,7 @@ public sealed class PageViewModelTests : SyncContextTestBase
 
             UpdateMutation = UseMutation(
                 MutationOptions.Create(
-                    (string input, MutationFunctionContext _, CancellationToken _) =>
+                    (string input, MutationFunctionContext _) =>
                         Task.FromException<string>(new InvalidOperationException("rejected")),
                     onMutate: (input, ctx) =>
                     {

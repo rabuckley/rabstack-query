@@ -77,8 +77,8 @@ public sealed partial class ProjectListViewModel : PageViewModel
 
         CreateProjectMutation = UseMutation(new MutationOptions<Project, (string Name, string Description)>
         {
-            MutationFn = async (variables, context, ct) =>
-                await api.CreateProjectAsync(variables.Name, variables.Description, ct),
+            MutationFn = async (variables, context) =>
+                await api.CreateProjectAsync(variables.Name, variables.Description),
             OnSuccess = async (data, variables, _, context) =>
             {
                 _createSucceeded = true;

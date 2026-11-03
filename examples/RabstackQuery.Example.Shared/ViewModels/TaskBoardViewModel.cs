@@ -88,8 +88,8 @@ public sealed partial class TaskBoardViewModel : PageViewModel
 
         AddTaskMutation = UseMutation(new MutationOptions<TaskItem, (string Title, TaskPriority Priority)>
         {
-            MutationFn = async (variables, context, ct) =>
-                await api.CreateTaskAsync(projectId, variables.Title, variables.Priority, ct),
+            MutationFn = async (variables, context) =>
+                await api.CreateTaskAsync(projectId, variables.Title, variables.Priority),
             OnSuccess = async (data, variables, _, context) =>
             {
                 _addTaskSucceeded = true;

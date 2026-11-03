@@ -64,7 +64,7 @@ else
     {
         _createTodo = UseMutation(new MutationOptions<Todo, CreateTodoRequest>
         {
-            MutationFn = async (request, ctx, ct) => await Api.CreateTodoAsync(request, ct),
+            MutationFn = async (request, ctx) => await Api.CreateTodoAsync(request),
             OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
         });
     }

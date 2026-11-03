@@ -156,14 +156,12 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     /// <c>@onclick</c> handlers and other imperative code that needs to await the outcome.
     /// </summary>
     /// <param name="variables">The input variables for the mutation.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <returns>The mutation result data.</returns>
-    public Task<TData> InvokeAsync(TVariables variables, CancellationToken cancellationToken = default)
-        => _observer.MutateAsync(variables, null, cancellationToken);
+    public Task<TData> InvokeAsync(TVariables variables)
+        => _observer.MutateAsync(variables);
 
     /// <summary>
     /// Command to execute the mutation.
-    /// Includes automatic cancel command generation (MutateCancelCommand).
     /// </summary>
     /// <remarks>
     /// This method uses fire-and-forget semantics, equivalent to TanStack's <c>mutate()</c> which
@@ -172,8 +170,8 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
     /// via <c>IsError</c>/<c>Error</c> properties. Callers who need to handle errors
     /// programmatically should use <see cref="InvokeAsync"/> directly.
     /// </remarks>
-    [RelayCommand(IncludeCancelCommand = true)]
-    private async Task MutateAsync(TVariables variables, CancellationToken cancellationToken)
+    [RelayCommand]
+    private async Task MutateAsync(TVariables variables)
     {
         // The MutateCommand is the UI-facing fire-and-forget API, equivalent to
         // TanStack's mutate() which swallows errors after updating state:
@@ -184,13 +182,7 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         // MutationObserver.MutateAsync directly.
         try
         {
-            await _observer.MutateAsync(variables, null, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Nothing may escape: bound commands rethrow failures on the UI context, which
-            // would turn MutateCancelCommand into a crash. Not logged as a swallowed error
-            // because the user asked for this.
+            await _observer.MutateAsync(variables);
         }
         catch (Exception ex)
         {

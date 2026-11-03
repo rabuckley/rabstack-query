@@ -344,7 +344,7 @@ public sealed class NetworkModeTests : IDisposable
             _client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = (input, ctx, ct) => Task.FromResult(input.ToUpper()),
+                MutationFn = (input, ctx) => Task.FromResult(input.ToUpper()),
                 NetworkMode = NetworkMode.Online
             });
 
@@ -381,7 +381,7 @@ public sealed class NetworkModeTests : IDisposable
             _client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = (input, ctx, ct) => Task.FromResult(input.ToUpper()),
+                MutationFn = (input, ctx) => Task.FromResult(input.ToUpper()),
                 NetworkMode = NetworkMode.Always
             });
 
@@ -407,7 +407,7 @@ public sealed class NetworkModeTests : IDisposable
             _client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = async (input, ctx, ct) =>
+                MutationFn = async (input, ctx) =>
                 {
                     var result = input.ToUpper();
                     mutationExecuted.TrySetResult(result);
@@ -459,7 +459,7 @@ public sealed class NetworkModeTests : IDisposable
                 _client,
                 new MutationOptions<string, Exception, string, object?>
                 {
-                    MutationFn = async (input, ctx, ct) =>
+                    MutationFn = async (input, ctx) =>
                     {
                         var result = $"{name}:{input}";
                         lock (results) results.Add(result);
@@ -515,7 +515,7 @@ public sealed class NetworkModeTests : IDisposable
             _client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = (input, ctx, ct) =>
+                MutationFn = (input, ctx) =>
                 {
                     executed = true;
                     return Task.FromResult("done");
@@ -559,7 +559,7 @@ public sealed class NetworkModeTests : IDisposable
             _client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = (input, ctx, ct) => Task.FromResult("result"),
+                MutationFn = (input, ctx) => Task.FromResult("result"),
                 NetworkMode = NetworkMode.Online
             });
 
@@ -597,7 +597,7 @@ public sealed class NetworkModeTests : IDisposable
             _client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = (input, ctx, ct) => Task.FromResult("done"),
+                MutationFn = (input, ctx) => Task.FromResult("done"),
                 NetworkMode = NetworkMode.Online
             });
 
@@ -644,7 +644,7 @@ public sealed class NetworkModeTests : IDisposable
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (input, ctx, ct) => await predecessorGate.Task,
+                MutationFn = async (input, ctx) => await predecessorGate.Task,
                 NetworkMode = NetworkMode.Online
             });
 
@@ -656,7 +656,7 @@ public sealed class NetworkModeTests : IDisposable
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = (input, ctx, ct) =>
+                MutationFn = (input, ctx) =>
                 {
                     secondExecuted.TrySetResult("second-done");
                     return Task.FromResult("second-done");
@@ -711,49 +711,6 @@ public sealed class NetworkModeTests : IDisposable
         var result2 = obs2.CurrentResult;
         Assert.True(result2.IsSuccess);
         Assert.Equal("second-done", result2.Data);
-    }
-
-    [Fact(Timeout = 10_000)]
-    public async Task Mutation_CancelledWhilePaused_DoesNotTriggerErrorPath()
-    {
-        // Arrange — go offline, start a mutation with NetworkMode.Online so it pauses
-        _onlineManager.SetOnline(false);
-
-        var observer = new MutationObserver<string, Exception, string, object?>(
-            _client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                MutationFn = (input, ctx, ct) => Task.FromResult("should-not-reach"),
-                NetworkMode = NetworkMode.Online
-            });
-
-        var pausedTcs = new TaskCompletionSource();
-        using var subscription = observer.Subscribe(result =>
-        {
-            if (result.IsPaused) pausedTcs.TrySetResult();
-        });
-
-        using var cts = new CancellationTokenSource();
-        var mutateTask = observer.MutateAsync("test", cancellationToken: cts.Token);
-
-        // Wait for the mutation to enter paused state
-        await pausedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(observer.CurrentResult.IsPaused);
-
-        // Act — cancel the mutation while it's paused
-        cts.Cancel();
-
-        // Assert — MutateAsync throws OperationCanceledException (or the derived
-        // TaskCanceledException — both indicate cancellation, not an error).
-        var ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => mutateTask.WaitAsync(TimeSpan.FromSeconds(5)));
-
-        // The observer result should NOT show IsError — cancellation is not an error
-        var finalResult = observer.CurrentResult;
-        Assert.False(finalResult.IsError);
-
-        // Clean up — go online so no lingering paused mutation remains
-        _onlineManager.SetOnline(true);
     }
 
     #endregion

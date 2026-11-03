@@ -73,8 +73,8 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
         // Optimistic status update — saves old status as context for rollback on error.
         StatusMutation = client.UseMutation(
             MutationOptions.Create(
-                async (TaskItemStatus newStatus, MutationFunctionContext context, CancellationToken ct) =>
-                    await api.UpdateTaskStatusAsync(ProjectId, Id, newStatus, ct),
+                async (TaskItemStatus newStatus, MutationFunctionContext context) =>
+                    await api.UpdateTaskStatusAsync(ProjectId, Id, newStatus),
                 onMutate: async (newStatus, context) =>
                 {
                     var oldStatus = Status;
@@ -101,8 +101,8 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
         // priority for rollback on error.
         TogglePriorityMutation = client.UseMutation(
             MutationOptions.Create(
-                async (TaskPriority newPriority, MutationFunctionContext context, CancellationToken ct) =>
-                    await api.UpdateTaskAsync(ProjectId, Id, Title, Description, newPriority, ct),
+                async (TaskPriority newPriority, MutationFunctionContext context) =>
+                    await api.UpdateTaskAsync(ProjectId, Id, Title, Description, newPriority),
                 onMutate: async (newPriority, context) =>
                 {
                     var oldPriority = Priority;
@@ -127,9 +127,9 @@ public sealed partial class TaskItemViewModel : ObservableObject, IDisposable
         // Deletion mutation — invalidates the tasks query on success so the list refreshes.
         DeleteMutation = client.UseMutation(new MutationOptions<object?, int>
         {
-            MutationFn = async (_, context, ct) =>
+            MutationFn = async (_, context) =>
             {
-                await api.DeleteTaskAsync(ProjectId, Id, ct);
+                await api.DeleteTaskAsync(ProjectId, Id);
                 return null;
             },
             OnSuccess = async (data, variables, onMutateResult, context) =>

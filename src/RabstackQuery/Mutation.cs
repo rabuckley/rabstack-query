@@ -147,7 +147,6 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
             MutationSuccessAction<TData> => "success",
             MutationErrorAction => "error",
             MutationSetContextAction<TOnMutateResult> => (string?)null,
-            MutationCancelAction => (string?)null,
             _ => throw new InvalidOperationException($"Unknown mutation action: {action.GetType().Name}"),
         };
 
@@ -204,8 +203,6 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 Status = MutationStatus.Error,
                 IsPaused = false,
             },
-
-            MutationCancelAction => state with { IsPaused = false },
 
             _ => throw new InvalidOperationException($"Unknown mutation action: {action.GetType().Name}"),
         };
@@ -266,7 +263,6 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
     public async Task<TData> Execute(
         TVariables variables,
         MutateOptions<TData, TError, TVariables, TOnMutateResult>? mutateOptions = null,
-        CancellationToken cancellationToken = default,
         Action? onStatusChanged = null)
     {
         if (_options.MutationFn is null)
@@ -289,7 +285,7 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
         // functionally identical to the previous direct-call path.
         var retryerOptions = new RetryerOptions<TData>
         {
-            Fn = ct => _options.MutationFn(variables, functionContext, ct),
+            Fn = _ => _options.MutationFn(variables, functionContext),
             MaxRetries = (_options.Retry ?? OptionsDefaulting.FallbackMutationRetry) + 1,
             RetryDelay = _options.RetryDelay,
             TimeProvider = _client.TimeProvider,
@@ -411,9 +407,7 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 // Always route through the retryer — even when Retry == 0 (MaxRetries == 1).
                 // This gives us NetworkMode enforcement for free: the retryer pauses
                 // before executing when offline and resumes on connectivity change.
-                TData data;
-                using var registration = cancellationToken.Register(() => retryer.Cancel());
-                data = await retryer.ExecuteAsync();
+                var data = await retryer.ExecuteAsync();
 
                 // Success-path callbacks are intentionally NOT individually try-catch
                 // wrapped, matching TanStack's semantics. If any callback throws, the
@@ -473,25 +467,6 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
 
                 _logger.MutationExecuteSucceeded(MutationId);
                 return data;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                // C#-specific: TanStack's mutations take no token. Only the caller's own token
-                // counts as cancellation; anything else, such as an HttpClient timeout, is a
-                // rejection and takes the error path below as it does in TanStack.
-                sw?.Stop();
-                Dispatch(new MutationCancelAction(), onStatusChanged);
-                if (mutationKeyHash is not null)
-                {
-                    metrics.MutationCancelledTotal?.Add(1, mutationKeyTag);
-                }
-                else
-                {
-                    metrics.MutationCancelledTotal?.Add(1);
-                }
-
-                _logger.MutationCancelled(MutationId);
-                throw;
             }
             catch (Exception ex)
             {

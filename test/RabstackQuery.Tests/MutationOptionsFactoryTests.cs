@@ -8,7 +8,7 @@ public sealed class MutationOptionsFactoryTests
         using var client = new QueryClient(new QueryCache());
 
         var options = MutationOptions.Create(
-            (int variables, MutationFunctionContext _, CancellationToken _) =>
+            (int variables, MutationFunctionContext _) =>
                 Task.FromResult($"result:{variables}"));
 
         var observer = MutationObserver.Create(client, options);
@@ -29,7 +29,7 @@ public sealed class MutationOptionsFactoryTests
 
         Assert.Equal("7", result);
 
-        static Task<string> Describe(int value, MutationFunctionContext context, CancellationToken cancellationToken) =>
+        static Task<string> Describe(int value, MutationFunctionContext context) =>
             Task.FromResult(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
@@ -41,7 +41,7 @@ public sealed class MutationOptionsFactoryTests
         int? variablesOnSuccess = null;
 
         var options = MutationOptions.Create(
-            (int variables, MutationFunctionContext _, CancellationToken _) => Task.FromResult(variables * 2),
+            (int variables, MutationFunctionContext _) => Task.FromResult(variables * 2),
             onMutate: (variables, _) => Task.FromResult($"snapshot:{variables}"))
             with
             {
@@ -71,7 +71,7 @@ public sealed class MutationOptionsFactoryTests
         Exception? errorOnSettled = null;
 
         var options = MutationOptions.Create(
-            (int _, MutationFunctionContext _, CancellationToken _) => Task.FromException<int>(failure),
+            (int _, MutationFunctionContext _) => Task.FromException<int>(failure),
             onMutate: (variables, _) => Task.FromResult($"snapshot:{variables}"))
             with
             {
@@ -101,7 +101,7 @@ public sealed class MutationOptionsFactoryTests
     public void Create_LeavesDefaultableSettingsUnset_SoDefaultsApply()
     {
         var options = MutationOptions.Create(
-            (int _, MutationFunctionContext _, CancellationToken _) => Task.FromResult("ok"));
+            (int _, MutationFunctionContext _) => Task.FromResult("ok"));
 
         Assert.Null(options.Retry);
         Assert.Null(options.RetryDelay);
@@ -114,7 +114,7 @@ public sealed class MutationOptionsFactoryTests
     [Fact]
     public void Create_NullMutationFn_Throws()
     {
-        Func<int, MutationFunctionContext, CancellationToken, Task<string>>? mutationFn = null;
+        Func<int, MutationFunctionContext, Task<string>>? mutationFn = null;
 
         void Act() => MutationOptions.Create(mutationFn!);
 
@@ -127,7 +127,7 @@ public sealed class MutationOptionsFactoryTests
         Func<int, MutationFunctionContext, Task<string>>? onMutate = null;
 
         void Act() => MutationOptions.Create(
-            (int _, MutationFunctionContext _, CancellationToken _) => Task.FromResult("ok"),
+            (int _, MutationFunctionContext _) => Task.FromResult("ok"),
             onMutate!);
 
         Assert.Throws<ArgumentNullException>("onMutate", Act);

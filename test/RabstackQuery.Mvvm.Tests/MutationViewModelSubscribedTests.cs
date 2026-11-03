@@ -10,30 +10,23 @@ namespace RabstackQuery.Mvvm;
 public sealed class MutationViewModelSubscribedTests : SyncContextTestBase
 {
     [Fact]
-    public async Task Unsubscribing_Should_Not_Cancel_Running_Mutation_And_Resume_Should_Show_Its_Result()
+    public async Task Running_Mutation_Should_Finish_While_Unsubscribed_And_Resume_Should_Show_Its_Result()
     {
         var client = new QueryClient(new QueryCache());
         var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        CancellationToken mutationToken = default;
         using var vm = new MutationViewModel<string, string>(client, new MutationOptions<string, string>
         {
-            MutationFn = (_, _, ct) =>
-            {
-                mutationToken = ct;
-                return gate.Task;
-            },
+            MutationFn = (_, _) => gate.Task,
         });
-        var running = vm.InvokeAsync("input", TestContext.Current.CancellationToken);
+        var running = vm.InvokeAsync("input");
 
         vm.Subscribed = false;
-        var cancelledByUnsubscribing = mutationToken.IsCancellationRequested;
         gate.SetResult("done");
         var result = await running;
         var dataWhileUnsubscribed = vm.Data;
         vm.Subscribed = true;
 
         Assert.Equal("done", result);
-        Assert.False(cancelledByUnsubscribing);
         Assert.Null(dataWhileUnsubscribed);
         Assert.True(vm.IsSuccess);
         Assert.Equal("done", vm.Data);
@@ -46,10 +39,10 @@ public sealed class MutationViewModelSubscribedTests : SyncContextTestBase
         var client = new QueryClient(new QueryCache(), timeProvider: timeProvider);
         using var vm = new MutationViewModel<string, string>(client, new MutationOptions<string, string>
         {
-            MutationFn = (input, _, _) => Task.FromResult(input),
+            MutationFn = (input, _) => Task.FromResult(input),
             GcTime = TimeSpan.FromMinutes(1),
         });
-        await vm.InvokeAsync("input", TestContext.Current.CancellationToken);
+        await vm.InvokeAsync("input");
 
         timeProvider.Advance(TimeSpan.FromMinutes(2));
         var countWhileSubscribed = client.MutationCache.GetAll().Count();
@@ -66,7 +59,7 @@ public sealed class MutationViewModelSubscribedTests : SyncContextTestBase
         var client = new QueryClient(new QueryCache());
         var vm = new MutationViewModel<string, string>(client, new MutationOptions<string, string>
         {
-            MutationFn = (input, _, _) => Task.FromResult(input),
+            MutationFn = (input, _) => Task.FromResult(input),
         });
         vm.Dispose();
 

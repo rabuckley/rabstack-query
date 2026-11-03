@@ -24,7 +24,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, int>
         {
-            MutationFn = async (input, context, ct) => $"Result: {input}",
+            MutationFn = async (input, context) => $"Result: {input}",
             OnMutate = async (input, context) => input.Length,
             OnSuccess = async (data, variables, context, functionContext) =>
             {
@@ -53,7 +53,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, string?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             OnMutate = async (input, context) => $"prefix_{input}",
             OnSuccess = async (data, variables, context, functionContext) =>
             {
@@ -84,7 +84,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, string?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Test error"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("Test error"),
             OnMutate = async (input, context) => $"context_{input}",
             OnError = async (error, variables, context, functionContext) =>
             {
@@ -113,7 +113,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             OnSuccess = async (data, variables, context, functionContext) =>
             {
                 defaultOnSuccessCalled = true;
@@ -148,7 +148,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Test"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("Test"),
             OnError = async (error, variables, context, functionContext) =>
             {
                 defaultOnErrorCalled = true;
@@ -181,7 +181,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             OnSettled = async (data, error, variables, context, functionContext) =>
             {
                 defaultOnSettledCalled = true;
@@ -219,7 +219,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             OnSuccess = async (data, variables, context, functionContext) =>
             {
                 contextClient = functionContext.Client;
@@ -247,7 +247,7 @@ public sealed class MutationTests
         var options = new MutationOptions<string, Exception, string, object?>
         {
             Meta = meta,
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             OnSuccess = async (data, variables, context, functionContext) =>
             {
                 metaValue = functionContext.Meta?["key"];
@@ -274,7 +274,7 @@ public sealed class MutationTests
         var options = new MutationOptions<string, Exception, string, object?>
         {
             MutationKey = expectedKey,
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             OnSuccess = async (data, variables, context, functionContext) =>
             {
                 contextKey = functionContext.MutationKey;
@@ -306,7 +306,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, int>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             OnMutate = async (input, context) => 42,
             OnSuccess = async (data, variables, context, functionContext) =>
             {
@@ -339,7 +339,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             OnSettled = async (data, error, variables, context, functionContext) =>
             {
                 settledData = data;
@@ -367,7 +367,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Test error"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("Test error"),
             OnSettled = async (data, error, variables, context, functionContext) =>
             {
                 settledData = data;
@@ -396,7 +396,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, CustomException, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new CustomException("Custom error"),
+            MutationFn = async (input, context) => throw new CustomException("Custom error"),
         };
 
         var mutation = new Mutation<string, CustomException, string, object?>(
@@ -421,7 +421,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, TodoContext>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             OnMutate = async (input, context) => new TodoContext { PreviousValue = "prev", NewValue = input },
             OnSuccess = async (data, variables, context, functionContext) =>
             {
@@ -461,7 +461,7 @@ public sealed class MutationTests
                 failureCount = count;
                 return TimeSpan.Zero; // No delay for testing
             },
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 throw new InvalidOperationException("Fail once");
             }
@@ -490,7 +490,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -517,7 +517,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -541,7 +541,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Error")
+            MutationFn = async (input, context) => throw new InvalidOperationException("Error")
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -568,7 +568,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -599,7 +599,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, string?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("Simulated API error"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("Simulated API error"),
             OnMutate = async (input, context) =>
             {
                 // Simulate optimistic update
@@ -631,7 +631,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var mutation = new Mutation<string, Exception, string, object?>(
@@ -682,7 +682,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string?, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 receivedVariables = input;
                 return "result";
@@ -710,7 +710,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -736,7 +736,7 @@ public sealed class MutationTests
         {
             Retry = 2,
             RetryDelay = (_, _) => TimeSpan.Zero,
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 attemptCount++;
                 if (attemptCount < 3) throw new InvalidOperationException("transient failure");
@@ -767,7 +767,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             OnSuccess = async (data, variables, context, functionContext) =>
             {
                 callOrder.Add("onSuccess");
@@ -796,7 +796,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("fail"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("fail"),
             OnError = async (error, variables, context, functionContext) =>
             {
                 callOrder.Add("onError");
@@ -825,7 +825,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
 
         var mutation = new Mutation<string, Exception, string, object?>(
@@ -848,7 +848,7 @@ public sealed class MutationTests
         var client = CreateQueryClient();
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("fail")
+            MutationFn = async (input, context) => throw new InvalidOperationException("fail")
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
@@ -886,7 +886,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => "success",
+            MutationFn = async (input, context) => "success",
             OnMutate = async (input, context) =>
             {
                 results.Add("onMutate");
@@ -934,7 +934,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw mutationError,
+            MutationFn = async (input, context) => throw mutationError,
             OnError = async (error, variables, context, functionContext) =>
             {
                 results.Add("onError");
@@ -972,7 +972,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw mutationError,
+            MutationFn = async (input, context) => throw mutationError,
             OnError = async (error, variables, context, functionContext) =>
             {
                 onErrorCalled = true;
@@ -1010,7 +1010,7 @@ public sealed class MutationTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => "result"
+            MutationFn = async (input, context) => "result"
         };
 
         var mutation = new Mutation<string, Exception, string, object?>(
@@ -1062,7 +1062,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Add("start-A");
                     firstStarted.Release();
@@ -1077,7 +1077,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Add("start-B");
                     results.Add("finish-B");
@@ -1127,7 +1127,7 @@ public sealed class MutationTests
             client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     bothStarted.Release(); // synchronous — happens before any await
                     await gateA.Task;
@@ -1139,7 +1139,7 @@ public sealed class MutationTests
             client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     bothStarted.Release(); // synchronous — happens before any await
                     await gateB.Task;
@@ -1196,11 +1196,11 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope1,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Enqueue("start-A1");
                     bothStarted.Release();
-                    await scope1Gate.WaitAsync(ct);
+                    await scope1Gate.WaitAsync();
                     results.Enqueue("finish-A1");
                     return "a1";
                 }
@@ -1211,7 +1211,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope1,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Enqueue("start-B1");
                     results.Enqueue("finish-B1");
@@ -1224,11 +1224,11 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope2,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Enqueue("start-A2");
                     bothStarted.Release();
-                    await scope2Gate.WaitAsync(ct);
+                    await scope2Gate.WaitAsync();
                     results.Enqueue("finish-A2");
                     return "a2";
                 }
@@ -1239,7 +1239,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope2,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Enqueue("start-B2");
                     results.Enqueue("finish-B2");
@@ -1302,7 +1302,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Add("start-A");
                     throw new InvalidOperationException("A failed");
@@ -1314,7 +1314,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     results.Add("start-B");
                     results.Add("finish-B");
@@ -1334,83 +1334,6 @@ public sealed class MutationTests
         Assert.Equal(MutationStatus.Error, mutationA.State.Status);
         Assert.Equal(MutationStatus.Success, mutationB.State.Status);
         Assert.Equal(["start-A", "start-B", "finish-B"], results);
-    }
-
-    /// <summary>
-    /// Cancelling a scoped mutation while it is paused (awaiting its turn) should
-    /// throw <see cref="OperationCanceledException"/> without breaking the scope
-    /// queue — a subsequent mutation in the same scope must still execute.
-    /// </summary>
-    [Fact]
-    public async Task ScopedMutations_CancelledWhilePaused_ShouldNotBreakChain()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var scope = new MutationScope("cancel-scope");
-        var cache = client.MutationCache;
-
-        var aStarted = new SemaphoreSlim(0, 1);
-        var aGate = new TaskCompletionSource();
-
-        var mutationA = cache.GetOrCreate<string, Exception, string, object?>(
-            client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                Scope = scope,
-                MutationFn = async (_, __, ct) =>
-                {
-                    aStarted.Release();
-                    await aGate.Task;
-                    return "a";
-                }
-            });
-
-        var mutationB = cache.GetOrCreate(
-            client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                Scope = scope,
-                MutationFn = async (_, __, ct) =>
-                {
-                    ct.ThrowIfCancellationRequested();
-                    return "b";
-                }
-            });
-
-        var mutationC = cache.GetOrCreate(
-            client,
-            new MutationOptions<string, Exception, string, object?>
-            {
-                Scope = scope,
-                MutationFn = async (_, __, ct) => "c"
-            });
-
-        // Act — start A (blocks on gate), start B with a token we'll cancel
-        var taskA = mutationA.Execute("v1");
-        using var cts = new CancellationTokenSource();
-        var taskB = mutationB.Execute("v2", cancellationToken: cts.Token);
-
-        await aStarted.WaitAsync(TimeSpan.FromSeconds(5));
-
-        // B should be paused, waiting for A
-        Assert.True(mutationB.State.IsPaused);
-
-        // Cancel B while it's paused — this won't take effect until B unpauses
-        // and the mutation function checks the token.
-        cts.Cancel();
-
-        // Let A complete so B can unpause
-        aGate.SetResult();
-        await taskA;
-
-        // B should throw OperationCanceledException because its token was cancelled
-        await Assert.ThrowsAsync<OperationCanceledException>(() => taskB);
-
-        // The scope chain must not be broken — C should execute successfully
-        var taskC = mutationC.Execute("v3");
-        await taskC;
-        Assert.Equal(MutationStatus.Success, mutationC.State.Status);
-        Assert.Equal("c", mutationC.State.Data);
     }
 
     /// <summary>
@@ -1434,7 +1357,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     aStarted.Release();
                     await aGate.Task;
@@ -1448,7 +1371,7 @@ public sealed class MutationTests
             new MutationOptions<string, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, __, ct) =>
+                MutationFn = async (_, __) =>
                 {
                     bReached.Release();
                     return "b";
@@ -1489,7 +1412,7 @@ public sealed class MutationTests
         Exception? settledError = null;
         var mutation = client.MutationCache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = (_, _, _) => Task.FromException<string>(timeout),
+            MutationFn = (_, _) => Task.FromException<string>(timeout),
             OnSettled = (_, error, _, _, _) =>
             {
                 settledError = error;

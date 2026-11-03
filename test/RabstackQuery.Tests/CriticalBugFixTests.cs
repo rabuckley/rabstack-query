@@ -202,7 +202,7 @@ public sealed class CriticalBugFixTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
                 throw new InvalidOperationException("Expected failure")
         };
 
@@ -223,7 +223,7 @@ public sealed class CriticalBugFixTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
                 throw new InvalidOperationException("test")
         };
 
@@ -238,7 +238,7 @@ public sealed class CriticalBugFixTests
         // Act
         try
         {
-            await observer.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
+            await observer.MutateAsync("test");
         }
         catch (InvalidOperationException)
         {
@@ -260,7 +260,7 @@ public sealed class CriticalBugFixTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
                 throw new InvalidOperationException("test error")
         };
 
@@ -269,7 +269,7 @@ public sealed class CriticalBugFixTests
         // Act
         try
         {
-            await observer.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
+            await observer.MutateAsync("test");
         }
         catch (InvalidOperationException)
         {
@@ -293,13 +293,13 @@ public sealed class CriticalBugFixTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper()
+            MutationFn = async (input, context) => input.ToUpper()
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act — should not throw
-        var result = await observer.MutateAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await observer.MutateAsync("hello");
 
         // Assert
         Assert.Equal("HELLO", result);
@@ -318,7 +318,7 @@ public sealed class CriticalBugFixTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
                 throw new InvalidOperationException("fail"),
             OnError = async (error, variables, context, functionContext) =>
             {

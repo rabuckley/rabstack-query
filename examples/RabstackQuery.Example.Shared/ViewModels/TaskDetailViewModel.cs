@@ -101,8 +101,8 @@ public sealed partial class TaskDetailViewModel : PageViewModel
         UpdateTaskMutation = UseMutation(
             new MutationOptions<TaskItem, (string Title, string? Description, TaskPriority Priority)>
             {
-                MutationFn = async (variables, context, ct) =>
-                    await api.UpdateTaskAsync(projectId, taskId, variables.Title, variables.Description, variables.Priority, ct),
+                MutationFn = async (variables, context) =>
+                    await api.UpdateTaskAsync(projectId, taskId, variables.Title, variables.Description, variables.Priority),
                 OnSuccess = async (updatedTask, _, _, context) =>
                 {
                     context.Client.SetQueryData(QueryKeys.Task(projectId, taskId), updatedTask);
@@ -116,8 +116,8 @@ public sealed partial class TaskDetailViewModel : PageViewModel
         UpdateStatusMutation = UseMutation(
             new MutationOptions<TaskItem, TaskItemStatus>
             {
-                MutationFn = async (status, context, ct) =>
-                    await api.UpdateTaskStatusAsync(projectId, taskId, status, ct),
+                MutationFn = async (status, context) =>
+                    await api.UpdateTaskStatusAsync(projectId, taskId, status),
                 OnMutate = async (newStatus, context) =>
                 {
                     // Cancel in-flight queries so they don't overwrite our optimistic update
@@ -167,8 +167,8 @@ public sealed partial class TaskDetailViewModel : PageViewModel
 
         AddCommentMutation = UseMutation(new MutationOptions<Comment, string>
         {
-            MutationFn = async (body, context, ct) =>
-                await api.AddCommentAsync(taskId, body, ct),
+            MutationFn = async (body, context) =>
+                await api.AddCommentAsync(taskId, body),
             OnSuccess = async (_, _, _, context) =>
             {
                 _addCommentSucceeded = true;

@@ -26,7 +26,7 @@ public partial class TodoListViewModel : ObservableObject, IDisposable
 
         CreateTodo = client.UseMutation(new MutationOptions<Todo, CreateTodoRequest>
         {
-            MutationFn = async (request, _, ct) => await api.CreateTodoAsync(request, ct),
+            MutationFn = async (request, _) => await api.CreateTodoAsync(request),
             OnSuccess = (_, _, _, context) => context.Client.InvalidateQueriesAsync(["todos"]),
         });
     }
@@ -86,8 +86,8 @@ TaskQuery = client.UseQuery(
 ```csharp
 StatusMutation = client.UseMutation(
     MutationOptions.Create(
-        (TaskItemStatus status, MutationFunctionContext _, CancellationToken ct) =>
-            api.UpdateStatusAsync(id, status, ct),
+        (TaskItemStatus status, MutationFunctionContext _) =>
+            api.UpdateStatusAsync(id, status),
         onMutate: (status, _) =>
         {
             var previous = Status;
@@ -153,7 +153,6 @@ Wraps a `MutationObserver` with observable properties and commands:
 | `IsError` | `bool` | Mutation failed |
 | `IsSuccess` | `bool` | Mutation succeeded |
 | `MutateCommand` | `IAsyncRelayCommand` | Fire the mutation (bindable) |
-| `MutateCancelCommand` | `ICommand` | Cancel a pending mutation |
 
 Call `InvokeAsync(variables)` for awaitable mutation execution with error propagation.
 

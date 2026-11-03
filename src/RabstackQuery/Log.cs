@@ -205,10 +205,6 @@ internal static partial class Log
         Message = "Mutation {MutationId} network resumed")]
     public static partial void MutationNetworkResumed(this ILogger logger, int mutationId);
 
-    [LoggerMessage(Level = LogLevel.Debug, EventId = 2405,
-        Message = "Mutation {MutationId} cancelled")]
-    public static partial void MutationCancelled(this ILogger logger, int mutationId);
-
     // ── MutationObserver: Debug (25xx) ───────────────────────────────────
 
     [LoggerMessage(Level = LogLevel.Debug, EventId = 2501,

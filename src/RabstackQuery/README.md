@@ -99,7 +99,7 @@ var observer = new QueryObserver<int, List<Todo>>(client, new QueryObserverOptio
 ```csharp
 await client.MutateAsync(new MutationOptions<Todo, Exception, CreateTodoRequest, List<Todo>>
 {
-    MutationFn = async (request, _, ct) => await api.CreateTodoAsync(request, ct),
+    MutationFn = async (request, _) => await api.CreateTodoAsync(request),
     OnMutate = async request =>
     {
         await client.CancelQueriesAsync(["todos"]);

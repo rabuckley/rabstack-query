@@ -154,6 +154,14 @@ generated setters suppress events when values are equal.
 `QueryObserver` notifies on every query state change. `QueriesObserver` memoizes combined
 results and suppresses notifications when the combined output is the same reference.
 
+## Omitted mutation cancellation
+
+TanStack's `mutationFn` takes `(variables, context)` and its mutations have no cancel. This port
+matches that: `MutationFn` receives no token and no mutation API accepts one. Stopping the client
+request would not undo a write the server may already have applied, so neither an error nor an
+idle state would be accurate. A mutation function's own `OperationCanceledException`, such as an
+`HttpClient` timeout, is an ordinary failure.
+
 ## Query key encoding
 
 `QueryKeyEncoder` uses `Utf8JsonWriter` to avoid reflection in trimmed and Native AOT apps.

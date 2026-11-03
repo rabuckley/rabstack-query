@@ -483,7 +483,7 @@ public sealed class QueryClientFullTests
         // Add a mutation to the mutation cache via MutationObserver
         var mutationOptions = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => "mutated"
+            MutationFn = async (input, context) => "mutated"
         };
         var mutationObserver = new MutationObserver<string, Exception, string, object?>(client, mutationOptions);
         await mutationObserver.MutateAsync("input");

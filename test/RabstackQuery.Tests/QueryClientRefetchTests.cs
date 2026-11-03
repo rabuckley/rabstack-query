@@ -1439,7 +1439,7 @@ public sealed class QueryClientRefetchTests
             client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = async (input, context, ct) =>
+                MutationFn = async (input, context) =>
                 {
                     entered1.TrySetResult();
                     return await tcs1.Task;
@@ -1450,7 +1450,7 @@ public sealed class QueryClientRefetchTests
             client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationFn = async (input, context, ct) =>
+                MutationFn = async (input, context) =>
                 {
                     entered2.TrySetResult();
                     return await tcs2.Task;
@@ -1986,14 +1986,14 @@ public sealed class QueryClientRefetchTests
             client,
             new MutationOptions<int, Exception, string, object?>
             {
-                MutationFn = async (_, _, _) => 1
+                MutationFn = async (_, _) => 1
             });
 
         var observer2 = new MutationObserver<int, Exception, string, object?>(
             client,
             new MutationOptions<int, Exception, string, object?>
             {
-                MutationFn = async (_, _, _) => 2
+                MutationFn = async (_, _) => 2
             });
 
         // Act — start mutations while offline (both should pause)
@@ -2039,7 +2039,7 @@ public sealed class QueryClientRefetchTests
             client,
             new MutationOptions<int, Exception, string, object?>
             {
-                MutationFn = async (_, _, _) =>
+                MutationFn = async (_, _) =>
                 {
                     lock (events) events.Add("1start");
                     started1.TrySetResult();
@@ -2053,7 +2053,7 @@ public sealed class QueryClientRefetchTests
             client,
             new MutationOptions<int, Exception, string, object?>
             {
-                MutationFn = async (_, _, _) =>
+                MutationFn = async (_, _) =>
                 {
                     lock (events) events.Add("2start");
                     started2.TrySetResult();
@@ -2123,7 +2123,7 @@ public sealed class QueryClientRefetchTests
             new MutationOptions<int, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, _, _) =>
+                MutationFn = async (_, _) =>
                 {
                     lock (events) events.Add("1start");
                     started1.TrySetResult();
@@ -2138,7 +2138,7 @@ public sealed class QueryClientRefetchTests
             new MutationOptions<int, Exception, string, object?>
             {
                 Scope = scope,
-                MutationFn = async (_, _, _) =>
+                MutationFn = async (_, _) =>
                 {
                     lock (events) events.Add("2start");
                     started2.TrySetResult();
@@ -2188,7 +2188,7 @@ public sealed class QueryClientRefetchTests
             client,
             new MutationOptions<int, Exception, string, object?>
             {
-                MutationFn = async (_, _, _) => 1
+                MutationFn = async (_, _) => 1
             });
 
         var task = observer.MutateAsync("a");

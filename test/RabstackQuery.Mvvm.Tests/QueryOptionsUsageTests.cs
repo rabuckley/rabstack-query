@@ -235,7 +235,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
         var client = CreateClient();
         using var vm = new MutationViewModel<string, int>(
             client,
-            new MutationOptions<string, int> { MutationFn = async (vars, ctx, ct) => $"result-{vars}" });
+            new MutationOptions<string, int> { MutationFn = async (vars, ctx) => $"result-{vars}" });
 
         Assert.True(vm.IsIdle);
 
@@ -252,7 +252,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
     {
         var client = CreateClient();
         using var vm = client.UseMutation<string, int>(
-            async (vars, ctx, ct) => $"value-{vars}");
+            async (vars, ctx) => $"value-{vars}");
 
         vm.MutateCommand.Execute(7);
         await WaitForAsync(() => vm.IsSuccess);
@@ -269,7 +269,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
 
         using var vm = client.UseMutation(new MutationOptions<string, int>
         {
-            MutationFn = async (vars, ctx, ct) => $"result-{vars}",
+            MutationFn = async (vars, ctx) => $"result-{vars}",
             OnSuccess = (data, vars, _, ctx) =>
             {
                 onSuccessCalled = true;
@@ -294,7 +294,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
 
         using var vm = client.UseMutation(new MutationOptions<string, int>
         {
-            MutationFn = (vars, ctx, ct) => throw new InvalidOperationException("boom"),
+            MutationFn = (vars, ctx) => throw new InvalidOperationException("boom"),
             OnError = (err, vars, _, ctx) =>
             {
                 onErrorCalled = true;
@@ -319,7 +319,7 @@ public sealed class QueryOptionsUsageTests : SyncContextTestBase
 
         using var vm = client.UseMutation(new MutationOptions<string, int>
         {
-            MutationFn = async (vars, ctx, ct) => "done",
+            MutationFn = async (vars, ctx) => "done",
             OnSettled = (data, error, vars, _, ctx) =>
             {
                 onSettledCalled = true;

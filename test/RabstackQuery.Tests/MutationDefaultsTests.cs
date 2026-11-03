@@ -20,7 +20,7 @@ public class MutationDefaultsTests
         var mutation = cache.GetOrCreate(client,
             new MutationOptions<string, Exception, string, object?>
             {
-                MutationKey = ["todos", "create"], MutationFn = (_, _, _) => Task.FromResult("ok"),
+                MutationKey = ["todos", "create"], MutationFn = (_, _) => Task.FromResult("ok"),
             });
 
         // Assert — cannot directly inspect options on Mutation, but we can verify
@@ -251,7 +251,7 @@ public class MutationDefaultsTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationKey = ["todos"], OnMutate = onMutate, MutationFn = (vars, _, ct) => Task.FromResult("ok"),
+            MutationKey = ["todos"], OnMutate = onMutate, MutationFn = (vars, _) => Task.FromResult("ok"),
         };
 
         var defaulted = client.DefaultMutationOptions(options);
@@ -345,10 +345,10 @@ public class MutationDefaultsTests
             {
                 MutationKey = ["todos"],
                 NetworkMode = NetworkMode.Online,
-                MutationFn = (input, _, _) => Task.FromResult(input),
+                MutationFn = (input, _) => Task.FromResult(input),
             });
 
-        var mutation = observer.MutateAsync("todo", cancellationToken: TestContext.Current.CancellationToken);
+        var mutation = observer.MutateAsync("todo");
         await paused.Task;
 
         Assert.False(mutation.IsCompleted);

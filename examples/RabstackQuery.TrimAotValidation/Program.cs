@@ -97,9 +97,9 @@ Console.WriteLine($"Key shapes: {shapeKeys.Length} encoded, matched and invalida
 
 var mutationOptions = new MutationOptions<string, string>
 {
-    MutationFn = async (variables, context, ct) =>
+    MutationFn = async (variables, context) =>
     {
-        await Task.Delay(1, ct);
+        await Task.Delay(1);
         return $"mutated: {variables}";
     },
     MutationKey = ["validation", "mutate"]

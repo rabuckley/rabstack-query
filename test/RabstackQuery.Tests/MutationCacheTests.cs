@@ -15,7 +15,7 @@ public sealed class MutationCacheTests
     {
         return new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
     }
 
@@ -125,7 +125,7 @@ public sealed class MutationCacheTests
         var cache = client.MutationCache;
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             GcTime = TimeSpan.FromMilliseconds(50) // 50ms — long enough to assert, short enough to GC in this test
         };
         cache.GetOrCreate(client, options);
@@ -147,7 +147,7 @@ public sealed class MutationCacheTests
         QueryKey expectedKey = ["mutations", "create"];
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             MutationKey = expectedKey,
             Retry = 2,
         };
@@ -173,7 +173,7 @@ public sealed class MutationCacheTests
         var cache = client.MutationCache;
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(),
+            MutationFn = async (input, context) => input.ToUpper(),
             GcTime = TimeSpan.FromMilliseconds(10)
         };
 
@@ -210,7 +210,7 @@ public sealed class MutationCacheTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 await Task.Delay(10);
                 return input.ToUpper();
@@ -251,7 +251,7 @@ public sealed class MutationCacheTests
         QueryKey key = ["mutation", "vars"];
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input,
+            MutationFn = async (input, context) => input,
             MutationKey = key
         };
 
@@ -286,7 +286,7 @@ public sealed class MutationCacheTests
             client,
             new MutationOptions<string, Exception, int, object?>
             {
-                MutationFn = async (input, context, ct) => input.ToString(),
+                MutationFn = async (input, context) => input.ToString(),
                 MutationKey = ["a", 1]
             });
         await obs1.MutateAsync(1);
@@ -295,7 +295,7 @@ public sealed class MutationCacheTests
             client,
             new MutationOptions<string, Exception, int, object?>
             {
-                MutationFn = async (input, context, ct) => input.ToString(),
+                MutationFn = async (input, context) => input.ToString(),
                 MutationKey = ["a", 2]
             });
         await obs2.MutateAsync(2);
@@ -304,7 +304,7 @@ public sealed class MutationCacheTests
             client,
             new MutationOptions<string, Exception, int, object?>
             {
-                MutationFn = async (input, context, ct) => input.ToString(),
+                MutationFn = async (input, context) => input.ToString(),
                 MutationKey = ["b"]
             });
         await obs3.MutateAsync(3);
@@ -375,7 +375,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, string>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("error"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("error"),
             MutationKey = key,
             OnMutate = async (variables, functionContext) => "result"
         });
@@ -454,7 +454,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, string>
         {
-            MutationFn = async (input, context, ct) => "success-data",
+            MutationFn = async (input, context) => "success-data",
             MutationKey = key,
             OnMutate = async (variables, functionContext) => "result"
         });
@@ -514,7 +514,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, string>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 callOrder.Add("mutationFn");
                 return "data";
@@ -571,7 +571,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => throw new InvalidOperationException("error"),
+            MutationFn = async (input, context) => throw new InvalidOperationException("error"),
             MutationKey = ["order-test"],
             OnError = async (error, variables, context, functionContext) =>
             {
@@ -625,7 +625,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => "data",
+            MutationFn = async (input, context) => "data",
             MutationKey = ["order-test"],
             OnSuccess = async (data, variables, context, functionContext) =>
             {
@@ -672,7 +672,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => "data",
+            MutationFn = async (input, context) => "data",
             MutationKey = ["onmutate-await-test"],
             OnMutate = async (variables, functionContext) =>
             {
@@ -725,7 +725,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => "success-data"
+            MutationFn = async (input, context) => "success-data"
         });
 
         // Act — the OnSuccess exception propagates to the caller
@@ -763,7 +763,7 @@ public sealed class MutationCacheTests
         var originalException = new ArgumentException("mutation failed");
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = (input, context, ct) => Task.FromException<string>(originalException),
+            MutationFn = (input, context) => Task.FromException<string>(originalException),
             OnError = async (error, variables, context, functionContext) =>
             {
                 mutationOnErrorCalled = true;
@@ -802,7 +802,7 @@ public sealed class MutationCacheTests
 
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) =>
+            MutationFn = async (input, context) =>
             {
                 mutationFnRan = true;
                 return "data";
@@ -931,7 +931,7 @@ public sealed class MutationCacheTests
         var cache = client.MutationCache;
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = (_, _, _) => Task.FromException<string>(new InvalidOperationException("fail"))
+            MutationFn = (_, _) => Task.FromException<string>(new InvalidOperationException("fail"))
         });
         var actionTypes = new List<string>();
         cache.Subscribe(e =>
@@ -991,7 +991,7 @@ public sealed class MutationCacheTests
         var cache = client.MutationCache;
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, _, _) => input.ToUpper()
+            MutationFn = async (input, _) => input.ToUpper()
         });
 
         // Act
@@ -1016,7 +1016,7 @@ public sealed class MutationCacheTests
         var cache = client.MutationCache;
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = (_, _, _) => Task.FromException<string>(new InvalidOperationException("boom"))
+            MutationFn = (_, _) => Task.FromException<string>(new InvalidOperationException("boom"))
         });
 
         // Act
@@ -1043,7 +1043,7 @@ public sealed class MutationCacheTests
         var cache = client.MutationCache;
         cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, _, _) => "result"
+            MutationFn = async (input, _) => "result"
         });
 
         // Execute the mutation so it has data
@@ -1081,12 +1081,12 @@ public sealed class MutationCacheTests
         var mutation1 = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             Scope = new MutationScope("scope1"),
-            MutationFn = async (input, context, ct) => "data1"
+            MutationFn = async (input, context) => "data1"
         });
         var mutation2 = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             Scope = new MutationScope("scope1"),
-            MutationFn = async (input, context, ct) => "data2"
+            MutationFn = async (input, context) => "data2"
         });
 
         Assert.Equal(2, cache.GetAll().Count());
@@ -1114,7 +1114,7 @@ public sealed class MutationCacheTests
         var mutation = cache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
         {
             Scope = new MutationScope("scope1"),
-            MutationFn = async (input, context, ct) => "data"
+            MutationFn = async (input, context) => "data"
         });
 
         Assert.Single(cache.GetAll());

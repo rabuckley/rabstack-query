@@ -350,13 +350,13 @@ public sealed class MetricsTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input.ToUpper(), MutationKey = ["test-mutation"]
+            MutationFn = async (input, context) => input.ToUpper(), MutationKey = ["test-mutation"]
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act
-        await observer.MutateAsync("hello", cancellationToken: TestContext.Current.CancellationToken);
+        await observer.MutateAsync("hello");
 
         // Assert
         var totals = mutationTotal.GetMeasurementSnapshot();
@@ -397,7 +397,7 @@ public sealed class MetricsTests
 
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = (input, context, ct) =>
+            MutationFn = (input, context) =>
                 throw new InvalidOperationException("mutation failed"),
             MutationKey = ["fail-mutation"]
         };
@@ -406,7 +406,7 @@ public sealed class MetricsTests
 
         // Act
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            observer.MutateAsync("hello", cancellationToken: TestContext.Current.CancellationToken));
+            observer.MutateAsync("hello"));
 
         // Assert
         Assert.Single(mutationTotal.GetMeasurementSnapshot());
@@ -433,13 +433,13 @@ public sealed class MetricsTests
         // No MutationKey set — intentionally omitted
         var options = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
 
         var observer = new MutationObserver<string, Exception, string, object?>(client, options);
 
         // Act
-        await observer.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
+        await observer.MutateAsync("test");
 
         // Assert — measurement recorded but without a key tag
         var totals = mutationTotal.GetMeasurementSnapshot();
@@ -663,14 +663,14 @@ public sealed class MetricsTests
 
         var mutationOptions = new MutationOptions<string, Exception, string, object?>
         {
-            MutationFn = async (input, context, ct) => input
+            MutationFn = async (input, context) => input
         };
 
         var mutationObserver = new MutationObserver<string, Exception, string, object?>(
             client,
             mutationOptions);
 
-        await mutationObserver.MutateAsync("test", cancellationToken: TestContext.Current.CancellationToken);
+        await mutationObserver.MutateAsync("test");
 
         // Assert — if we got here, no NullReferenceException was thrown
     }

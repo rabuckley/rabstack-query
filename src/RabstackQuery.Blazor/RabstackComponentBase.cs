@@ -145,10 +145,10 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
 
     // ── Mutation ───────────────────────────────────────────────────────
 
-    /// <inheritdoc cref="QueryClientExtensions.UseMutation{TData, TVariables}(QueryClient, Func{TVariables, MutationFunctionContext, CancellationToken, Task{TData}})" path="/summary|/typeparam|/param[@name!='client']|/exception"/>
+    /// <inheritdoc cref="QueryClientExtensions.UseMutation{TData, TVariables}(QueryClient, Func{TVariables, MutationFunctionContext, Task{TData}})" path="/summary|/typeparam|/param[@name!='client']|/exception"/>
     /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected MutationViewModel<TData, TVariables> UseMutation<TData, TVariables>(
-        Func<TVariables, MutationFunctionContext, CancellationToken, Task<TData>> mutationFn)
+        Func<TVariables, MutationFunctionContext, Task<TData>> mutationFn)
         => Track(Client.UseMutation(mutationFn));
 
     /// <inheritdoc cref="QueryClientExtensions.UseMutation{TData, TVariables}(QueryClient, MutationOptions{TData, TVariables})" path="/summary|/typeparam|/param[@name!='client']|/exception"/>
