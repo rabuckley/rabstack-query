@@ -288,11 +288,7 @@ public sealed class QueryCache : Subscribable<QueryCacheListener>
 
     internal void Notify(QueryCacheNotifyEvent @event)
     {
-        var snapshot = GetListenerSnapshot();
-        _notifyManager.Batch(() =>
-        {
-            foreach (var listener in snapshot) listener(@event);
-        });
+        _notifyManager.Batch(() => InvokeListeners(listener => listener(@event), _notifyManager, _logger));
     }
 
     /// <summary>

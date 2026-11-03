@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace RabstackQuery;
 
 /// <summary>
@@ -13,6 +15,7 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     : Subscribable<InfiniteQueryObserverListener<TData, TPageParam>>
 {
     private readonly QueryClient _client;
+    private readonly ILogger _logger;
     private readonly QueryObserver<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>> _inner;
     private readonly InfiniteQueryObserverOptions<TData, TPageParam> _options;
     private IDisposable? _innerSubscription;
@@ -24,6 +27,7 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(options);
         _client = client;
+        _logger = client.LoggerFactory.CreateLogger("RabstackQuery.InfiniteQueryObserver");
         _options = options;
 
         // The fetch function reads the state of the query it fetches into, which doesn't exist
@@ -179,14 +183,7 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     {
         var wrappedResult = WrapResult(innerResult);
 
-        var snapshot = GetListenerSnapshot();
-        _client.NotifyManager.Batch(() =>
-        {
-            foreach (var listener in snapshot)
-            {
-                listener(wrappedResult);
-            }
-        });
+        _client.NotifyManager.Batch(() => InvokeListeners(listener => listener(wrappedResult), _client.NotifyManager, _logger));
     }
 
 }

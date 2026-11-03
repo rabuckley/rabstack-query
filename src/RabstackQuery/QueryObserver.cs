@@ -478,14 +478,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     {
         if (_currentResult is null) return;
 
-        var snapshot = GetListenerSnapshot();
-        _client.NotifyManager.Batch(() =>
-        {
-            foreach (var listener in snapshot)
-            {
-                listener(_currentResult);
-            }
-        });
+        _client.NotifyManager.Batch(() => InvokeListeners(listener => listener(_currentResult), _client.NotifyManager, _logger));
     }
 
     public IQueryResult<TData> CurrentResult => _currentResult ?? CreateInitialResult();

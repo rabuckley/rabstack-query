@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace RabstackQuery;
 
 /// <summary>
@@ -39,6 +41,7 @@ namespace RabstackQuery;
 public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObserverListener<TData>>
 {
     private readonly QueryClient _client;
+    private readonly ILogger _logger;
 
     // Active observers, one per entry in the query list passed to SetQueries.
     // Kept in sync with the query options list by SetQueries.
@@ -89,6 +92,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
         ArgumentNullException.ThrowIfNull(queries);
 
         _client = client;
+        _logger = client.LoggerFactory.CreateLogger("RabstackQuery.QueriesObserver");
         _combine = combine;
 
         // Initialise _observers and _result without subscribing to inner observers.
@@ -488,14 +492,7 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
                 return;
         }
 
-        var listenerSnapshot = GetListenerSnapshot();
-        _client.NotifyManager.Batch(() =>
-        {
-            foreach (var listener in listenerSnapshot)
-            {
-                listener(resultSnapshot);
-            }
-        });
+        _client.NotifyManager.Batch(() => InvokeListeners(listener => listener(resultSnapshot), _client.NotifyManager, _logger));
     }
 
     // ── Observer matching ───────────────────────────────────────────────────────

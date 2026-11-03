@@ -242,11 +242,7 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     /// </summary>
     internal void Notify(MutationCacheNotifyEvent @event)
     {
-        var snapshot = GetListenerSnapshot();
-        _notifyManager.Batch(() =>
-        {
-            foreach (var listener in snapshot) listener(@event);
-        });
+        _notifyManager.Batch(() => InvokeListeners(listener => listener(@event), _notifyManager, _logger));
     }
 
     private static bool MatchMutation(Mutation mutation, MutationFilters filters, string[]? encodedFilterKey)

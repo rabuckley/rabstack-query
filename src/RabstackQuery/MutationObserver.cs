@@ -163,14 +163,7 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
     {
         var result = CurrentResult;
 
-        var snapshot = GetListenerSnapshot();
-        _client.NotifyManager.Batch(() =>
-        {
-            foreach (var listener in snapshot)
-            {
-                listener(result);
-            }
-        });
+        _client.NotifyManager.Batch(() => InvokeListeners(listener => listener(result), _client.NotifyManager, _logger));
     }
 }
 

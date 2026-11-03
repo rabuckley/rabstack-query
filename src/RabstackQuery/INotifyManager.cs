@@ -21,4 +21,6 @@ public interface INotifyManager
 
     /// <inheritdoc cref="Batch(Action)"/>
     public T Batch<T>(Func<T> callback);
+
+    internal void Schedule(Action callback);
 }

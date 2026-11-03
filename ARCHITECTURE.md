@@ -106,6 +106,24 @@ JavaScript's `getQueryData` works regardless of type because there's no runtime 
 
 - **No error redaction** — Skip `shouldRedactErrors`.
 
+## Listener exceptions
+
+`Subscribable` catches an exception from each listener, so it can't fail the fetch or mutation that raised the notification. A listener that throws while a query succeeds leaves the query `Succeeded`. The exception is logged (event 4801) and rethrown as unhandled on a later tick.
+
+TanStack's behaviour depends on how a listener subscribes:
+
+| Listener throws | Operation outcome | Exception goes to | Later listeners |
+| --- | --- | --- | --- |
+| `query-core` raw `subscribe` | Fails. Throwing on the fetch-start dispatch also skips the query function and leaves the query `pending`/`fetching`. | The fetch or mutation promise, or the `setQueryData` caller | Skipped |
+| `notifyManager.batchCalls` (React, Preact, Angular adapters) | Unaffected | Uncaught error on a later tick | Skipped for that flush, including `batchCalls` listeners on other observers and the cache. Raw subscribers still run. |
+| This port | Unaffected | Unhandled exception on a later tick, and the log | Skipped on the same observer or cache for that notification. Other observers and the cache still run. |
+
+This port follows `batchCalls`, except for how far the skip reaches. It has to catch before deferring because its notifications flush synchronously.
+
+The skip stops at one instance because the port doesn't distinguish `batchCalls` listeners from raw ones. `QueriesObserver`'s inner subscriptions are raw upstream and keep its state current, so a flush-wide skip would leave its results stale. Batches also span threads here, so a flush-wide skip could drop an unrelated thread's notification.
+
+The rethrow goes where an `async void` method's exception would: the current `SynchronizationContext`, otherwise the thread pool. **An unhandled exception on the thread pool terminates the process**, as an uncaught error does by default in Node. The outcome of one posted to a `SynchronizationContext` depends on the platform. In a Debug build of the MAUI sample, it terminates the app on the iOS simulator. On Mac Catalyst the app keeps running and only the log records the exception, so test this path on iOS as well. Android, Blazor and Release builds haven't been tested.
+
 ## MVVM ViewModel threading
 
 Construct `QueryViewModel`, `InfiniteQueryViewModel`, and `MutationViewModel` on the UI

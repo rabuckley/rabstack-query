@@ -14,6 +14,25 @@ public sealed class NotifyManager : INotifyManager
     {
     }
 
+    // Tests replace the scheduler to capture rethrows without terminating the test host.
+    internal Action<Action> Scheduler { get; set; } = ScheduleOnCurrentContext;
+
+    void INotifyManager.Schedule(Action callback) => Scheduler(callback);
+
+    // Use the current SynchronizationContext in place of TanStack's setTimeout(callback, 0)
+    // so the UI platform handles unhandled listener exceptions.
+    private static void ScheduleOnCurrentContext(Action callback)
+    {
+        if (SynchronizationContext.Current is { } context)
+        {
+            context.Post(static state => ((Action)state!)(), callback);
+        }
+        else
+        {
+            ThreadPool.QueueUserWorkItem(static state => state(), callback, preferLocal: false);
+        }
+    }
+
     public void Batch(Action callback)
     {
         lock (_lock)

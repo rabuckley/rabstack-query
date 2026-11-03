@@ -1,11 +1,11 @@
+using System.Runtime.ExceptionServices;
+
+using Microsoft.Extensions.Logging;
+
 namespace RabstackQuery;
 
 /// <summary>
-/// Base class providing a subscribe/unsubscribe pattern for typed listeners.
-/// Thread-safe: listener mutations and lifecycle hooks are serialized via a
-/// <see cref="Lock"/>, and callers iterate a snapshot via
-/// <see cref="GetListenerSnapshot"/> to avoid concurrent-modification hazards
-/// on the backing <see cref="HashSet{T}"/>.
+/// Provides typed listener subscriptions with serialized subscription changes and lifecycle hooks.
 /// </summary>
 public class Subscribable<TListener> where TListener : Delegate
 {
@@ -32,16 +32,7 @@ public class Subscribable<TListener> where TListener : Delegate
         get { lock (_listenersLock) return _listeners.Count; }
     }
 
-    /// <summary>
-    /// Returns a point-in-time snapshot of the listener set, safe to iterate
-    /// without holding the lock. The returned array is a copy — mutations to
-    /// the listener set after the snapshot is taken are not reflected.
-    ///
-    /// All notification paths should use this instead of iterating <c>_listeners</c>
-    /// directly. Matches the pattern in <c>Query.Dispatch</c> which snapshots
-    /// <c>_observers</c> under <c>_observerLock</c> before iterating.
-    /// </summary>
-    internal TListener[] GetListenerSnapshot()
+    private TListener[] GetListenerSnapshot()
     {
         lock (_listenersLock)
         {
@@ -49,9 +40,38 @@ public class Subscribable<TListener> where TListener : Delegate
         }
     }
 
+    // TanStack's batchCalls defers listener exceptions. Catch here because synchronous
+    // notifications otherwise let listener failures fail the query or mutation.
+    // Unlike batchCalls' flush-wide stop, stop only this instance so QueriesObserver's
+    // inner subscriptions keep its results current and other threads' batches still notify.
+    private protected void InvokeListeners(Action<TListener> invoke, INotifyManager notifyManager, ILogger logger)
+    {
+        foreach (var listener in GetListenerSnapshot())
+        {
+            try
+            {
+                invoke(listener);
+            }
+            catch (Exception ex)
+            {
+                logger.ListenerThrew(ex);
+                var captured = ExceptionDispatchInfo.Capture(ex);
+                notifyManager.Schedule(captured.Throw);
+                return;
+            }
+        }
+    }
+
     /// <summary>
-    /// Subscribes a listener and returns an IDisposable that will unsubscribe when disposed.
+    /// Subscribes a listener and returns a handle that unsubscribes it when disposed.
     /// </summary>
+    /// <remarks>
+    /// If <paramref name="listener"/> throws, the notifying operation is unaffected, but remaining
+    /// listeners on this instance miss that notification. The exception is logged at
+    /// <see cref="LogLevel.Error"/> and rethrown asynchronously on the current
+    /// <see cref="SynchronizationContext"/>, or the thread pool if none is set.
+    /// An unhandled exception on the thread pool terminates the process.
+    /// </remarks>
     public IDisposable Subscribe(TListener listener)
     {
         ArgumentNullException.ThrowIfNull(listener);

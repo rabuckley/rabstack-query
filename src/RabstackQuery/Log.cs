@@ -288,4 +288,8 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Error, EventId = 4401,
         Message = "Mutation {MutationId} failed permanently")]
     public static partial void MutationFailed(this ILogger logger, int mutationId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, EventId = 4801,
+        Message = "A subscribed listener threw while being notified")]
+    public static partial void ListenerThrew(this ILogger logger, Exception exception);
 }
