@@ -182,11 +182,11 @@ public sealed class Query<TData> : Query
     // function callback — bundling would capture a stale reference after an atomic swap.
     private volatile bool _abortSignalConsumed;
 
-    // Bundles the active retryer and pre-fetch state snapshot into a single volatile
-    // reference. Superseding a fetch becomes one atomic swap instead of coordinating
-    // two separate volatile fields. The identity check `_activeFetch?.Retryer == retryer`
-    // replaces the previous `_retryer == retryer` pattern.
     private volatile FetchOperation? _activeFetch;
+
+    // Keep this on the query so an observer notified of fetch startup can update the
+    // revert state before FetchOperation is published.
+    private volatile QueryState<TData>? _revertState;
 
     // Fetch deduplication: when a fetch is in-flight, subsequent Fetch() calls
     // return this same Task instead of starting a new fetch. This mirrors
@@ -198,7 +198,6 @@ public sealed class Query<TData> : Query
     private sealed class FetchOperation
     {
         public required Retryer<TData> Retryer { get; init; }
-        public required QueryState<TData> PreFetchState { get; init; }
 
         // Set before cancelling so inline completion sees the first cancellation's options.
         public CancelOptions? Cancellation;
@@ -445,21 +444,16 @@ public sealed class Query<TData> : Query
         _logger.QueryCancelled(QueryHash, options?.Revert ?? false);
         var op = _activeFetch;
 
-        // Dispatch state revert BEFORE cancelling the retryer.
-        //
-        // C# divergence: In TanStack, retryer.cancel() rejects the promise
-        // (discarding the query function's return value) and fires onCancel
-        // which reverts state — all synchronously. In C#, StreamedQuery
-        // catches OperationCanceledException and returns partial data as a
-        // success, so the Retryer resolves and FetchCore dispatches
-        // SuccessState. Because retryer.Cancel() can trigger inline async
-        // continuations (no SynchronizationContext in many C# hosts), the
-        // entire FetchCore success path can execute during this Cancel()
-        // call. Dispatching the revert first ensures the success overwrites
-        // the revert (correct ordering), not the reverse.
-        if (options?.Revert is true && op is not null)
+        // Revert before cancelling. StreamedQuery returns partial data on cancellation,
+        // and C# async continuations can dispatch that success inline. Reverting afterwards
+        // would discard it.
+        if (options?.Revert is true && op is not null && _revertState is { } revertState)
         {
-            Dispatch(new SetStateAction<TData> { State = op.PreFetchState, Options = null });
+            Dispatch(new SetStateAction<TData>
+            {
+                State = revertState with { FetchStatus = FetchStatus.Idle },
+                Options = null
+            });
         }
 
         if (op is not null) CancelOperation(op, options ?? PlainCancel);
@@ -624,6 +618,13 @@ public sealed class Query<TData> : Query
         Dispatch(new SetStateAction<TData> { State = state, Options = options });
     }
 
+    internal void SetManualState(QueryState<TData> state)
+    {
+        // Assigned before dispatching so an observer that cancels in response reverts to this write.
+        _revertState = state;
+        SetState(state);
+    }
+
     internal void SetQueryFn(Func<QueryFunctionContext, Task<TData>> queryFn)
     {
         _queryFn = queryFn;
@@ -714,7 +715,7 @@ public sealed class Query<TData> : Query
         }
 
         // Capture state before fetch so Cancel(revert: true) can restore it
-        var preFetchState = State!;
+        _revertState = State;
 
         // Reset the signal-consumed flag for this fetch. The flag is set when
         // the query function accesses QueryFunctionContext.CancellationToken.
@@ -763,7 +764,7 @@ public sealed class Query<TData> : Query
         // of the State write (FetchStatus = Fetching). If these writes were
         // reordered, the dedup check could see a non-null _activeFetch but stale
         // State.FetchStatus == Idle, incorrectly starting a duplicate fetch.
-        var operation = new FetchOperation { Retryer = retryer, PreFetchState = preFetchState };
+        var operation = new FetchOperation { Retryer = retryer };
         _activeFetch = operation;
 
         var queryHashTag = QueryMetrics.QueryHashTag(QueryHash);
@@ -806,6 +807,7 @@ public sealed class Query<TData> : Query
             _metrics?.QueryFetchDuration?.Record(sw!.Elapsed.TotalSeconds, queryHashTag);
 
             var now = GetUtcNowMs();
+            _revertState = null;
             SetState(SuccessState(data, now));
             _logger.QueryFetchSucceeded(QueryHash);
         }

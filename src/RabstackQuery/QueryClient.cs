@@ -1030,11 +1030,7 @@ public sealed class QueryClient : IDisposable
                 FetchStatus = query.State?.FetchStatus ?? FetchStatus.Idle
             };
 
-            // SetState is internal (not private) so we can call it directly.
-            // This avoids reflection, which is not trim-safe or AOT-compatible.
-            // SetQueryData is an intentional bypass of the reducer pattern for
-            // manual cache updates — making SetState internal is honest about that.
-            query.SetState(newState);
+            query.SetManualState(newState);
         }
         else
         {

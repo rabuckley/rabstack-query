@@ -69,6 +69,95 @@ public class QueryCancellationTests
     }
 
     [Fact]
+    public async Task Cancel_WithRevert_KeepsDataSetDuringFetch()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["todos"], "original");
+
+        var query = client.QueryCache.Get<string>(
+            DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]))!;
+
+        var fetchStarted = new TaskCompletionSource();
+
+        query.SetQueryFn(async ctx =>
+        {
+            fetchStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, ctx.CancellationToken);
+            return "fetched";
+        });
+
+        var fetchTask = query.Fetch();
+        await fetchStarted.Task;
+
+        client.SetQueryData(["todos"], "manual");
+        await query.Cancel(new CancelOptions { Revert = true });
+        await fetchTask;
+
+        Assert.Equal("manual", query.State!.Data);
+        Assert.Equal(QueryStatus.Succeeded, query.State!.Status);
+        Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
+    }
+
+    [Fact]
+    public async Task Cancel_WithRevert_OnInitialFetch_KeepsDataSetDuringFetch_AndResolves()
+    {
+        var client = CreateQueryClient();
+
+        var query = client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string> { QueryKey = ["todos"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
+
+        var fetchStarted = new TaskCompletionSource();
+
+        query.SetQueryFn(async ctx =>
+        {
+            fetchStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, ctx.CancellationToken);
+            return "fetched";
+        });
+
+        var fetchTask = query.Fetch();
+        await fetchStarted.Task;
+
+        client.SetQueryData(["todos"], "manual");
+        await query.Cancel(new CancelOptions { Revert = true });
+        await fetchTask;
+
+        Assert.Equal("manual", query.State!.Data);
+        Assert.Equal(QueryStatus.Succeeded, query.State!.Status);
+        Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
+    }
+
+    [Fact]
+    public async Task Cancel_WithRevert_AfterRefetchReplacedFetch_ReturnsToIdle()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["todos"], "original");
+
+        var query = client.QueryCache.Get<string>(
+            DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]))!;
+
+        var fetchStarted = new SemaphoreSlim(0);
+
+        query.SetQueryFn(async ctx =>
+        {
+            fetchStarted.Release();
+            await Task.Delay(Timeout.InfiniteTimeSpan, ctx.CancellationToken);
+            return "fetched";
+        });
+
+        var replacedFetch = query.Fetch();
+        await fetchStarted.WaitAsync();
+        var replacementFetch = query.Fetch(cancelRefetch: true);
+        await fetchStarted.WaitAsync();
+
+        await query.Cancel(new CancelOptions { Revert = true });
+        await Task.WhenAll(replacedFetch, replacementFetch);
+
+        Assert.Equal("original", query.State!.Data);
+        Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
+    }
+
+    [Fact]
     public async Task Cancel_WithoutRevert_MovesToErrorState_AndCanRefetch()
     {
         // Arrange
