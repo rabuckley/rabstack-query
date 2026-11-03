@@ -485,3 +485,5 @@ $RECYCLE.BIN/
 
 # MAUI CLI local installation records
 .maui/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
