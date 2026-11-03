@@ -1,0 +1,30 @@
+// Use QueryClient.TimeProvider so tests can control time with FakeTimeProvider.
+// Keep Stopwatch allowed for wall-clock duration metrics.
+// Verify each new symbol ID reports RS0030 on a real call to the intended overload.
+
+P:System.DateTime.Now;Use QueryClient.TimeProvider
+P:System.DateTime.UtcNow;Use QueryClient.TimeProvider
+P:System.DateTime.Today;Use QueryClient.TimeProvider
+P:System.DateTimeOffset.Now;Use QueryClient.TimeProvider
+P:System.DateTimeOffset.UtcNow;Use QueryClient.TimeProvider
+P:System.TimeProvider.System;Use QueryClient.TimeProvider
+
+T:System.Threading.Timer;Use TimeProvider.CreateTimer
+T:System.Timers.Timer;Use TimeProvider.CreateTimer
+M:System.Threading.PeriodicTimer.#ctor(System.TimeSpan);Use the overload that takes a TimeProvider
+
+M:System.Threading.Tasks.Task.Delay(System.Int32);Use the overload that takes a TimeProvider
+M:System.Threading.Tasks.Task.Delay(System.Int32,System.Threading.CancellationToken);Use the overload that takes a TimeProvider
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan);Use the overload that takes a TimeProvider
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan,System.Threading.CancellationToken);Use the overload that takes a TimeProvider
+
+M:System.Threading.Tasks.Task.WaitAsync(System.TimeSpan);Use the overload that takes a TimeProvider
+M:System.Threading.Tasks.Task.WaitAsync(System.TimeSpan,System.Threading.CancellationToken);Use the overload that takes a TimeProvider
+M:System.Threading.Tasks.Task`1.WaitAsync(System.TimeSpan);Use the overload that takes a TimeProvider
+M:System.Threading.Tasks.Task`1.WaitAsync(System.TimeSpan,System.Threading.CancellationToken);Use the overload that takes a TimeProvider
+
+M:System.Threading.CancellationTokenSource.#ctor(System.Int32);Use the overload that takes a TimeProvider
+M:System.Threading.CancellationTokenSource.#ctor(System.TimeSpan);Use the overload that takes a TimeProvider
+
+M:System.Threading.Thread.Sleep(System.Int32);Use Task.Delay with a TimeProvider
+M:System.Threading.Thread.Sleep(System.TimeSpan);Use Task.Delay with a TimeProvider

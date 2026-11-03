@@ -225,5 +225,5 @@ and `IQueryKeyElement` values. Unsupported types throw `ArgumentException`.
 - Object elements match as a whole. A dictionary containing only `status` does not match
   one containing both `status` and `page`.
 
-Both test projects disable reflection-based JSON serialization to catch accidental use
-before an AOT publish.
+Core, MVVM and Blazor tests disable JSON reflection to catch accidental use before
+AOT publishing.

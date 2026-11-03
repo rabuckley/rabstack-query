@@ -75,7 +75,7 @@ These areas have no TS equivalent and are where porting agents most likely intro
 
 ### Query Key Identity and Equality
 
-Hashing and matching share `QueryKeyEncoder`, which writes JSON without reflection and sorts dictionary keys ordinally. Keep these paths consistent so invalidation reaches every key sharing a cache entry. Do not reintroduce reflection-based `JsonSerializer` calls; the test projects disable them for trim/AOT compatibility. Cache lookups use hash strings. Never compare `QueryKey` instances with `==` or `.Equals()`.
+Hashing and matching share `QueryKeyEncoder`, which writes JSON without reflection and sorts dictionary keys ordinally. Keep these paths consistent so invalidation reaches every key sharing a cache entry. Cache lookups use hash strings. Never compare `QueryKey` instances with `==` or `.Equals()`.
 
 ### Disposal and Lifetime Management
 
@@ -89,7 +89,7 @@ Don't replicate TS type patterns 1:1. Key decisions: `QueryKey` is `List<object>
 
 All time-dependent code routes through `System.TimeProvider` (owned by `QueryClient`). Durations use `TimeSpan`; timestamps remain `long` (Unix ms).
 
-**Invariant:** `src/` has zero direct references to `DateTimeOffset.UtcNow`, `new Timer(...)`, or `Task.Delay(...)`. Use `FakeTimeProvider` in tests for deterministic time control.
+The build rejects clocks and timers listed in `src/BannedSymbols.txt` with `RS0030` so tests can control time with `FakeTimeProvider`. Route violations through the client's `TimeProvider`.
 
 ### Metrics and Observability
 
@@ -101,7 +101,7 @@ All time-dependent code routes through `System.TimeProvider` (owned by `QueryCli
 
 This project uses **Microsoft Testing Platform 2** (via `global.json`). Filter syntax uses `--filter-method`, `--filter-class`, and `--filter-namespace` (not the old `--filter` expression syntax).
 
-Before finishing work, run exactly what CI's `build-and-test` job runs. `RabstackQuery.CI.slnf` is the one list of projects CI checks (every library and test suite except MAUI). Add new libraries and test projects there, not to `ci.yml`.
+Before finishing work, run CI's `build-and-test` checks below. Add new libraries and test projects to `RabstackQuery.CI.slnf`, which covers every library and test suite except MAUI. For changes to `RabstackQuery.DevTools.Maui`, also run `dotnet build src/RabstackQuery.DevTools.Maui/RabstackQuery.DevTools.Maui.csproj`.
 
 ```bash
 # Match CI: check citations and upstream test accounting, then build and test every non-MAUI library and test suite
@@ -146,7 +146,7 @@ Nullable warnings are errors. Prefer `is not null` guards; use `Debug.Assert` fo
 
 ### Trimming and Native AOT
 
-No reflection in `src/`. All new code must pass `dotnet build` with zero IL2026/IL3050/IL2075 warnings. Verify with the AOT publish command in Build & Test above.
+Keep libraries under `src/` trim- and AOT-safe. Fix IL analyzer warnings about unsafe reflection rather than suppressing them. `src/Directory.Build.props` treats library warnings as errors except NuGet vulnerability advisories. Tests and examples don't inherit that policy. Verify the published core library with the AOT command above.
 
 ## Common Pitfalls
 

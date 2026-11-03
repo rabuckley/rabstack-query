@@ -92,7 +92,9 @@ public sealed class QueryClient : IDisposable
         NotifyManager = new NotifyManager();
         _queryCache.SetNotifyManager(NotifyManager);
         _mutationCache.SetNotifyManager(NotifyManager);
+#pragma warning disable RS0030 // The single default clock; everything else reads it from this client.
         TimeProvider = timeProvider ?? TimeProvider.System;
+#pragma warning restore RS0030
         FocusManager = focusManager ?? RabstackQuery.FocusManager.Instance;
         OnlineManager = onlineManager ?? RabstackQuery.OnlineManager.Instance;
 
