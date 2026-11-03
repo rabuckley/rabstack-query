@@ -2,7 +2,7 @@ namespace RabstackQuery;
 
 /// <summary>
 /// Bundles a typed query key, function and options for use with
-/// <see cref="QueryClient.FetchQueryAsync{TData}"/>,
+/// <see cref="QueryClient.QueryAsync{TData}(QueryOptions{TData})"/>,
 /// <see cref="QueryClient.GetQueryData{TData}(QueryOptions{TData})"/> and MVVM <c>UseQuery</c> overloads.
 /// Unset defaultable options inherit from key-prefix and client-wide <see cref="QueryDefaults"/>,
 /// then framework defaults.
@@ -24,7 +24,7 @@ public sealed class QueryOptions<TData>
     /// <summary>
     /// Number of retries after a failed fetch. <see langword="null"/> inherits from
     /// <see cref="QueryClient.SetQueryDefaults"/> and <see cref="QueryClientDefaultOptions.Queries"/>,
-    /// falling back to 3 for observers and 0 for <see cref="QueryClient.FetchQueryAsync{TData}"/>.
+    /// falling back to 3 for observers and 0 for <see cref="QueryClient.QueryAsync{TData}(QueryOptions{TData})"/>.
     /// </summary>
     public int? Retry { get; init; }
 
@@ -132,6 +132,7 @@ public sealed class QueryOptions<TData>
         QueryKeyHasher = QueryKeyHasher,
     };
 
+    [Obsolete("Supports the obsolete imperative fetch methods.")]
     internal FetchQueryOptions<TData> ToFetchQueryOptions() => new()
     {
         QueryKey = QueryKey,

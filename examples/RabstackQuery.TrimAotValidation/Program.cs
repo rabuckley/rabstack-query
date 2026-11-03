@@ -19,7 +19,7 @@ using var client = new QueryClient(new QueryCache(), meterFactory: meterFactory)
 
 // ── Query fetch (exercises Query<TData>, Retryer, cache add/lookup) ──
 
-var fetchResult = await client.FetchQueryAsync(FetchQueryOptions.Create(
+var fetchResult = await client.QueryAsync(QueryOptions.Create<string>(
     ["validation", "fetch"],
     async ctx =>
     {
@@ -31,7 +31,7 @@ Console.WriteLine($"Fetch result: {fetchResult}");
 
 // ── Cache hit (exercises cache hit metric path) ──────────────────────
 
-var cachedResult = await client.FetchQueryAsync(new FetchQueryOptions<string>
+var cachedResult = await client.QueryAsync(new QueryExecuteOptions<string>
 {
     QueryKey = ["validation", "fetch"],
     QueryFn = async _ => "should not be called",

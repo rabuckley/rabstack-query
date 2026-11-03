@@ -6,6 +6,7 @@ namespace RabstackQuery;
 /// <see cref="QueryClient.PrefetchInfiniteQueryAsync{TData,TPageParam}"/>, and
 /// <see cref="QueryClient.EnsureInfiniteQueryDataAsync{TData,TPageParam}"/>.
 /// </summary>
+[Obsolete("Use InfiniteQueryExecuteOptions<TData, TPageParam> with InfiniteQueryAsync instead. This type will be removed in the next major version.")]
 public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
 {
     /// <summary>Query key to fetch.</summary>

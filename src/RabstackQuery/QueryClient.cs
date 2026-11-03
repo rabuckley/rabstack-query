@@ -189,6 +189,7 @@ public sealed class QueryClient : IDisposable
     /// <see cref="QueryDefaults"/>. When no layer sets <c>Retry</c>, it is 0 (no retries).
     /// Errors propagate to the caller.
     /// </remarks>
+    [Obsolete("Use QueryAsync instead. This method will be removed in the next major version.")]
     public async Task<TData> FetchQueryAsync<TData>(
         FetchQueryOptions<TData> options)
     {
@@ -232,6 +233,7 @@ public sealed class QueryClient : IDisposable
     /// Like <see cref="FetchQueryAsync{TData}"/> but swallows all exceptions.
     /// Useful for warming the cache in the background.
     /// </summary>
+    [Obsolete("Use QueryAsync instead, and catch exceptions to ignore failures. This method will be removed in the next major version.")]
     public async Task PrefetchQueryAsync<TData>(
         FetchQueryOptions<TData> options)
     {
@@ -254,6 +256,7 @@ public sealed class QueryClient : IDisposable
     /// Returns cached data if it exists and is fresh. Otherwise delegates to
     /// <see cref="FetchQueryAsync{TData}"/> to fetch and cache the data.
     /// </summary>
+    [Obsolete("Use QueryAsync with StaleTime = Timeout.InfiniteTimeSpan instead. This method will be removed in the next major version.")]
     public async Task<TData> EnsureQueryDataAsync<TData>(
         FetchQueryOptions<TData> options)
     {
@@ -333,6 +336,7 @@ public sealed class QueryClient : IDisposable
     /// <see cref="QueryDefaults"/>. When no layer sets <c>Retry</c>, it is 0 (no retries).
     /// Errors propagate to the caller.
     /// </remarks>
+    [Obsolete("Use InfiniteQueryAsync instead. This method will be removed in the next major version.")]
     public async Task<InfiniteData<TData, TPageParam>> FetchInfiniteQueryAsync<TData, TPageParam>(
         FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
@@ -386,6 +390,7 @@ public sealed class QueryClient : IDisposable
     /// Like <see cref="FetchInfiniteQueryAsync{TData,TPageParam}"/> but swallows all
     /// exceptions. Useful for warming the cache in the background.
     /// </summary>
+    [Obsolete("Use InfiniteQueryAsync instead, and catch exceptions to ignore failures. This method will be removed in the next major version.")]
     public async Task PrefetchInfiniteQueryAsync<TData, TPageParam>(
         FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
@@ -409,6 +414,7 @@ public sealed class QueryClient : IDisposable
     /// delegates to <see cref="FetchInfiniteQueryAsync{TData,TPageParam}"/> to fetch
     /// and cache the data.
     /// </summary>
+    [Obsolete("Use InfiniteQueryAsync with StaleTime = Timeout.InfiniteTimeSpan instead. This method will be removed in the next major version.")]
     public async Task<InfiniteData<TData, TPageParam>> EnsureInfiniteQueryDataAsync<TData, TPageParam>(
         FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
@@ -1380,6 +1386,7 @@ public sealed class QueryClient : IDisposable
     /// <summary>
     /// Fetches a query imperatively using the key and function from <paramref name="options"/>.
     /// </summary>
+    [Obsolete("Use QueryAsync instead. This method will be removed in the next major version.")]
     public Task<TData> FetchQueryAsync<TData>(QueryOptions<TData> options)
     {
         ThrowIfDisposed();
@@ -1390,6 +1397,7 @@ public sealed class QueryClient : IDisposable
     /// Prefetches a query using the key and function from <paramref name="options"/>.
     /// Errors are swallowed — useful for warming the cache in the background.
     /// </summary>
+    [Obsolete("Use QueryAsync instead, and catch exceptions to ignore failures. This method will be removed in the next major version.")]
     public Task PrefetchQueryAsync<TData>(QueryOptions<TData> options)
     {
         ThrowIfDisposed();
@@ -1399,6 +1407,7 @@ public sealed class QueryClient : IDisposable
     /// <summary>
     /// Returns cached data if fresh, otherwise fetches using <paramref name="options"/>.
     /// </summary>
+    [Obsolete("Use QueryAsync with StaleTime = Timeout.InfiniteTimeSpan instead. This method will be removed in the next major version.")]
     public Task<TData> EnsureQueryDataAsync<TData>(QueryOptions<TData> options)
     {
         ThrowIfDisposed();

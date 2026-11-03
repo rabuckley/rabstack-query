@@ -18,7 +18,7 @@ var queryCache = new QueryCache();
 var client = new QueryClient(queryCache);
 
 // Fetch data with automatic caching
-var result = await client.FetchQueryAsync(new FetchQueryOptions<List<Todo>>
+var result = await client.QueryAsync(new QueryExecuteOptions<List<Todo>>
 {
     QueryKey = ["todos"],
     QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken)

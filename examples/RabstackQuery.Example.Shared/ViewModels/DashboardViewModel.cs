@@ -120,6 +120,13 @@ public sealed partial class DashboardViewModel : PageViewModel
     [RelayCommand]
     private async Task PrefetchProjectAsync(int projectId)
     {
-        await Client.PrefetchQueryAsync(Queries.Tasks(_api, projectId));
+        try
+        {
+            await Client.QueryAsync(Queries.Tasks(_api, projectId));
+        }
+        catch (Exception)
+        {
+            // Opening the task board retries the fetch and displays any error.
+        }
     }
 }

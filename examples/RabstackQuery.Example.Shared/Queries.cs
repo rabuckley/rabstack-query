@@ -3,35 +3,6 @@ using RabstackQuery.Example.Shared.Services;
 
 namespace RabstackQuery.Example.Shared;
 
-/// <summary>
-/// Typed query definitions using <see cref="QueryOptions{TData}"/>.
-/// Each method returns a reusable object that bundles key + queryFn + config,
-/// with <c>TData</c> inferred from the query function. These can be passed to
-/// <c>UseQuery</c>, <c>FetchQueryAsync</c>, <c>GetQueryData</c>, and other APIs
-/// that accept <see cref="QueryOptions{TData}"/>.
-/// <para>
-/// <see cref="QueryKeys"/> remains the source of truth for key structure.
-/// This class adds the query function and shared configuration on top.
-/// </para>
-/// </summary>
-/// <example>
-/// <code>
-/// // Define once
-/// var opts = Queries.Projects(api);
-///
-/// // Observe reactively
-/// ProjectsQuery = client.UseQuery(opts);
-///
-/// // Read cache imperatively (TData inferred)
-/// var cached = client.GetQueryData(opts);
-///
-/// // Write cache imperatively
-/// client.SetQueryData(opts, updatedProjects);
-///
-/// // Prefetch in background
-/// await client.PrefetchQueryAsync(opts);
-/// </code>
-/// </example>
 public static class Queries
 {
     /// <summary>

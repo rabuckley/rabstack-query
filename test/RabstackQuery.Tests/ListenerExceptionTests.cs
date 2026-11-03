@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // Covers, or sets up state with, the obsolete imperative fetch methods.
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 

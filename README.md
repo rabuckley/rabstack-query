@@ -128,7 +128,7 @@ Key elements support `null`, strings, chars, booleans, numbers, enums, `Guid`s, 
 
 ### Reusable Query Definitions
 
-`QueryOptions<TData>` bundles key + function + config into a single typed object (analogous to TanStack v5's `queryOptions()`). The same definition works with `UseQuery`, `FetchQueryAsync`, `GetQueryData`, and `SetQueryData`:
+`QueryOptions<TData>` bundles key + function + config into a single typed object (analogous to TanStack v5's `queryOptions()`). The same definition works with `UseQuery`, `QueryAsync`, `GetQueryData`, and `SetQueryData`:
 
 ```csharp
 public static class Queries
@@ -147,8 +147,8 @@ ProjectsQuery = client.UseQuery(Queries.Projects(api));
 // Read cache (TData inferred)
 var cached = client.GetQueryData(Queries.Projects(api));
 
-// Prefetch in background
-await client.PrefetchQueryAsync(Queries.Projects(api));
+// Fetch imperatively, or read the cache while fresh
+var projects = await client.QueryAsync(Queries.Projects(api));
 ```
 
 Add observer settings with `ToObserverOptions()` and a `with` expression. The definition stays unchanged, and the observer shares its cache entry:
@@ -272,15 +272,8 @@ client.SetQueryData<List<Todo>>(["todos"], prev => prev?.Append(newTodo).ToList(
 // Invalidate (marks stale, triggers refetch for active observers)
 await client.InvalidateQueriesAsync(["todos"]);
 
-// Prefetch (silent failures, warms cache)
-await client.PrefetchQueryAsync(new FetchQueryOptions<List<Todo>>
-{
-    QueryKey = ["todos"],
-    QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken),
-});
-
-// Imperative fetch (throws on failure)
-var result = await client.FetchQueryAsync(new FetchQueryOptions<List<Todo>>
+// Imperative query (throws on failure, so catch to prefetch silently)
+var result = await client.QueryAsync(new QueryExecuteOptions<List<Todo>>
 {
     QueryKey = ["todos"],
     QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken),

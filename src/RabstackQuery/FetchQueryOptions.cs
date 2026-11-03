@@ -5,6 +5,7 @@ namespace RabstackQuery;
 /// <see cref="QueryClient.PrefetchQueryAsync{TData}"/>, and
 /// <see cref="QueryClient.EnsureQueryDataAsync{TData}"/>.
 /// </summary>
+[Obsolete("Use QueryExecuteOptions<TData> with QueryAsync instead. This type will be removed in the next major version.")]
 public sealed class FetchQueryOptions<TData>
 {
     /// <summary>Query key to fetch.</summary>
@@ -80,6 +81,7 @@ public sealed class FetchQueryOptions<TData>
 /// Static factory for creating <see cref="FetchQueryOptions{TData}"/> with type inference
 /// from the query function delegate.
 /// </summary>
+[Obsolete("Use QueryOptions.Create with QueryAsync instead. This type will be removed in the next major version.")]
 public static class FetchQueryOptions
 {
     /// <summary>

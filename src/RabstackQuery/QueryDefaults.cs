@@ -26,7 +26,7 @@ public sealed record QueryDefaults
     /// <summary>
     /// Gets the number of retries after a failed fetch.
     /// <see langword="null"/> inherits; the framework default is 3 for observers and 0
-    /// for imperative fetches such as <see cref="QueryClient.FetchQueryAsync{TData}"/>.
+    /// for imperative fetches such as <see cref="QueryClient.QueryAsync{TData}(QueryExecuteOptions{TData})"/>.
     /// </summary>
     public int? Retry { get; init; }
 
