@@ -1016,6 +1016,60 @@ public sealed class QueryObserverFullTests
         Assert.False(result.IsFetchedAfterMount);
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task IsFetchedAfterMount_Should_Be_True_After_Refetch_Of_Cached_Data()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData<string>(["fetched-after-mount-refetch"], "cached");
+        var observer = new QueryObserver<string, string>(client,
+            new QueryObserverOptions<string, string>
+            {
+                QueryKey = ["fetched-after-mount-refetch"],
+                QueryFn = _ => Task.FromResult("fresh"),
+                StaleTime = Timeout.InfiniteTimeSpan
+            });
+        using var subscription = observer.Subscribe(_ => { });
+        Assert.False(observer.CurrentResult.IsFetchedAfterMount);
+
+        await observer.RefetchAsync();
+
+        Assert.Equal("fresh", observer.CurrentResult.Data);
+        Assert.True(observer.CurrentResult.IsFetchedAfterMount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task IsFetchedAfterMount_Should_Stay_True_When_Refetch_Succeeds_After_Failed_Refetch()
+    {
+        var client = CreateQueryClient();
+        client.QueryCache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
+        {
+            QueryKey = ["fetched-after-mount-recovery"],
+            QueryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["fetched-after-mount-recovery"]),
+            GcTime = QueryTimeDefaults.GcTime,
+            Retry = 0
+        });
+        client.SetQueryData<string>(["fetched-after-mount-recovery"], "cached");
+        var shouldFail = true;
+        var observer = new QueryObserver<string, string>(client,
+            new QueryObserverOptions<string, string>
+            {
+                QueryKey = ["fetched-after-mount-recovery"],
+                QueryFn = _ => shouldFail
+                    ? throw new InvalidOperationException("boom")
+                    : Task.FromResult("fresh"),
+                StaleTime = Timeout.InfiniteTimeSpan
+            });
+        using var subscription = observer.Subscribe(_ => { });
+        await observer.RefetchAsync();
+        Assert.True(observer.CurrentResult.IsFetchedAfterMount);
+
+        shouldFail = false;
+        await observer.RefetchAsync();
+
+        Assert.Equal("fresh", observer.CurrentResult.Data);
+        Assert.True(observer.CurrentResult.IsFetchedAfterMount);
+    }
+
     #endregion
 
     #region RefetchAsync

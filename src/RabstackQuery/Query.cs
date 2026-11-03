@@ -609,17 +609,6 @@ public sealed class Query<TData> : Query
     {
         Options = configOptions ?? _client.DefaultQueryOptions(new QueryConfiguration<TData> { QueryKey = QueryKey });
         UpdateGcTime(Options.GcTime);
-
-        if (this.State is not null && this.State.Data is null)
-        {
-            var defaultState = GetDefaultState(Options);
-
-            if (defaultState.Data is not null)
-            {
-                SetState(SuccessState(defaultState.Data, defaultState.DataUpdatedAt));
-            }
-            _initialState = defaultState;
-        }
     }
 
     internal void SetState(QueryState<TData> state, SetStateOptions? options = null)
@@ -627,11 +616,9 @@ public sealed class Query<TData> : Query
         Dispatch(new SetStateAction<TData> { State = state, Options = options });
     }
 
-    internal void SetManualState(QueryState<TData> state)
+    internal void SetManualData(TData data, long dataUpdatedAt)
     {
-        // Assigned before dispatching so an observer that cancels in response reverts to this write.
-        _revertState = state;
-        SetState(state);
+        Dispatch(new SuccessAction<TData> { Data = data, DataUpdatedAt = dataUpdatedAt, Manual = true });
     }
 
     internal void SetQueryFn(Func<QueryFunctionContext, Task<TData>> queryFn)
@@ -796,8 +783,7 @@ public sealed class Query<TData> : Query
             _metrics?.QueryFetchDuration?.Record(sw!.Elapsed.TotalSeconds, queryHashTag);
 
             var now = GetUtcNowMs();
-            _revertState = null;
-            SetState(SuccessState(data, now));
+            Dispatch(new SuccessAction<TData> { Data = data, DataUpdatedAt = now, Manual = false });
             _logger.QueryFetchSucceeded(QueryHash);
         }
         catch (OperationCanceledException ex) when (retryer.IsCancelled)
@@ -880,25 +866,6 @@ public sealed class Query<TData> : Query
                 TaskScheduler.Default);
             throw;
         }
-    }
-
-    private static QueryState<TData> SuccessState(TData data, long dataUpdatedAt)
-    {
-        return new QueryState<TData>
-        {
-            Data = data,
-            DataUpdateCount = 1,
-            DataUpdatedAt = dataUpdatedAt,
-            Error = null,
-            ErrorUpdateCount = 0,
-            ErrorUpdatedAt = 0,
-            FetchFailureCount = 0,
-            FetchFailureReason = null,
-            FetchMeta = null,
-            IsInvalidated = false,
-            Status = QueryStatus.Succeeded,
-            FetchStatus = FetchStatus.Idle
-        };
     }
 
     /// <summary>
@@ -996,6 +963,33 @@ public sealed class Query<TData> : Query
         base.Dispose(disposing);
     }
 
+    private QueryState<TData> ApplySuccess(QueryState<TData> state, SuccessAction<TData> action)
+    {
+        var newState = state with
+        {
+            Data = action.Data,
+            DataUpdatedAt = action.DataUpdatedAt,
+            DataUpdateCount = state.DataUpdateCount + 1,
+            Error = null,
+            IsInvalidated = false,
+            Status = QueryStatus.Succeeded,
+        };
+
+        if (!action.Manual)
+        {
+            newState = newState with
+            {
+                FetchStatus = FetchStatus.Idle,
+                FetchFailureCount = 0,
+                FetchFailureReason = null,
+            };
+        }
+
+        // Save manual writes before notifying observers, which can cancel and revert the fetch.
+        _revertState = action.Manual ? newState : null;
+        return newState;
+    }
+
     private void Dispatch(DispatchAction action)
     {
         _logger.QueryDispatch(QueryHash, action.GetType().Name);
@@ -1005,6 +999,8 @@ public sealed class Query<TData> : Query
             return action switch
             {
                 SetStateAction<TData> setStateAction => setStateAction.State,
+
+                SuccessAction<TData> successAction => ApplySuccess(state, successAction),
 
                 // TanStack query.ts:628–633 + fetchState():690–708 — set initial
                 // fetch status based on network availability.

@@ -1011,26 +1011,7 @@ public sealed class QueryClient : IDisposable
 
             var now = TimeProvider.GetUtcNowMs();
 
-            var newState = new QueryState<TData>
-            {
-                Data = data,
-                DataUpdateCount = (query.State?.DataUpdateCount ?? 0) + 1,
-                DataUpdatedAt = now,
-                Error = null,
-                ErrorUpdateCount = query.State?.ErrorUpdateCount ?? 0,
-                ErrorUpdatedAt = query.State?.ErrorUpdatedAt ?? 0,
-                FetchFailureCount = 0,
-                FetchFailureReason = null,
-                FetchMeta = query.State?.FetchMeta,
-                IsInvalidated = false,
-                Status = QueryStatus.Succeeded,
-                // Preserve FetchStatus during an active fetch. TanStack does not
-                // reset fetchStatus when setQueryData is called mid-fetch — the
-                // in-flight fetch continues and its completion sets the status.
-                FetchStatus = query.State?.FetchStatus ?? FetchStatus.Idle
-            };
-
-            query.SetManualState(newState);
+            query.SetManualData(data, now);
         }
         else
         {

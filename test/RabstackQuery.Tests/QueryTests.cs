@@ -223,6 +223,73 @@ public sealed class QueryTests
         Assert.Equal(QueryStatus.Errored, query.State.Status);
     }
 
+    [Fact]
+    public async Task Successful_Fetch_Should_Increment_DataUpdateCount_From_Manual_Writes()
+    {
+        var client = CreateQueryClient();
+        var query = BuildQuery<string>(client, ["todos"], retry: 0);
+        query.SetQueryFn(_ => Task.FromResult("fetched"));
+        client.SetQueryData<string>(["todos"], "first");
+        client.SetQueryData<string>(["todos"], "second");
+        Assert.Equal(2, query.State!.DataUpdateCount);
+
+        await query.Fetch();
+
+        Assert.Equal(3, query.State!.DataUpdateCount);
+    }
+
+    [Fact]
+    public async Task Successful_Fetch_Should_Clear_Error_And_Keep_Error_History()
+    {
+        var client = CreateQueryClient();
+        var query = BuildQuery<string>(client, ["todos"], retry: 0);
+        var shouldFail = true;
+        query.SetQueryFn(_ => shouldFail
+            ? throw new InvalidOperationException("boom")
+            : Task.FromResult("fetched"));
+        try { await query.Fetch(); } catch (InvalidOperationException) { }
+        var errorUpdatedAt = query.State!.ErrorUpdatedAt;
+        Assert.NotEqual(0, errorUpdatedAt);
+
+        shouldFail = false;
+        await query.Fetch();
+
+        Assert.Equal(QueryStatus.Succeeded, query.State!.Status);
+        Assert.Null(query.State.Error);
+        Assert.Equal(1, query.State.ErrorUpdateCount);
+        Assert.Equal(errorUpdatedAt, query.State.ErrorUpdatedAt);
+        Assert.Equal(0, query.State.FetchFailureCount);
+        Assert.Null(query.State.FetchFailureReason);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task SetQueryData_During_Retry_Should_Keep_Fetch_Progress()
+    {
+        var client = CreateQueryClient();
+        var query = BuildQuery<string>(client, ["todos"], retry: 1, retryDelay: (_, _) => TimeSpan.FromMinutes(5));
+        query.SetQueryFn(_ => throw new InvalidOperationException("boom"));
+        var firstAttemptFailed = new TaskCompletionSource();
+        var observer = new QueryObserver<string, string>(client,
+            new QueryObserverOptions<string, string> { QueryKey = ["todos"], Enabled = false });
+        using var subscription = observer.Subscribe(result =>
+        {
+            if (result.FailureCount > 0) firstAttemptFailed.TrySetResult();
+        });
+        var fetchTask = query.Fetch();
+        await firstAttemptFailed.Task;
+
+        client.SetQueryData<string>(["todos"], "manual");
+
+        Assert.Equal("manual", query.State!.Data);
+        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
+        Assert.Equal(FetchStatus.Fetching, query.State.FetchStatus);
+        Assert.Equal(1, query.State.FetchFailureCount);
+        Assert.IsType<InvalidOperationException>(query.State.FetchFailureReason);
+
+        await query.Cancel(new CancelOptions { Silent = true });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetchTask);
+    }
+
     #endregion
 
     #region Retry
