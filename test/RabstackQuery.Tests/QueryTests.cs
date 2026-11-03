@@ -290,6 +290,40 @@ public sealed class QueryTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetchTask);
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task InitialData_Should_Not_Count_As_Data_Update()
+    {
+        var client = CreateQueryClient();
+        var query = client.QueryCache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
+        {
+            QueryKey = ["todos"],
+            QueryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["todos"]),
+            InitialData = "initial",
+        });
+        query.SetQueryFn(_ => Task.FromResult("fetched"));
+        Assert.Equal("initial", query.State!.Data);
+        Assert.Equal(0, query.State.DataUpdateCount);
+        Assert.True(query.IsDisabled());
+
+        var observer = new QueryObserver<string, string>(client,
+            new QueryObserverOptions<string, string>
+            {
+                QueryKey = ["todos"],
+                QueryFn = _ => Task.FromResult("fetched"),
+                StaleTime = Timeout.InfiniteTimeSpan,
+            });
+        using var subscription = observer.Subscribe(_ => { });
+        Assert.False(observer.CurrentResult.IsFetched);
+        Assert.False(observer.CurrentResult.IsFetchedAfterMount);
+
+        await observer.RefetchAsync();
+
+        Assert.Equal(1, query.State!.DataUpdateCount);
+        Assert.Equal("fetched", query.State.Data);
+        Assert.True(observer.CurrentResult.IsFetched);
+        Assert.True(observer.CurrentResult.IsFetchedAfterMount);
+    }
+
     #endregion
 
     #region Retry

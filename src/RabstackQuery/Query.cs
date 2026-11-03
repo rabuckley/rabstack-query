@@ -591,7 +591,7 @@ public sealed class Query<TData> : Query
         return new QueryState<TData>
         {
             Data = data,
-            DataUpdateCount = hasData ? 1 : 0,
+            DataUpdateCount = 0,
             DataUpdatedAt = dataUpdatedAt,
             Error = null,
             ErrorUpdateCount = 0,
@@ -614,6 +614,19 @@ public sealed class Query<TData> : Query
     internal void SetState(QueryState<TData> state, SetStateOptions? options = null)
     {
         Dispatch(new SetStateAction<TData> { State = state, Options = options });
+    }
+
+    internal void SeedInitialData(TData data, long dataUpdatedAt)
+    {
+        Debug.Assert(State is not null);
+        SetState(State with
+        {
+            Data = data,
+            DataUpdatedAt = dataUpdatedAt,
+            Error = null,
+            IsInvalidated = false,
+            Status = QueryStatus.Succeeded,
+        });
     }
 
     internal void SetManualData(TData data, long dataUpdatedAt)

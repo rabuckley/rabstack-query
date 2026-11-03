@@ -181,6 +181,26 @@ public class FetchInfiniteQueryTests
     }
 
     [Fact]
+    public async Task EnsureInfiniteQueryDataAsync_InitialData_Should_Not_Count_As_Data_Update()
+    {
+        var client = CreateQueryClient();
+
+        await client.EnsureInfiniteQueryDataAsync(new FetchInfiniteQueryOptions<string, int>
+        {
+            QueryKey = ["items"],
+            InitialPageParam = 0,
+            InitialData = new InfiniteData<string, int> { Pages = ["seeded"], PageParams = [0] },
+            QueryFn = _ => Task.FromResult("fetched"),
+            GetNextPageParam = _ => PageParamResult<int>.None,
+        });
+
+        var query = client.QueryCache.Get<InfiniteData<string, int>>(
+            DefaultQueryKeyHasher.Instance.HashQueryKey(["items"]));
+        Assert.Equal("seeded", query!.State!.Data!.Pages[0]);
+        Assert.Equal(0, query.State.DataUpdateCount);
+    }
+
+    [Fact]
     public async Task EnsureInfiniteQueryDataAsync_InitialData_SeedsCache()
     {
         // Arrange

@@ -274,7 +274,7 @@ public sealed class QueryClient : IDisposable
         // and return it immediately — optionally triggering a background refetch.
         if (options.InitialData is not null && query?.State?.Status is not QueryStatus.Succeeded)
         {
-            SetQueryData(options.QueryKey, options.InitialData);
+            SeedInitialData(query, options.QueryKey, queryHash, options.InitialData);
 
             if (options.RevalidateIfStale)
             {
@@ -301,6 +301,22 @@ public sealed class QueryClient : IDisposable
 
         // Cache miss is recorded inside FetchQueryAsync when it proceeds to fetch.
         return await FetchQueryAsync(options);
+    }
+
+    private void SeedInitialData<TData>(Query<TData>? query, QueryKey queryKey, string queryHash, TData data)
+    {
+        if (query is not null)
+        {
+            query.SeedInitialData(data, TimeProvider.GetUtcNowMs());
+            return;
+        }
+
+        _queryCache.GetOrCreate<TData, TData>(this, new QueryConfiguration<TData>
+        {
+            QueryKey = queryKey,
+            QueryHash = queryHash,
+            InitialData = data,
+        });
     }
 
     // ── Imperative infinite query fetch methods ─────────────────────────
@@ -412,7 +428,7 @@ public sealed class QueryClient : IDisposable
         // and return it immediately — optionally triggering a background refetch.
         if (options.InitialData is not null && query?.State?.Status is not QueryStatus.Succeeded)
         {
-            SetQueryData(options.QueryKey, options.InitialData);
+            SeedInitialData(query, options.QueryKey, queryHash, options.InitialData);
 
             if (options.RevalidateIfStale)
             {

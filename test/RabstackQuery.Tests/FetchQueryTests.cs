@@ -233,6 +233,74 @@ public class FetchQueryTests
     }
 
     [Fact]
+    public async Task EnsureQueryDataAsync_InitialData_Should_Not_Count_As_Data_Update()
+    {
+        var client = CreateQueryClient();
+
+        await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
+        {
+            QueryKey = ["with-initial"],
+            InitialData = "seeded",
+            QueryFn = _ => Task.FromResult("fetched"),
+        });
+
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["with-initial"]));
+        Assert.Equal("seeded", query!.State!.Data);
+        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
+        Assert.Equal(0, query.State.DataUpdateCount);
+    }
+
+    [Fact]
+    public async Task EnsureQueryDataAsync_InitialData_Should_Keep_Counts_Of_Query_Without_Data()
+    {
+        var client = CreateQueryClient();
+        var query = client.QueryCache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
+        {
+            QueryKey = ["failed-first"],
+            QueryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["failed-first"]),
+            Retry = 0,
+        });
+        query.SetQueryFn(_ => throw new InvalidOperationException("boom"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => query.Fetch());
+
+        await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
+        {
+            QueryKey = ["failed-first"],
+            InitialData = "seeded",
+            QueryFn = _ => Task.FromResult("fetched"),
+        });
+
+        Assert.Equal("seeded", query.State!.Data);
+        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
+        Assert.Null(query.State.Error);
+        Assert.Equal(0, query.State.DataUpdateCount);
+        Assert.Equal(1, query.State.ErrorUpdateCount);
+    }
+
+    [Fact]
+    public async Task EnsureQueryDataAsync_InitialData_Should_Seed_Under_Custom_Hash()
+    {
+        var client = CreateQueryClient();
+
+        await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
+        {
+            QueryKey = ["hashed"],
+            QueryKeyHasher = new FixedHasher(),
+            InitialData = "seeded",
+            QueryFn = _ => Task.FromResult("fetched"),
+        });
+
+        Assert.Equal("seeded", client.QueryCache.Get<string>(FixedHasher.Hash)?.State?.Data);
+    }
+
+    private sealed class FixedHasher : IQueryKeyHasher
+    {
+        public const string Hash = "fixed-hash";
+
+        public string HashQueryKey(QueryKey queryKey) => Hash;
+    }
+
+    [Fact]
     public async Task EnsureQueryDataAsync_Should_Not_Fetch_With_InitialData()
     {
         // When InitialData is provided and there's no cached data,
