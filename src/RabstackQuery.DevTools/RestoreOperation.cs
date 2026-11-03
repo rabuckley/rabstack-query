@@ -13,7 +13,7 @@ internal sealed class RestoreOperation : IQueryOperation<Task>
         if (currentState?.FetchMeta?.PreviousState is not QueryState<TData> savedState)
             return;
 
-        query.Cancel(new CancelOptions { Silent = true });
+        await query.Cancel(new CancelOptions { Silent = true });
 
         // Restore the original query function if it was replaced (trigger-loading).
         if (currentState.FetchMeta.PreviousQueryFn is Func<QueryFunctionContext, Task<TData>> savedQueryFn)
