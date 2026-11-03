@@ -1,0 +1,10 @@
+{
+  "contentHash": "aace32d449ed3a01e7b73cafe3c56768f2e9337c911669fc7c98be2045ad7062",
+  "resolvedCommit": "e2f4a89e8d3ccc0ead6fabef2a4f43bdd241ce82",
+  "name": "maui-unit-testing",
+  "commit": "a90865a2da0513b3f16c5317e455af7c12566d5c",
+  "branch": "main",
+  "updatedAt": "2026-11-01T23:36:41.4697680Z",
+  "source": "dotnet/maui-labs",
+  "pluginPath": "plugins/dotnet-maui/skills/maui-unit-testing"
+}

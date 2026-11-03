@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "maui-devflow": {
+      "command": "maui",
+      "args": [
+        "devflow",
+        "mcp"
+      ]
+    }
+  }
+}

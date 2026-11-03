@@ -1,0 +1,10 @@
+{
+  "contentHash": "47b43d516ca108fa332a4f61da3272c8c66468b8d6d1c455208912383a46cf57",
+  "resolvedCommit": "e2f4a89e8d3ccc0ead6fabef2a4f43bdd241ce82",
+  "name": "maui-project-structure",
+  "commit": "a90865a2da0513b3f16c5317e455af7c12566d5c",
+  "branch": "main",
+  "updatedAt": "2026-11-01T23:36:41.4618270Z",
+  "source": "dotnet/maui-labs",
+  "pluginPath": "plugins/dotnet-maui/skills/maui-project-structure"
+}

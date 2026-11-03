@@ -1,0 +1,10 @@
+{
+  "contentHash": "e35eb03d0f45895ba2282a7ac8bd2ebaaa4dceafc8a108bd6318770b1494ec4d",
+  "resolvedCommit": "e2f4a89e8d3ccc0ead6fabef2a4f43bdd241ce82",
+  "name": "maui-ui-patterns",
+  "commit": "a90865a2da0513b3f16c5317e455af7c12566d5c",
+  "branch": "main",
+  "updatedAt": "2026-11-01T23:36:41.4656740Z",
+  "source": "dotnet/maui-labs",
+  "pluginPath": "plugins/dotnet-maui/skills/maui-ui-patterns"
+}
