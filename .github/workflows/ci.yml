@@ -19,21 +19,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # Build library and test projects only — MAUI projects require
-      # platform-specific workloads not available on ubuntu.
-      - name: Build libraries
-        run: |
-          dotnet build src/RabstackQuery
-          dotnet build src/RabstackQuery.Blazor
-          dotnet build src/RabstackQuery.DevTools
-          dotnet build src/RabstackQuery.DevTools.Blazor
-          dotnet build src/RabstackQuery.Mvvm
+      # Add CI projects to RabstackQuery.CI.slnf. MAUI workloads are unavailable on Ubuntu.
+      - name: Build
+        run: dotnet build RabstackQuery.CI.slnf
 
       - name: Test
-        run: |
-          dotnet test --project test/RabstackQuery.Tests
-          dotnet test --project test/RabstackQuery.Mvvm.Tests
-          dotnet test --project test/RabstackQuery.Blazor.Tests
+        run: dotnet test --solution RabstackQuery.CI.slnf --no-build
 
   # Run the native binary to detect failures that publish-time checks miss.
   aot-validation:

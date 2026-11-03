@@ -1,0 +1,15 @@
+{
+  "solution": {
+    "path": "RabstackQuery.slnx",
+    "projects": [
+      "src/RabstackQuery/RabstackQuery.csproj",
+      "src/RabstackQuery.Blazor/RabstackQuery.Blazor.csproj",
+      "src/RabstackQuery.DevTools/RabstackQuery.DevTools.csproj",
+      "src/RabstackQuery.DevTools.Blazor/RabstackQuery.DevTools.Blazor.csproj",
+      "src/RabstackQuery.Mvvm/RabstackQuery.Mvvm.csproj",
+      "test/RabstackQuery.Tests/RabstackQuery.Tests.csproj",
+      "test/RabstackQuery.Mvvm.Tests/RabstackQuery.Mvvm.Tests.csproj",
+      "test/RabstackQuery.Blazor.Tests/RabstackQuery.Blazor.Tests.csproj"
+    ]
+  }
+}

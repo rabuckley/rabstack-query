@@ -8,7 +8,9 @@ RabStack Query is a .NET 10.0 port of TanStack Query, providing declarative quer
 
 - **RabstackQuery** — Core library with query/mutation primitives
 - **RabstackQuery.Mvvm** — MVVM bindings for MAUI/Blazor via `INotifyPropertyChanged`
-- **RabstackQuery.Tests** / **RabstackQuery.Mvvm.Tests** — xUnit test suites
+- **RabstackQuery.Blazor** — Blazor component base class with `UseQuery`/`UseMutation` hooks
+- **RabstackQuery.DevTools** / **.DevTools.Blazor** / **.DevTools.Maui** — Cache inspection tooling and its UI hosts
+- **RabstackQuery.Tests** / **RabstackQuery.Mvvm.Tests** / **RabstackQuery.Blazor.Tests** — xUnit test suites
 - **RabstackQuery.TrimAotValidation** — Console app for verifying trim/AOT compatibility
 
 All projects tracked in `RabstackQuery.slnx`. Target platforms: MAUI and Blazor.
@@ -41,7 +43,7 @@ These areas have no TS equivalent and are where porting agents most likely intro
 
 ### Query Key Identity and Equality
 
-Hashing and matching share `QueryKeyEncoder`, which writes JSON without reflection and sorts dictionary keys ordinally. Keep these paths consistent so invalidation reaches every key sharing a cache entry. Do not reintroduce reflection-based `JsonSerializer` calls; both test projects disable them for trim/AOT compatibility. Cache lookups use hash strings. Never compare `QueryKey` instances with `==` or `.Equals()`.
+Hashing and matching share `QueryKeyEncoder`, which writes JSON without reflection and sorts dictionary keys ordinally. Keep these paths consistent so invalidation reaches every key sharing a cache entry. Do not reintroduce reflection-based `JsonSerializer` calls; the test projects disable them for trim/AOT compatibility. Cache lookups use hash strings. Never compare `QueryKey` instances with `==` or `.Equals()`.
 
 ### Disposal and Lifetime Management
 
@@ -67,8 +69,14 @@ All time-dependent code routes through `System.TimeProvider` (owned by `QueryCli
 
 This project uses **Microsoft Testing Platform 2** (via `global.json`). Filter syntax uses `--filter-method`, `--filter-class`, and `--filter-namespace` (not the old `--filter` expression syntax).
 
+Before finishing work, run exactly what CI's `build-and-test` job runs. `RabstackQuery.CI.slnf` is the one list of projects CI checks (every library and test suite except MAUI). Add new libraries and test projects there, not to `ci.yml`.
+
 ```bash
-# Build all projects (uses RabstackQuery.slnx)
+# Match CI: build and test every non-MAUI library and test suite
+dotnet build RabstackQuery.CI.slnf
+dotnet test --solution RabstackQuery.CI.slnf
+
+# Build all projects, including MAUI (uses RabstackQuery.slnx)
 dotnet build
 
 # Build specific project (preferred — much faster than full solution)
@@ -117,7 +125,7 @@ No reflection in `src/`. All new code must pass `dotnet build` with zero IL2026/
 
 ## Testing Patterns
 
-You MUST have all tests passing before finishing work. Assume your changes _always_ caused any issues you're seeing.
+You MUST have all tests passing before finishing work, as run by `dotnet test --solution RabstackQuery.CI.slnf`. Assume your changes _always_ caused any issues you're seeing.
 
 ### Avoiding Flaky Async Tests
 
