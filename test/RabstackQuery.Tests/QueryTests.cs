@@ -1553,24 +1553,13 @@ public sealed class QueryTests
     public async Task Retry_ExponentialBackoff_TimingVerification()
     {
         // Arrange
-        var ftp = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
+        var ftp = new TimerRecordingTimeProvider(
             new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero));
         var client = new QueryClient(new QueryCache(), timeProvider: ftp);
 
         var attemptCount = 0;
-        // Signal each failure so we know when the retryer has entered DelayAsync
-        var enteredDelay = new SemaphoreSlim(0);
 
         var query = BuildQuery<string>(client, ["exp-backoff"], retry: 3);
-
-        // Custom retryDelay that uses the default formula but signals the test.
-        // This ensures we only Advance after the retryer has entered DelayAsync.
-        query.Options.RetryDelay = (failureCount, _) =>
-        {
-            var delay = TimeSpan.FromMilliseconds(1000 * Math.Pow(2, failureCount - 1));
-            enteredDelay.Release();
-            return delay;
-        };
 
         query.SetQueryFn(_ =>
         {
@@ -1578,24 +1567,17 @@ public sealed class QueryTests
             throw new InvalidOperationException($"fail #{attemptCount}");
         });
 
-        // Act — start the fetch; it will fail and wait for retry delays.
-        // Fetch() returns after the first await (attempt 1 throws → catch → retryDelay
-        // → DelayAsync → CreateTimer → await tcs.Task).
         var fetchTask = query.Fetch();
 
-        // After each failure the retryer calls retryDelay then enters DelayAsync.
-        // We wait for retryDelay to signal before advancing time.
-
-        // Initial attempt fails → retryDelay(1, ex) → 1s delay
-        await enteredDelay.WaitAsync(TimeSpan.FromSeconds(5));
+        // Wait for timer registration before advancing; otherwise its deadline starts
+        // from the already-advanced clock and the retry remains blocked.
+        await ftp.WaitForTimerAsync(TimeSpan.FromSeconds(1));
         ftp.Advance(TimeSpan.FromSeconds(1));
 
-        // First retry fails → retryDelay(2, ex) → 2s delay
-        await enteredDelay.WaitAsync(TimeSpan.FromSeconds(5));
+        await ftp.WaitForTimerAsync(TimeSpan.FromSeconds(2));
         ftp.Advance(TimeSpan.FromSeconds(2));
 
-        // Second retry fails → retryDelay(3, ex) → 4s delay
-        await enteredDelay.WaitAsync(TimeSpan.FromSeconds(5));
+        await ftp.WaitForTimerAsync(TimeSpan.FromSeconds(4));
         ftp.Advance(TimeSpan.FromSeconds(4));
 
         // Third retry fails → max retries exhausted, no more delays
@@ -1605,6 +1587,33 @@ public sealed class QueryTests
         // Assert — 1 initial attempt + 3 retries = 4 total
         Assert.Equal(4, attemptCount);
         Assert.Equal(QueryStatus.Errored, query.State!.Status);
+    }
+
+    private sealed class TimerRecordingTimeProvider : Microsoft.Extensions.Time.Testing.FakeTimeProvider
+    {
+        private readonly global::System.Threading.Channels.Channel<TimeSpan> _createdTimers =
+            global::System.Threading.Channels.Channel.CreateUnbounded<TimeSpan>();
+
+        public TimerRecordingTimeProvider(DateTimeOffset startDateTime)
+            : base(startDateTime)
+        {
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            _createdTimers.Writer.TryWrite(dueTime);
+            return timer;
+        }
+
+        public async Task WaitForTimerAsync(TimeSpan dueTime)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            while (await _createdTimers.Reader.ReadAsync(cts.Token) != dueTime)
+            {
+            }
+        }
     }
 
     [Fact]
