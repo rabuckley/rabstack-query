@@ -489,3 +489,5 @@ $RECYCLE.BIN/
 .playwright-cli/
 
 .claude/settings.local.json
+
+.upstream/

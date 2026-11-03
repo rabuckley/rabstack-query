@@ -19,6 +19,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Check TanStack citations
+        run: eng/check-tanstack-citations.sh
+
       # Add CI projects to RabstackQuery.CI.slnf. MAUI workloads are unavailable on Ubuntu.
       - name: Build
         run: dotnet build RabstackQuery.CI.slnf

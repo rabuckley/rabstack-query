@@ -2,11 +2,6 @@ using Microsoft.Extensions.Logging;
 
 namespace RabstackQuery;
 
-/// <summary>
-/// Source-generated log messages for the RabstackQuery core library.
-/// Uses <see cref="LoggerMessageAttribute"/> for zero-allocation logging.
-/// Event ID ranges are documented in CLAUDE.md.
-/// </summary>
 internal static partial class Log
 {
     // ── QueryClient: Information (10xx) ──────────────────────────────────

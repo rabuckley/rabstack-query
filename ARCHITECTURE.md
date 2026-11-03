@@ -1,6 +1,6 @@
 # Architecture Reference
 
-Design decisions and rationale that aren't obvious from reading the source code. For project guidance, see [`CLAUDE.md`](CLAUDE.md).
+Design decisions and rationale that aren't obvious from reading the source code. For project guidance, see [`AGENTS.md`](AGENTS.md).
 
 ## Core Reactive Flow
 

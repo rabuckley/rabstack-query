@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/eng/fetch-tanstack.sh >/dev/null 2>&1 || echo 'Could not fetch the pinned TanStack Query commit; .upstream/ may be missing or stale. Run eng/fetch-tanstack.sh to see the error.'"
+          }
+        ]
+      }
+    ]
+  }
+}
