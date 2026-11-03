@@ -556,9 +556,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     public async Task<IQueryResult<TData>> RefetchAsync(
         RefetchOptions? options = null)
     {
-        // Thread CancelRefetch through to the query's FetchInternal.
-        // Defaults to true when called by user code (matching TanStack's
-        // `cancelRefetch ?? true` in observer.fetch(), queryObserver.ts:237).
         var cancelRefetch = options?.CancelRefetch ?? true;
 
         if (options?.ThrowOnError is true)

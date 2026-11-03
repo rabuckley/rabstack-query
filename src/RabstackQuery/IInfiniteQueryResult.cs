@@ -41,13 +41,14 @@ public interface IInfiniteQueryResult<TData, TPageParam> : IQueryResult<Infinite
     bool IsFetchPreviousPageError { get; }
 
     /// <summary>
-    /// Fetches the next page. The observer holds a reference to the underlying query
-    /// to issue directional fetches — same lifecycle pattern as
-    /// <see cref="IQueryResult{TData}.RefetchAsync"/> which also holds an observer reference.
+    /// Asynchronously fetches the next page.
     /// </summary>
-    Task FetchNextPageAsync();
+    /// <param name="options">The options for this fetch, or <see langword="null"/> to use the defaults.</param>
+    Task FetchNextPageAsync(FetchNextPageOptions? options = null);
 
     /// <summary>
-    /// Fetches the previous page.
+    /// Asynchronously fetches the previous page.
     /// </summary>
-    Task FetchPreviousPageAsync();}
+    /// <param name="options">The options for this fetch, or <see langword="null"/> to use the defaults.</param>
+    Task FetchPreviousPageAsync(FetchPreviousPageOptions? options = null);
+}

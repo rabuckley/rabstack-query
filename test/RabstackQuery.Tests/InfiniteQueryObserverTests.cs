@@ -262,22 +262,19 @@ public sealed class InfiniteQueryObserverTests
     }
 
     [Fact]
-    public async Task Concurrent_FetchNextPage_Should_Be_Deduplicated()
+    public async Task FetchNextPage_Should_Cancel_A_Page_Fetch_In_Progress()
     {
-        // Arrange — query function that blocks on a gate so both FetchNextPage
-        // calls see the fetch in-flight. The gate ensures the fetch stays
-        // in Fetching status while the second call checks dedup.
+        // TanStack queryObserver.ts:471-477 defaults cancelRefetch to true.
         var client = CreateQueryClient();
         var fetchCount = 0;
-        var fetchGate = new TaskCompletionSource<bool>();
+        var fetchGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var options = new InfiniteQueryObserverOptions<string, int>
         {
-            QueryKey = ["concurrent-dedup"],
+            QueryKey = ["concurrent-next-page"],
             QueryFn = async ctx =>
             {
                 Interlocked.Increment(ref fetchCount);
-                // Block all next-page fetches on the gate
                 if (ctx.PageParam > 0)
                 {
                     await fetchGate.Task;
@@ -290,35 +287,208 @@ public sealed class InfiniteQueryObserverTests
 
         var observer = new InfiniteQueryObserver<string, int>(client, options);
         var resultTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
         using var sub = observer.Subscribe(result =>
         {
             if (result.IsSuccess) resultTcs.TrySetResult(true);
         });
-
         await resultTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        // Yield to allow FetchCore's finally block to complete cleanup
-        // (_retryer, _currentFetchTask reset). Without this, the inline
-        // continuation from TaskCompletionSource runs before FetchCore finishes.
         await Task.Yield();
+        fetchCount = 0;
 
-        fetchCount = 0; // reset after initial fetch
-
-        // Act — first call starts a fetch that blocks on the gate; second
-        // call should see the in-flight fetch and dedup.
         var task1 = observer.FetchNextPageAsync();
         var task2 = observer.FetchNextPageAsync();
-
-        // Release the gate so the fetch completes
         fetchGate.SetResult(true);
-        await Task.WhenAll(task1, task2);
+        await Task.WhenAll(task1, task2).WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Assert — only one actual fetch should have happened due to dedup
+        Assert.Equal(2, fetchCount);
+        Assert.Equal(["page-0", "page-1"], observer.CurrentResult.Data?.Pages);
+    }
+
+    [Fact]
+    public async Task FetchNextPage_Should_Cancel_A_Refetch_In_Progress()
+    {
+        // TanStack queryObserver.ts:471-477 defaults cancelRefetch to true.
+        var client = CreateQueryClient();
+        var refetchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refetchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockRefetch = false;
+
+        var options = new InfiniteQueryObserverOptions<string, int>
+        {
+            QueryKey = ["next-page-during-refetch"],
+            QueryFn = async ctx =>
+            {
+                if (blockRefetch && ctx.PageParam == 0)
+                {
+                    blockRefetch = false;
+                    refetchStarted.SetResult();
+                    await refetchGate.Task;
+                    return "page-0-refetched";
+                }
+                return $"page-{ctx.PageParam}";
+            },
+            InitialPageParam = 0,
+            GetNextPageParam = ctx => ctx.PageParam + 1,
+        };
+
+        var observer = new InfiniteQueryObserver<string, int>(client, options);
+        var resultTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var sub = observer.Subscribe(result =>
+        {
+            if (result.IsSuccess) resultTcs.TrySetResult(true);
+        });
+        await resultTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Yield();
+
+        blockRefetch = true;
+        var refetch = client.InvalidateQueriesAsync(["next-page-during-refetch"]);
+        await refetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await observer.FetchNextPageAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        refetchGate.SetResult();
+        await refetch.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(["page-0", "page-1"], observer.CurrentResult.Data?.Pages);
+    }
+
+    [Fact]
+    public async Task FetchNextPage_Should_Join_A_Fetch_In_Progress_When_CancelRefetch_Is_False()
+    {
+        // TanStack types.ts defines FetchNextPageOptions.cancelRefetch.
+        var client = CreateQueryClient();
+        var fetchCount = 0;
+        var fetchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var options = new InfiniteQueryObserverOptions<string, int>
+        {
+            QueryKey = ["join-next-page"],
+            QueryFn = async ctx =>
+            {
+                Interlocked.Increment(ref fetchCount);
+                if (ctx.PageParam > 0)
+                {
+                    await fetchGate.Task;
+                }
+                return $"page-{ctx.PageParam}";
+            },
+            InitialPageParam = 0,
+            GetNextPageParam = ctx => ctx.PageParam + 1,
+        };
+
+        var observer = await SubscribeAndLoadFirstPage(client, options);
+        fetchCount = 0;
+        var join = new FetchNextPageOptions { CancelRefetch = false };
+
+        var task1 = observer.FetchNextPageAsync(join);
+        var task2 = observer.FetchNextPageAsync(join);
+        fetchGate.SetResult();
+        await Task.WhenAll(task1, task2).WaitAsync(TimeSpan.FromSeconds(5));
+
         Assert.Equal(1, fetchCount);
+        Assert.Equal(["page-0", "page-1"], observer.CurrentResult.Data?.Pages);
+    }
 
-        // No explicit disposal needed — subscription disposal (or lack of subscription)
-        // handles cleanup via OnUnsubscribe → Destroy() cascade.
+    [Fact]
+    public async Task FetchPreviousPage_Should_Join_A_Fetch_In_Progress_When_CancelRefetch_Is_False()
+    {
+        var client = CreateQueryClient();
+        var fetchCount = 0;
+        var fetchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var options = new InfiniteQueryObserverOptions<string, int>
+        {
+            QueryKey = ["join-previous-page"],
+            QueryFn = async ctx =>
+            {
+                Interlocked.Increment(ref fetchCount);
+                if (ctx.PageParam < 5)
+                {
+                    await fetchGate.Task;
+                }
+                return $"page-{ctx.PageParam}";
+            },
+            InitialPageParam = 5,
+            GetNextPageParam = _ => PageParamResult<int>.None,
+            GetPreviousPageParam = ctx => ctx.PageParam - 1,
+        };
+
+        var observer = await SubscribeAndLoadFirstPage(client, options);
+        fetchCount = 0;
+        var join = new FetchPreviousPageOptions { CancelRefetch = false };
+
+        var task1 = observer.FetchPreviousPageAsync(join);
+        var task2 = observer.FetchPreviousPageAsync(join);
+        fetchGate.SetResult();
+        await Task.WhenAll(task1, task2).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, fetchCount);
+        Assert.Equal(["page-4", "page-5"], observer.CurrentResult.Data?.Pages);
+    }
+
+    [Fact]
+    public async Task FetchNextPage_Should_Throw_The_Fetch_Error_When_ThrowOnError_Is_True()
+    {
+        // TanStack ResultOptions.throwOnError (types.ts), which FetchNextPageOptions extends.
+        var client = CreateQueryClient();
+        client.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 0 } };
+        var pageError = new InvalidOperationException("page failed");
+
+        var options = new InfiniteQueryObserverOptions<string, int>
+        {
+            QueryKey = ["throw-next-page"],
+            QueryFn = ctx => ctx.PageParam > 0
+                ? Task.FromException<string>(pageError)
+                : Task.FromResult($"page-{ctx.PageParam}"),
+            InitialPageParam = 0,
+            GetNextPageParam = ctx => ctx.PageParam + 1,
+        };
+
+        var observer = await SubscribeAndLoadFirstPage(client, options);
+
+        Task Act() => observer.FetchNextPageAsync(new FetchNextPageOptions { ThrowOnError = true });
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(Act);
+        Assert.Same(pageError, thrown);
+        Assert.True(observer.CurrentResult.IsFetchNextPageError);
+    }
+
+    [Fact]
+    public async Task FetchNextPage_Should_Not_Throw_The_Fetch_Error_By_Default()
+    {
+        var client = CreateQueryClient();
+        client.DefaultOptions = new QueryClientDefaultOptions { Queries = new QueryDefaults { Retry = 0 } };
+
+        var options = new InfiniteQueryObserverOptions<string, int>
+        {
+            QueryKey = ["swallow-next-page"],
+            QueryFn = ctx => ctx.PageParam > 0
+                ? Task.FromException<string>(new InvalidOperationException("page failed"))
+                : Task.FromResult($"page-{ctx.PageParam}"),
+            InitialPageParam = 0,
+            GetNextPageParam = ctx => ctx.PageParam + 1,
+        };
+
+        var observer = await SubscribeAndLoadFirstPage(client, options);
+
+        await observer.FetchNextPageAsync();
+
+        Assert.True(observer.CurrentResult.IsFetchNextPageError);
+    }
+
+    private static async Task<InfiniteQueryObserver<string, int>> SubscribeAndLoadFirstPage(
+        QueryClient client,
+        InfiniteQueryObserverOptions<string, int> options)
+    {
+        var observer = new InfiniteQueryObserver<string, int>(client, options);
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        observer.Subscribe(result =>
+        {
+            if (result.IsSuccess) loaded.TrySetResult();
+        });
+        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Task.Yield();
+        return observer;
     }
 
     [Fact]

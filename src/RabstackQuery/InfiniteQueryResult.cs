@@ -55,11 +55,11 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
     public bool IsFetchPreviousPageError =>
         _inner.IsError && _lastFetchDirection is FetchDirection.Backward;
 
-    public Task FetchNextPageAsync()
-        => _observer.FetchNextPageAsync();
+    public Task FetchNextPageAsync(FetchNextPageOptions? options = null)
+        => _observer.FetchNextPageAsync(options);
 
-    public Task FetchPreviousPageAsync()
-        => _observer.FetchPreviousPageAsync();
+    public Task FetchPreviousPageAsync(FetchPreviousPageOptions? options = null)
+        => _observer.FetchPreviousPageAsync(options);
 
     // ── Overridden base properties to exclude page-specific fetches ─────
     // Mirrors infiniteQueryObserver.ts:177–181 which overrides isRefetching

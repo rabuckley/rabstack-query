@@ -46,46 +46,33 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     /// <summary>
     /// Asynchronously fetches the next page.
     /// </summary>
-    /// <remarks>
-    /// If a refetch is already in progress, waits for it without fetching another page.
-    /// </remarks>
-    public async Task FetchNextPageAsync()
+    /// <param name="options">The options for this fetch, or <see langword="null"/> to use the defaults.</param>
+    public Task FetchNextPageAsync(FetchNextPageOptions? options = null)
     {
-        try
-        {
-            // Fetches through the inner observer so page fetches use its options, as
-            // TanStack's fetchNextPage/fetchPreviousPage go through observer.fetch.
-            await _inner.FetchQuery(
-                new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Forward } },
-                cancelRefetch: false);
-        }
-        catch
-        {
-            // Errors are captured in query state via ErrorAction dispatch.
-            // Suppress here, matching TanStack's pattern.
-        }
+        options ??= new FetchNextPageOptions();
+        return FetchPageAsync(FetchDirection.Forward, options.CancelRefetch, options.ThrowOnError);
     }
 
     /// <summary>
     /// Asynchronously fetches the previous page.
     /// </summary>
-    /// <remarks>
-    /// If a refetch is already in progress, waits for it without fetching another page.
-    /// </remarks>
-    public async Task FetchPreviousPageAsync()
+    /// <param name="options">The options for this fetch, or <see langword="null"/> to use the defaults.</param>
+    public Task FetchPreviousPageAsync(FetchPreviousPageOptions? options = null)
+    {
+        options ??= new FetchPreviousPageOptions();
+        return FetchPageAsync(FetchDirection.Backward, options.CancelRefetch, options.ThrowOnError);
+    }
+
+    private async Task FetchPageAsync(FetchDirection direction, bool cancelRefetch, bool throwOnError)
     {
         try
         {
-            // Fetches through the inner observer so page fetches use its options, as
-            // TanStack's fetchNextPage/fetchPreviousPage go through observer.fetch.
             await _inner.FetchQuery(
-                new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Backward } },
-                cancelRefetch: false);
+                new FetchMeta { FetchMore = new FetchMore { Direction = direction } },
+                cancelRefetch);
         }
-        catch
+        catch when (!throwOnError)
         {
-            // Errors are captured in query state via ErrorAction dispatch.
-            // Suppress here, matching TanStack's pattern.
         }
     }
 
