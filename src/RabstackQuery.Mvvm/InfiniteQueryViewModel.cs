@@ -169,7 +169,6 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         {
             await _observer.FetchNextPageAsync();
         }
-        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             _logger.InfiniteQueryViewModelFetchPageErrorSwallowed(_queryKeyDisplay, ex);
@@ -186,7 +185,6 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
         {
             await _observer.FetchPreviousPageAsync();
         }
-        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             _logger.InfiniteQueryViewModelFetchPageErrorSwallowed(_queryKeyDisplay, ex);
@@ -204,7 +202,6 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
             var query = _observer.CurrentResult;
             await query.RefetchAsync();
         }
-        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             _logger.InfiniteQueryViewModelFetchPageErrorSwallowed(_queryKeyDisplay, ex);

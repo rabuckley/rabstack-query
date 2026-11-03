@@ -62,7 +62,8 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
                     new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Forward } },
                     cancellationToken);
             }
-            catch (OperationCanceledException) { throw; }
+            // See QueryObserver.ExecuteFetch: only the caller's own token throws.
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch
             {
                 // Errors are captured in query state via ErrorAction dispatch.
@@ -90,7 +91,8 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
                     new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Backward } },
                     cancellationToken);
             }
-            catch (OperationCanceledException) { throw; }
+            // See QueryObserver.ExecuteFetch: only the caller's own token throws.
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch
             {
                 // Errors are captured in query state via ErrorAction dispatch.

@@ -330,6 +330,7 @@ public sealed class InfiniteQueryObserverTests
         // Mirrors TanStack's behavior from query.ts:354-366.
         var client = CreateQueryClient();
         var fetchGate = new TaskCompletionSource<bool>();
+        var pageToken = CancellationToken.None;
 
         var options = new InfiniteQueryObserverOptions<string, int>
         {
@@ -338,6 +339,7 @@ public sealed class InfiniteQueryObserverTests
             {
                 if (ctx.PageParam > 0)
                 {
+                    pageToken = ctx.CancellationToken;
                     await fetchGate.Task.WaitAsync(ctx.CancellationToken);
                 }
                 return $"page-{ctx.PageParam}";
@@ -360,9 +362,8 @@ public sealed class InfiniteQueryObserverTests
         var fetchTask = observer.FetchNextPageAsync();
         sub.Dispose();
 
-        // Assert — the fetch should be cancelled because the query function
-        // consumed the CancellationToken.
-        await Assert.ThrowsAsync<TaskCanceledException>(() => fetchTask);
+        await fetchTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(pageToken.IsCancellationRequested);
     }
 
     [Fact]

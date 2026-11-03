@@ -65,12 +65,11 @@ public class QueryCancellationTests
         Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
         Assert.Equal(QueryStatus.Succeeded, query.State!.Status);
 
-        // The fetch task should throw OperationCanceledException
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetchTask);
+        await fetchTask;
     }
 
     [Fact]
-    public async Task Cancel_WithoutRevert_KeepsFetchingState()
+    public async Task Cancel_WithoutRevert_MovesToErrorState_AndCanRefetch()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -95,10 +94,16 @@ public class QueryCancellationTests
         // Act — cancel without revert
         await query.Cancel(new CancelOptions { Revert = false });
 
-        // Assert — state was NOT reverted (still in fetching state)
-        Assert.Equal(FetchStatus.Fetching, query.State!.FetchStatus);
-
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetchTask);
+        Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
+        Assert.Equal(QueryStatus.Errored, query.State.Status);
+        Assert.IsAssignableFrom<OperationCanceledException>(query.State.Error);
+        Assert.Equal("original", query.State.Data);
+
+        query.SetQueryFn(_ => Task.FromResult("refetched"));
+        await query.Fetch(TestContext.Current.CancellationToken);
+        Assert.Null(query.State.Error);
+        Assert.Equal("refetched", query.State.Data);
     }
 
     [Fact]
@@ -280,10 +285,7 @@ public class QueryCancellationTests
 
         sub.Dispose();
 
-        // Assert — the fetch should be cancelled
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetchTask);
-
-        // State should be reverted to the pre-fetch state
+        await fetchTask;
         Assert.Equal("original-data", query.State!.Data);
         Assert.Equal(QueryStatus.Succeeded, query.State.Status);
         Assert.Equal(FetchStatus.Idle, query.State.FetchStatus);
@@ -337,6 +339,211 @@ public class QueryCancellationTests
         Assert.True(
             query.State.Status is QueryStatus.Succeeded or QueryStatus.Pending,
             $"Unexpected status: {query.State.Status}");
+    }
+
+    [Fact]
+    public async Task Observer_RefetchAsync_WhenCancelledByCancelQueries_ResolvesWithRevertedResult()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["refetch-cancelled"], "original");
+        var fetchStarted = new TaskCompletionSource();
+        var observer = new QueryObserver<string, string>(client, new QueryObserverOptions<string, string>
+        {
+            QueryKey = ["refetch-cancelled"],
+            Enabled = false,
+            QueryFn = async ctx =>
+            {
+                fetchStarted.TrySetResult();
+                await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+                return "unreachable";
+            },
+        });
+
+        var refetch = observer.RefetchAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["refetch-cancelled"]);
+        var result = await refetch.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal("original", result.Data);
+        Assert.Equal(FetchStatus.Idle, result.FetchStatus);
+        Assert.False(result.IsError);
+    }
+
+    [Fact]
+    public async Task Observer_RefetchAsync_WhenQueryFnThrowsItsOwnCancellation_ReportsError()
+    {
+        var client = CreateQueryClient();
+        var timeout = new TaskCanceledException("HttpClient.Timeout elapsed");
+        var observer = new QueryObserver<string, string>(client, new QueryObserverOptions<string, string>
+        {
+            QueryKey = ["refetch-timeout"],
+            Enabled = false,
+            Retry = 0,
+            QueryFn = _ => Task.FromException<string>(timeout),
+        });
+
+        var result = await observer.RefetchAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Same(timeout, result.Error);
+        Assert.Equal(FetchStatus.Idle, result.FetchStatus);
+    }
+
+    [Fact]
+    public async Task Observer_RefetchAsync_WithThrowOnError_WhenRevertedWithData_ResolvesWithRevertedResult()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["throw-on-error-revert"], "original");
+        var fetchStarted = new TaskCompletionSource();
+        var observer = new QueryObserver<string, string>(client, new QueryObserverOptions<string, string>
+        {
+            QueryKey = ["throw-on-error-revert"],
+            Enabled = false,
+            QueryFn = async ctx =>
+            {
+                fetchStarted.TrySetResult();
+                await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+                return "unreachable";
+            },
+        });
+
+        var refetch = observer.RefetchAsync(new RefetchOptions { ThrowOnError = true }, TestContext.Current.CancellationToken);
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["throw-on-error-revert"]);
+        var result = await refetch.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal("original", result.Data);
+        Assert.False(result.IsError);
+    }
+
+    [Fact]
+    public async Task Fetch_WhenRevertedWithoutData_Throws_AndReturnsToPending()
+    {
+        var client = CreateQueryClient();
+        var query = client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string> { QueryKey = ["revert-no-data"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
+        var fetchStarted = new TaskCompletionSource();
+        query.SetQueryFn(async ctx =>
+        {
+            fetchStarted.TrySetResult();
+            await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+            return "unreachable";
+        });
+
+        var fetch = query.Fetch(TestContext.Current.CancellationToken);
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await query.Cancel(new CancelOptions { Revert = true });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
+        Assert.Equal(QueryStatus.Pending, query.State!.Status);
+        Assert.Equal(FetchStatus.Idle, query.State.FetchStatus);
+    }
+
+    // Inline cancellation runs the old fetch's continuation before its replacement exists.
+    // Awaiting the current fetch in that window would make it await itself.
+    [Fact(Timeout = 10_000)]
+    public async Task Fetch_WhenReplacedByRefetch_WaitsForReplacement_EvenWhenCancelCompletesInline()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["replaced"], "initial");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["replaced"]))!;
+        var replacementGate = new TaskCompletionSource<string>();
+        var calls = 0;
+        query.SetQueryFn(ctx =>
+        {
+            if (++calls == 2) return replacementGate.Task;
+            var inlineCancel = new TaskCompletionSource<string>();
+            ctx.CancellationToken.Register(() => inlineCancel.TrySetCanceled());
+            return inlineCancel.Task;
+        });
+
+        var replaced = query.Fetch(TestContext.Current.CancellationToken);
+        var replacement = query.Fetch(cancelRefetch: true, TestContext.Current.CancellationToken);
+        var completedEarly = replaced.IsCompleted;
+        replacementGate.SetResult("replacement-data");
+        await replacement;
+        await replaced;
+
+        Assert.False(completedEarly);
+        Assert.Equal(2, calls);
+        Assert.Equal("replacement-data", query.State!.Data);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task Fetch_WhenReplacementFails_RejectsReplacedCallerToo()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryDefaults(["replaced-fails"], new QueryDefaults { Retry = 0 });
+        client.SetQueryData(["replaced-fails"], "initial");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["replaced-fails"]))!;
+        var calls = 0;
+        var failure = new InvalidOperationException("replacement failed");
+        query.SetQueryFn(async ctx =>
+        {
+            if (++calls == 2) throw failure;
+            await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+            return "unreachable";
+        });
+
+        var replaced = query.Fetch(TestContext.Current.CancellationToken);
+        var replacement = query.Fetch(cancelRefetch: true, TestContext.Current.CancellationToken);
+        var replacedError = await Assert.ThrowsAsync<InvalidOperationException>(() => replaced);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => replacement);
+
+        Assert.Same(failure, replacedError);
+    }
+
+    // No TanStack equivalent (its fetch takes no token). Closest API is cancelQueries, whose default
+    // is revert: the caller gets the .NET contract's exception and the query must not stay fetching.
+    [Fact]
+    public async Task Fetch_WhenCallersTokenCancelled_Throws_AndRevertsState()
+    {
+        // Arrange
+        var client = CreateQueryClient();
+        client.SetQueryData(["caller-token"], "original");
+        var query = client.QueryCache.Get<string>(DefaultQueryKeyHasher.Instance.HashQueryKey(["caller-token"]))!;
+        var fetchStarted = new TaskCompletionSource();
+        query.SetQueryFn(async ctx =>
+        {
+            fetchStarted.TrySetResult();
+            await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+            return "unreachable";
+        });
+        using var cts = new CancellationTokenSource();
+
+        // Act
+        var fetch = query.Fetch(cts.Token);
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await cts.CancelAsync();
+
+        // Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
+        Assert.Equal(FetchStatus.Idle, query.State!.FetchStatus);
+        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
+        Assert.Equal("original", query.State.Data);
+    }
+
+    [Fact]
+    public async Task Reset_DuringFetch_DoesNotLeaveErrorState()
+    {
+        var client = CreateQueryClient();
+        var query = client.QueryCache.GetOrCreate<string, string>(client,
+            new QueryConfiguration<string> { QueryKey = ["reset-during-fetch"], GcTime = TimeSpan.FromMinutes(5), Retry = 0 });
+        var fetchStarted = new TaskCompletionSource();
+        query.SetQueryFn(async ctx =>
+        {
+            fetchStarted.TrySetResult();
+            await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+            return "unreachable";
+        });
+
+        var fetch = query.Fetch(TestContext.Current.CancellationToken);
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        query.Reset();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
+
+        Assert.Equal(QueryStatus.Pending, query.State!.Status);
+        Assert.Null(query.State.Error);
     }
 
     private static QueryClient CreateQueryClient()

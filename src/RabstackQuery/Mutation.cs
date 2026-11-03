@@ -474,11 +474,11 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
                 _logger.MutationExecuteSucceeded(MutationId);
                 return data;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // C#-specific: cancellation is not a mutation error. TanStack doesn't
-                // distinguish these, but C#'s CancellationToken model makes this a
-                // natural concern — Query.cs already has the same pattern (line 612-619).
+                // C#-specific: TanStack's mutations take no token. Only the caller's own token
+                // counts as cancellation; anything else, such as an HttpClient timeout, is a
+                // rejection and takes the error path below as it does in TanStack.
                 sw?.Stop();
                 Dispatch(new MutationCancelAction(), onStatusChanged);
                 if (mutationKeyHash is not null)

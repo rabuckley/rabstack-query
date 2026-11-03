@@ -199,6 +199,23 @@ public sealed class Query<TData> : Query
     {
         public required Retryer<TData> Retryer { get; init; }
         public required QueryState<TData> PreFetchState { get; init; }
+
+        // Set before cancelling so inline completion sees the first cancellation's options.
+        public CancelOptions? Cancellation;
+
+        // Cancellation can resume FetchCore before its replacement exists. Waiting for it here
+        // avoids making the cancelled fetch await itself through _currentFetchTask.
+        public TaskCompletionSource<Task>? Replacement;
+    }
+
+    private static readonly CancelOptions PlainCancel = new();
+    private static readonly CancelOptions SilentCancel = new() { Silent = true };
+    private static readonly CancelOptions RevertCancel = new() { Revert = true };
+
+    private static void CancelOperation(FetchOperation operation, CancelOptions options)
+    {
+        Interlocked.CompareExchange(ref operation.Cancellation, options, null);
+        operation.Retryer.Cancel();
     }
 
     internal void AddObserver(IQueryObserver observer)
@@ -408,8 +425,7 @@ public sealed class Query<TData> : Query
         // TanStack calls destroy() then setState(#initialState). destroy() clears
         // the GC timer and cancels any in-flight fetch.
         Destroy();
-        var op = _activeFetch;
-        op?.Retryer.Cancel();
+        if (_activeFetch is { } op) CancelOperation(op, SilentCancel);
         _activeFetch = null;
         _currentFetchTask = null;
 
@@ -447,7 +463,7 @@ public sealed class Query<TData> : Query
             Dispatch(new SetStateAction<TData> { State = op.PreFetchState, Options = null });
         }
 
-        op?.Retryer.Cancel();
+        if (op is not null) CancelOperation(op, options ?? PlainCancel);
 
         return Task.CompletedTask;
     }
@@ -643,6 +659,7 @@ public sealed class Query<TData> : Query
         var op = _activeFetch;
         var fetchTask = _currentFetchTask;
         var state = State;
+        TaskCompletionSource<Task>? replacement = null;
         if (state is not null
             && state.FetchStatus is not FetchStatus.Idle
             && op is not null
@@ -670,7 +687,9 @@ public sealed class Query<TData> : Query
                 // NOT nulled, so partial data is preserved — matching TanStack.
                 _logger.QueryCancelled(QueryHash, false);
                 _activeFetch = null;
-                op.Retryer.Cancel();
+                replacement = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
+                op.Replacement = replacement;
+                CancelOperation(op, SilentCancel);
                 // Fall through to start new fetch
             }
             else
@@ -687,8 +706,10 @@ public sealed class Query<TData> : Query
         }
 
         _logger.QueryFetchStarted(QueryHash);
-        _currentFetchTask = FetchCore(meta, cancellationToken);
-        return _currentFetchTask;
+        var fetch = FetchCore(meta, cancellationToken);
+        _currentFetchTask = fetch;
+        replacement?.TrySetResult(fetch);
+        return fetch;
     }
 
     private async Task FetchCore(FetchMeta? meta, CancellationToken cancellationToken)
@@ -748,10 +769,15 @@ public sealed class Query<TData> : Query
         // of the State write (FetchStatus = Fetching). If these writes were
         // reordered, the dedup check could see a non-null _activeFetch but stale
         // State.FetchStatus == Idle, incorrectly starting a duplicate fetch.
-        _activeFetch = new FetchOperation { Retryer = retryer, PreFetchState = preFetchState };
+        var operation = new FetchOperation { Retryer = retryer, PreFetchState = preFetchState };
+        _activeFetch = operation;
 
-        // Link external cancellation to retryer
-        using var registration = cancellationToken.Register(() => retryer.Cancel());
+        // C# divergence: TanStack's fetch takes no token. A caller's cancel reverts, matching the
+        // default of cancelQueries, so the query does not stay Fetching with nothing running.
+        using var registration = cancellationToken.Register(() =>
+        {
+            if (_activeFetch == operation) Cancel(RevertCancel);
+        });
 
         var queryHashTag = QueryMetrics.QueryHashTag(QueryHash);
         _metrics?.QueryFetchTotal?.Add(1, queryHashTag);
@@ -781,6 +807,10 @@ public sealed class Query<TData> : Query
             {
                 _metrics?.QueryFetchCancelledTotal?.Add(1, queryHashTag);
                 _logger.QueryFetchCancelled(QueryHash);
+                if (operation.Replacement is { } replacedBy)
+                {
+                    await (await replacedBy.Task).WaitAsync(cancellationToken);
+                }
                 return;
             }
 
@@ -792,14 +822,30 @@ public sealed class Query<TData> : Query
             SetState(SuccessState(data, now));
             _logger.QueryFetchSucceeded(QueryHash);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex) when (retryer.IsCancelled)
         {
-            // Cancellation is not an error — don't dispatch ErrorAction.
-            // State revert is handled by Cancel() if requested.
-            // Duration is intentionally not recorded for cancelled fetches.
             _metrics?.QueryFetchCancelledTotal?.Add(1, queryHashTag);
             _logger.QueryFetchCancelled(QueryHash);
-            throw;
+
+            if (cancellationToken.IsCancellationRequested) throw;
+
+            if (operation.Replacement is { } replacedBy)
+            {
+                await (await replacedBy.Task).WaitAsync(cancellationToken);
+                return;
+            }
+
+            switch (operation.Cancellation)
+            {
+                case { Silent: true }:
+                    throw;
+                case { Revert: true }:
+                    if (State is not { Data: not null }) throw;
+                    return;
+                default:
+                    Dispatch(new ErrorAction { Error = ex });
+                    throw;
+            }
         }
         catch (Exception ex)
         {

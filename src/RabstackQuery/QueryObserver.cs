@@ -477,7 +477,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     }
 
     /// <summary>
-    /// Internal fetch that suppresses non-cancellation errors, matching
+    /// Internal fetch that suppresses failures and outside cancellation, matching
     /// TanStack's <c>#executeFetch</c> which does <c>promise.catch(noop)</c>.
     /// Errors are already captured in the query state via <c>ErrorAction</c>
     /// dispatch, so suppression is safe.
@@ -490,15 +490,17 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         {
             await _currentQuery.Fetch(cancelRefetch, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // C# divergence: TanStack's refetch takes no token. Cancelling your own token
+            // follows the .NET contract and throws; anyone else's cancel is suppressed below.
             throw;
         }
         catch
         {
             // Errors are already captured in the query state via ErrorAction
             // dispatch. Suppress here, matching TanStack's `promise.catch(noop)`
-            // in `#executeFetch`.
+            // in `#executeFetch`, which also swallows CancelledError.
         }
     }
 

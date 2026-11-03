@@ -203,4 +203,50 @@ public sealed class InfiniteQueryViewModelTests : SyncContextTestBase
         // Assert — no exception, just verifying clean disposal
         Assert.True(vm.IsSuccess); // retains last state
     }
+
+    [Theory]
+    [InlineData(nameof(InfiniteQueryViewModel<string, int>.FetchNextPageCommand))]
+    [InlineData(nameof(InfiniteQueryViewModel<string, int>.FetchPreviousPageCommand))]
+    [InlineData(nameof(InfiniteQueryViewModel<string, int>.RefetchCommand))]
+    public async Task Commands_Should_Not_Throw_When_Query_Is_Cancelled(string commandName)
+    {
+        var client = CreateQueryClient();
+        var block = false;
+        var fetchStarted = new TaskCompletionSource();
+        using var vm = new InfiniteQueryViewModel<string, int>(
+            client,
+            new InfiniteQueryObserverOptions<string, int>
+            {
+                QueryKey = ["vm-cancelled", commandName],
+                QueryFn = async ctx =>
+                {
+                    if (Volatile.Read(ref block))
+                    {
+                        fetchStarted.TrySetResult();
+                        await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+                    }
+                    return $"page-{ctx.PageParam}";
+                },
+                InitialPageParam = 0,
+                GetNextPageParam = ctx => ctx.PageParam + 1,
+                GetPreviousPageParam = ctx => ctx.PageParam - 1,
+            });
+        await WaitForSuccess(vm);
+        Volatile.Write(ref block, true);
+        var command = commandName switch
+        {
+            nameof(vm.FetchNextPageCommand) => vm.FetchNextPageCommand,
+            nameof(vm.FetchPreviousPageCommand) => vm.FetchPreviousPageCommand,
+            _ => vm.RefetchCommand,
+        };
+
+        var execution = command.ExecuteAsync(null);
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["vm-cancelled", commandName]);
+        await execution.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(vm.Data);
+        Assert.Equal(["page-0"], vm.Data.Pages);
+        Assert.False(vm.IsError);
+    }
 }

@@ -1480,4 +1480,28 @@ public sealed class MutationTests
     }
 
     #endregion
+
+    [Fact]
+    public async Task Execute_WhenMutationFnThrowsItsOwnCancellation_SettlesAsError()
+    {
+        var client = CreateQueryClient();
+        var timeout = new TaskCanceledException("HttpClient.Timeout elapsed");
+        Exception? settledError = null;
+        var mutation = client.MutationCache.GetOrCreate(client, new MutationOptions<string, Exception, string, object?>
+        {
+            MutationFn = (_, _, _) => Task.FromException<string>(timeout),
+            OnSettled = (_, error, _, _, _) =>
+            {
+                settledError = error;
+                return Task.CompletedTask;
+            },
+        });
+
+        var thrown = await Assert.ThrowsAsync<TaskCanceledException>(() => mutation.Execute("input"));
+
+        Assert.Same(timeout, thrown);
+        Assert.Equal(MutationStatus.Error, mutation.State.Status);
+        Assert.Same(timeout, mutation.State.Error);
+        Assert.Same(timeout, settledError);
+    }
 }

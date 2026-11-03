@@ -49,6 +49,27 @@ internal sealed class DeferredSynchronizationContext : SynchronizationContext
     }
 }
 
+internal sealed class CrashRecordingSynchronizationContext : SynchronizationContext
+{
+    private readonly ConcurrentQueue<Exception> _escaped = new();
+
+    public IReadOnlyCollection<Exception> Escaped => _escaped;
+
+    public override void Post(SendOrPostCallback d, object? state)
+    {
+        try
+        {
+            d(state);
+        }
+        catch (Exception ex)
+        {
+            _escaped.Enqueue(ex);
+        }
+    }
+
+    public override void Send(SendOrPostCallback d, object? state) => d(state);
+}
+
 // ViewModel construction requires a context; these tests use inline callbacks without a UI dispatcher.
 public abstract class SyncContextTestBase : IDisposable
 {

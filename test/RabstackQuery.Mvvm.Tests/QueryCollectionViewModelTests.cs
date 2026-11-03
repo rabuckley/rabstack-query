@@ -537,4 +537,27 @@ public sealed class QueryCollectionViewModelTests : SyncContextTestBase
         Assert.Contains(nameof(vm.IsSuccess), changedProperties);
         Assert.Contains(nameof(vm.Status), changedProperties);
     }
+
+    [Fact]
+    public async Task RefetchCommand_Should_Not_Throw_When_Query_Is_Cancelled()
+    {
+        var client = CreateQueryClient();
+        var fetchCount = 0;
+        var refetchStarted = new TaskCompletionSource();
+        using var vm = CreateSimpleCollectionVm(client, ["collection-refetch-cancelled"], async ctx =>
+        {
+            if (Interlocked.Increment(ref fetchCount) == 1) return ["original"];
+            refetchStarted.TrySetResult();
+            await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+            return ["unreachable"];
+        });
+        await WaitForAsync(() => vm.IsSuccess);
+
+        var refetch = vm.RefetchCommand.ExecuteAsync(null);
+        await refetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["collection-refetch-cancelled"]);
+        await refetch.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(["original"], vm.Items);
+    }
 }

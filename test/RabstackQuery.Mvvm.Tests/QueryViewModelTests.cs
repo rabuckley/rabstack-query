@@ -83,4 +83,42 @@ public sealed class QueryViewModelTests : SyncContextTestBase
         // Assert — IsManualRefreshing must be reset even on error (finally block)
         Assert.False(vm.IsManualRefreshing);
     }
+
+    // Use Execute as a binding does; ExecuteAsync alone misses exceptions posted to the UI context.
+    [Fact]
+    public async Task RefetchCommand_Should_Not_Crash_UI_Context_When_Query_Is_Cancelled()
+    {
+        var client = CreateQueryClient();
+        client.SetQueryData(["refetch-cancelled"], "original");
+        var fetchStarted = new TaskCompletionSource();
+        var uiContext = new CrashRecordingSynchronizationContext();
+        var vm = WithSyncContext(uiContext, () => new QueryViewModel<string, string>(
+            client,
+            new QueryObserverOptions<string, string>
+            {
+                QueryKey = ["refetch-cancelled"],
+                Enabled = false,
+                QueryFn = async ctx =>
+                {
+                    fetchStarted.TrySetResult();
+                    await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+                    return "unreachable";
+                },
+            }));
+        using var _ = vm;
+
+        var execution = WithSyncContext<Task>(uiContext, () =>
+        {
+            vm.RefetchCommand.Execute(null);
+            return vm.RefetchCommand.ExecutionTask ?? Task.CompletedTask;
+        });
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["refetch-cancelled"]);
+        await Task.WhenAny(execution).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Empty(uiContext.Escaped);
+        Assert.Equal(TaskStatus.RanToCompletion, execution.Status);
+        Assert.False(vm.IsManualRefreshing);
+        Assert.Equal("original", vm.Data);
+    }
 }

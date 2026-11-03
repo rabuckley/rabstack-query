@@ -207,18 +207,12 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, ISubs
     [RelayCommand]
     private async Task RefetchAsync()
     {
-        // RefetchAsync now suppresses errors by default (ThrowOnError = false),
-        // matching TanStack's `promise.catch(noop)`. The try/catch remains as a
-        // safety net for OperationCanceledException (which is always propagated
-        // through the suppression layer) and any unexpected edge cases.
+        // RefetchAsync suppresses failures and outside cancellation, matching TanStack's
+        // `promise.catch(noop)`. Nothing may escape: bound commands rethrow on the UI context.
         IsManualRefreshing = true;
         try
         {
             await _observer.RefetchAsync();
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
         }
         catch (Exception ex)
         {

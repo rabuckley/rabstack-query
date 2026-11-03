@@ -186,11 +186,11 @@ public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResul
         {
             await _observer.MutateAsync(variables, null, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Cancellation is not an error — let CommunityToolkit.Mvvm handle it
-            // so that MutateCancelCommand works correctly.
-            throw;
+            // Nothing may escape: bound commands rethrow failures on the UI context, which
+            // would turn MutateCancelCommand into a crash. Not logged as a swallowed error
+            // because the user asked for this.
         }
         catch (Exception ex)
         {

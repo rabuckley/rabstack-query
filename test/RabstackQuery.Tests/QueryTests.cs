@@ -1062,11 +1062,8 @@ public sealed class QueryTests
         Assert.Equal(start.ToUnixTimeMilliseconds(), query.State!.DataUpdatedAt);
     }
 
-    /// <summary>
-    /// Cancelling a query should not set its status to Errored.
-    /// </summary>
     [Fact]
-    public async Task Cancel_Should_Not_Set_Status_To_Errored()
+    public async Task Cancel_Without_Revert_Should_Set_Status_To_Errored()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -1084,9 +1081,9 @@ public sealed class QueryTests
         // Act — cancel
         await query.Cancel();
 
-        // Assert — cancellation doesn't set Error status
-        Assert.NotEqual(QueryStatus.Errored, query.State!.Status);
-        Assert.Null(query.State.Error);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetchTask);
+        Assert.Equal(QueryStatus.Errored, query.State!.Status);
+        Assert.IsAssignableFrom<OperationCanceledException>(query.State.Error);
     }
 
     /// <summary>

@@ -106,31 +106,81 @@ public sealed class MutationViewModelTests : SyncContextTestBase
         Assert.Null(vm.Data);
     }
 
+    // No TanStack equivalent: its mutations cannot be cancelled. Closest is mutate(), whose
+    // catch(noop) keeps failures off the caller; binding invokes Execute, whose async void wrapper
+    // would otherwise rethrow on the UI context.
     [Fact]
-    public async Task MutateCommand_Should_Propagate_Cancellation()
+    public async Task MutateCancelCommand_Should_Not_Crash_UI_Context()
     {
-        // Arrange — a mutation that blocks until cancelled
+        // Arrange
         var client = CreateQueryClient();
-        var tcs = new TaskCompletionSource<string>();
+        var uiContext = new CrashRecordingSynchronizationContext();
+        var vm = WithSyncContext(uiContext, () => new MutationViewModel<string, Exception, string, object?>(
+            client,
+            new()
+            {
+                MutationFn = async (_, _, ct) =>
+                {
+                    await new TaskCompletionSource().Task.WaitAsync(ct);
+                    return "unreachable";
+                },
+            }));
+        using var _ = vm;
 
+        // Act
+        var execution = WithSyncContext<Task>(uiContext, () =>
+        {
+            vm.MutateCommand.Execute("input");
+            return vm.MutateCommand.ExecutionTask ?? Task.CompletedTask;
+        });
+        vm.MutateCancelCommand.Execute(null);
+        await Task.WhenAny(execution).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Empty(uiContext.Escaped);
+        Assert.Equal(TaskStatus.RanToCompletion, execution.Status);
+        Assert.False(vm.MutateCommand.IsRunning);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_Should_Throw_When_Callers_Token_Is_Cancelled()
+    {
+        // Arrange
+        var client = CreateQueryClient();
         using var vm = new MutationViewModel<string, Exception, string, object?>(
             client,
             new()
             {
                 MutationFn = async (_, _, ct) =>
                 {
-                    ct.Register(() => tcs.TrySetCanceled(ct));
-                    return await tcs.Task;
+                    await new TaskCompletionSource().Task.WaitAsync(ct);
+                    return "unreachable";
                 },
             });
+        using var cts = new CancellationTokenSource();
 
-        // Act — start the mutation, then cancel it
-        var mutateTask = vm.MutateCommand.ExecuteAsync("input");
-        vm.MutateCancelCommand.Execute(null);
+        // Act
+        var invocation = vm.InvokeAsync("input", cts.Token);
+        await cts.CancelAsync();
 
-        // Assert — OperationCanceledException should propagate (CommunityToolkit
-        // needs it to transition the command out of its executing state).
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => mutateTask);
+        // Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invocation);
+    }
+
+    [Fact]
+    public async Task MutateCommand_Should_Show_Error_When_MutationFn_Times_Out()
+    {
+        var client = CreateQueryClient();
+        var timeout = new TaskCanceledException("HttpClient.Timeout elapsed");
+        using var vm = new MutationViewModel<string, Exception, string, object?>(
+            client,
+            new() { MutationFn = (_, _, _) => Task.FromException<string>(timeout) });
+
+        await vm.MutateCommand.ExecuteAsync("input");
+
+        Assert.True(vm.IsError);
+        Assert.Same(timeout, vm.Error);
+        Assert.False(vm.IsPending);
     }
 
     [Fact]

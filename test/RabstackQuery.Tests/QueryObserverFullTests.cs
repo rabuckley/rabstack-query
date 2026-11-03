@@ -3084,11 +3084,11 @@ public sealed class QueryObserverFullTests
     }
 
     /// <summary>
-    /// <see cref="OperationCanceledException"/> is always propagated regardless
-    /// of <c>ThrowOnError</c> — cancellation is not a query error, it's a signal.
+    /// Deliberate C# divergence: TanStack's <c>refetch</c> takes no token, so it has no equivalent
+    /// of this case. Cancelling your own token follows the .NET contract and throws.
     /// </summary>
     [Fact(Timeout = 10_000)]
-    public async Task RefetchAsync_Should_Propagate_OperationCanceledException()
+    public async Task RefetchAsync_Should_Throw_When_Callers_Token_Is_Cancelled()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -3110,8 +3110,7 @@ public sealed class QueryObserverFullTests
         cts.CancelAfter(TimeSpan.FromMilliseconds(50));
         var act = () => observer.RefetchAsync(cancellationToken: cts.Token);
 
-        // Assert — OperationCanceledException (or its subclass TaskCanceledException)
-        // always propagates
+        // Assert
         await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
     }
 
