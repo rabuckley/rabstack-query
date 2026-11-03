@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -11,9 +13,8 @@ namespace RabstackQuery.Example.Shared.ViewModels;
 /// ViewModel for the Projects list page demonstrating <see cref="QueryCollectionViewModel{TData,TQueryFnData}"/>
 /// with reconciliation and a CreateProject mutation that invalidates the cache on success.
 /// </summary>
-public sealed partial class ProjectListViewModel : ObservableObject, IDisposable
+public sealed partial class ProjectListViewModel : PageViewModel
 {
-    private bool _disposed;
     private bool _createSucceeded;
 
     public QueryCollectionViewModel<ProjectItemViewModel, Project> ProjectsQuery { get; }
@@ -26,12 +27,15 @@ public sealed partial class ProjectListViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string NewProjectDescription { get; set; } = string.Empty;
 
+    [SetsRequiredMembers]
     public ProjectListViewModel(QueryClient client, ITaskBoardApi api)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(api);
 
-        ProjectsQuery = client.UseQueryCollection<Project, ProjectItemViewModel>(
+        Client = client;
+
+        ProjectsQuery = UseQueryCollection<Project, ProjectItemViewModel>(
             Queries.Projects(api),
             update: (data, items) =>
             {
@@ -71,7 +75,7 @@ public sealed partial class ProjectListViewModel : ObservableObject, IDisposable
             }
         );
 
-        CreateProjectMutation = client.UseMutation(new MutationOptions<Project, (string Name, string Description)>
+        CreateProjectMutation = UseMutation(new MutationOptions<Project, (string Name, string Description)>
         {
             MutationFn = async (variables, context, ct) =>
                 await api.CreateProjectAsync(variables.Name, variables.Description, ct),
@@ -103,14 +107,5 @@ public sealed partial class ProjectListViewModel : ObservableObject, IDisposable
             NewProjectName = string.Empty;
             NewProjectDescription = string.Empty;
         }
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        ProjectsQuery.Dispose();
-        CreateProjectMutation.Dispose();
     }
 }

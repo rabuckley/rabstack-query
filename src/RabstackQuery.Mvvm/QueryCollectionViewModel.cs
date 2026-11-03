@@ -21,7 +21,7 @@ namespace RabstackQuery.Mvvm;
 /// </remarks>
 /// <typeparam name="TData">The item type in the ObservableCollection.</typeparam>
 /// <typeparam name="TQueryFnData">The item type stored in the cache (source type).</typeparam>
-public sealed partial class QueryCollectionViewModel<TData, TQueryFnData> : ObservableObject, IDisposable
+public sealed partial class QueryCollectionViewModel<TData, TQueryFnData> : ObservableObject, ISubscribableViewModel
 {
     private readonly Action<IEnumerable<TQueryFnData>?, ObservableCollection<TData>> _update;
     private readonly ILogger _logger;
@@ -115,28 +115,30 @@ public sealed partial class QueryCollectionViewModel<TData, TQueryFnData> : Obse
     }
 
     /// <summary>
-    /// Creates a new QueryCollectionViewModel with full control over all observer options.
-    /// Use this constructor to configure StaleTime, RefetchInterval, PlaceholderData,
-    /// Enabled, and other options that the simpler constructor leaves at defaults.
+    /// Initializes a new instance of the <see cref="QueryCollectionViewModel{TData, TQueryFnData}"/> class with observer options.
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
     /// <param name="options">The full set of observer options for the collection query.</param>
     /// <param name="update">
-    /// Function to reconcile the ObservableCollection with new raw data from the cache.
-    /// Receives the raw <typeparamref name="TQueryFnData"/> items so that the caller can
-    /// create <typeparamref name="TData"/> instances only for genuinely new items.
+    /// Reconciles raw cached items with the collection, preserving existing items as needed.
+    /// </param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
     /// </param>
     public QueryCollectionViewModel(
         QueryClient client,
         QueryObserverOptions<IEnumerable<TQueryFnData>> options,
-        Action<IEnumerable<TQueryFnData>?, ObservableCollection<TData>> update)
+        Action<IEnumerable<TQueryFnData>?, ObservableCollection<TData>> update,
+        bool subscribed = true)
     {
         ArgumentNullException.ThrowIfNull(client);
         _logger = client.LoggerFactory.CreateLogger("RabstackQuery.Mvvm.QueryCollectionViewModel");
         _update = update;
 
         _queryViewModel =
-            new QueryViewModel<IEnumerable<TQueryFnData>, IEnumerable<TQueryFnData>>(client, options);
+            new QueryViewModel<IEnumerable<TQueryFnData>, IEnumerable<TQueryFnData>>(client, options, subscribed);
         _onQueryViewModelPropertyChanged = OnQueryViewModelPropertyChanged;
 
         SubscribeToQueryViewModel();

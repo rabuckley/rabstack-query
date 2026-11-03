@@ -17,7 +17,8 @@ public partial class TaskBoardPage : ContentPage
     {
         set
         {
-            if (int.TryParse(value, out var id))
+            // Preserve page state when Shell reapplies the current project.
+            if (int.TryParse(value, out var id) && (_viewModel is null || id != _projectId))
             {
                 _projectId = id;
                 InitializeViewModel(id);
@@ -30,8 +31,6 @@ public partial class TaskBoardPage : ContentPage
         _client = client;
         _api = api;
         InitializeComponent();
-
-        Unloaded += OnPageUnloaded;
     }
 
     private void InitializeViewModel(int projectId)
@@ -53,9 +52,15 @@ public partial class TaskBoardPage : ContentPage
         }
     }
 
-    private void OnPageUnloaded(object? sender, EventArgs e)
+    protected override void OnAppearing()
     {
-        Unloaded -= OnPageUnloaded;
-        _viewModel?.Dispose();
+        base.OnAppearing();
+        if (_viewModel is not null) _viewModel.Subscribed = true;
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        if (_viewModel is not null) _viewModel.Subscribed = false;
     }
 }

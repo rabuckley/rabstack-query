@@ -13,7 +13,8 @@ public sealed class AdapterParityTests
     [Fact]
     public void PageViewModel_MirrorsQueryClientExtensions()
     {
-        var expected = ExtensionSignatures();
+        // Page children follow PageViewModel.Subscribed, so its factories take no per-child value.
+        var expected = ExtensionSignatures(excludedParameter: "subscribed");
 
         var actual = AdapterSignatures(typeof(PageViewModel));
 
@@ -40,11 +41,11 @@ public sealed class AdapterParityTests
         Assert.Equal(14, signatures.Count);
     }
 
-    private static List<string> ExtensionSignatures() =>
+    private static List<string> ExtensionSignatures(string? excludedParameter = null) =>
         typeof(QueryClientExtensions)
             .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .Where(m => FactoryNames.Contains(m.Name))
-            .Select(m => Describe(m, m.GetParameters().Skip(1)))
+            .Select(m => Describe(m, m.GetParameters().Skip(1).Where(p => p.Name != excludedParameter)))
             .Order(StringComparer.Ordinal)
             .ToList();
 

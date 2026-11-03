@@ -39,6 +39,10 @@ hydration can supply it through `HydrateMutationDefaults`.
 `PageViewModel` and `RabstackComponentBase` delegate to the extensions and own the returned ViewModels.
 The Blazor adapter also subscribes to change notifications. `AdapterParityTests` checks overload parity.
 
+The observer-options factories take `subscribed` separately because core observers do not control
+adapter subscriptions. React declares it on `UseBaseQueryOptions` and reads it every render;
+ViewModels take later changes through `Subscribed`. Page factories use the page's value.
+
 Composite ViewModels capture constructor parameters. `ViewModelScope` lets components release them when those parameters change. TanStack's `useBaseQuery` updates one observer through `setOptions`.
 Use `QueryViewModel.SetOptions` to switch keys while preserving the previous query's data for `PlaceholderData`.
 
@@ -122,6 +126,14 @@ if it is null, and post observer updates through it.
 pairs with screen focus. A hidden page keeps its ViewModel state but holds no subscriptions, so nothing in
 the client references a page that is later popped. MAUI raises `Unloaded` at different times on each platform
 and has no signal that a page has left for good, so `Dispose` cannot be tied to page lifetime.
+
+`PageViewModel.Subscribed` controls all ViewModels created by its factories. Queries created while
+unsubscribed show cached data without starting a mount fetch.
+
+Page factories omit `subscribed` because a per-child value would be overwritten on the next hide and
+show, potentially fetching a query the caller wanted detached. TanStack's `useQueries` also has one
+subscription control for the group. To control a ViewModel independently of the page, create it with
+`Client.UseQuery(options, subscribed: false)` and dispose it yourself.
 
 `MutationViewModel` also has `Subscribed`, which TanStack's `useMutation` does not. React's unmount releases
 that observer, but a subscribed observer here would keep its finished mutation in `MutationCache`.

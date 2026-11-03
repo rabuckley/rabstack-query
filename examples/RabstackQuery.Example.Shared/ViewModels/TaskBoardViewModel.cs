@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,10 +15,9 @@ namespace RabstackQuery.Example.Shared.ViewModels;
 /// optimistic mutations, and client-side grouping by task status. Tasks are fetched
 /// with cursor-based pagination and grouped into swim lanes (Todo, InProgress, Review, Done).
 /// </summary>
-public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
+public sealed partial class TaskBoardViewModel : PageViewModel
 {
-    private readonly QueryClient _client;
-    private bool _disposed;
+    private bool _addTaskSucceeded;
 
     public int ProjectId { get; }
 
@@ -47,16 +47,17 @@ public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial int PendingMutationCount { get; private set; }
 
+    [SetsRequiredMembers]
     public TaskBoardViewModel(QueryClient client, ITaskBoardApi api, int projectId)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(api);
 
-        _client = client;
+        Client = client;
         ProjectId = projectId;
 
         // Cursor-based infinite query for tasks in this project.
-        TasksQuery = client.UseInfiniteQuery(new InfiniteQueryObserverOptions<PagedResult<TaskItem>, string?>
+        TasksQuery = UseInfiniteQuery(new InfiniteQueryObserverOptions<PagedResult<TaskItem>, string?>
         {
             QueryKey = QueryKeys.Tasks(projectId),
             QueryFn = async ctx =>
@@ -72,7 +73,7 @@ public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
 
         // Project details query with placeholder data seeded from the projects list
         // cache so the page title renders instantly while the detail fetch is in flight.
-        ProjectQuery = client.UseQuery(
+        ProjectQuery = UseQuery(
             QueryObserverOptions.Create(
                 QueryKeys.Project(projectId),
                 async ctx => await api.GetProjectAsync(projectId, ctx.CancellationToken))
@@ -85,12 +86,14 @@ public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
                 },
             });
 
-        AddTaskMutation = client.UseMutation(new MutationOptions<TaskItem, (string Title, TaskPriority Priority)>
+        AddTaskMutation = UseMutation(new MutationOptions<TaskItem, (string Title, TaskPriority Priority)>
         {
             MutationFn = async (variables, context, ct) =>
                 await api.CreateTaskAsync(projectId, variables.Title, variables.Priority, ct),
             OnSuccess = async (data, variables, _, context) =>
             {
+                _addTaskSucceeded = true;
+
                 // Refresh the task list and project details (task counts may have changed).
                 await context.Client.InvalidateQueriesAsync(QueryKeys.Tasks(projectId));
                 await context.Client.InvalidateQueriesAsync(QueryKeys.Projects);
@@ -151,22 +154,23 @@ public sealed partial class TaskBoardViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Use the callback result because IsSuccess stops updating while the page is hidden.
+        _addTaskSucceeded = false;
         await AddTaskMutation.MutateCommand.ExecuteAsync((NewTaskTitle, TaskPriority.Medium));
 
-        if (AddTaskMutation.IsSuccess)
+        if (_addTaskSucceeded)
         {
             NewTaskTitle = string.Empty;
         }
     }
 
-    public void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (disposing)
+        {
+            TasksQuery.PropertyChanged -= OnTasksQueryPropertyChanged;
+        }
 
-        TasksQuery.PropertyChanged -= OnTasksQueryPropertyChanged;
-        TasksQuery.Dispose();
-        ProjectQuery?.Dispose();
-        AddTaskMutation.Dispose();
+        base.Dispose(disposing);
     }
 }

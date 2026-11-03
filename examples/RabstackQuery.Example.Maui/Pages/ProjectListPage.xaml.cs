@@ -11,8 +11,6 @@ public partial class ProjectListPage : ContentPage
         _viewModel = viewModel;
         BindingContext = _viewModel;
         InitializeComponent();
-
-        Unloaded += OnPageUnloaded;
     }
 
     private async void OnProjectTapped(object? sender, TappedEventArgs e)
@@ -23,9 +21,15 @@ public partial class ProjectListPage : ContentPage
         }
     }
 
-    private void OnPageUnloaded(object? sender, EventArgs e)
+    protected override void OnAppearing()
     {
-        Unloaded -= OnPageUnloaded;
-        _viewModel.Dispose();
+        base.OnAppearing();
+        _viewModel.Subscribed = true;
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _viewModel.Subscribed = false;
     }
 }

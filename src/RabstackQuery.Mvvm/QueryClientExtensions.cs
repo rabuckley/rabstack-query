@@ -79,6 +79,11 @@ public static class QueryClientExtensions
     /// <typeparam name="TData">The data type returned by the query and stored in the cache.</typeparam>
     /// <param name="client">The <see cref="QueryClient"/> that owns the cache.</param>
     /// <param name="options">The observer options.</param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
+    /// </param>
     /// <returns>A new ViewModel that the caller must dispose.</returns>
     /// <example>
     /// <code>
@@ -92,8 +97,9 @@ public static class QueryClientExtensions
     /// </example>
     public static QueryViewModel<TData> UseQuery<TData>(
         this QueryClient client,
-        QueryObserverOptions<TData> options)
-        => new(client, options);
+        QueryObserverOptions<TData> options,
+        bool subscribed = true)
+        => new(client, options, subscribed);
 
     /// <summary>
     /// Creates a query ViewModel from observer options that select a different output.
@@ -102,6 +108,11 @@ public static class QueryClientExtensions
     /// <typeparam name="TQueryData">The data type stored in the cache.</typeparam>
     /// <param name="client">The <see cref="QueryClient"/> that owns the cache.</param>
     /// <param name="options">The observer options, including <c>Select</c>.</param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
+    /// </param>
     /// <returns>A new ViewModel that the caller must dispose.</returns>
     /// <example>
     /// <code>
@@ -114,8 +125,9 @@ public static class QueryClientExtensions
     /// </example>
     public static QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
         this QueryClient client,
-        QueryObserverOptions<TData, TQueryData> options)
-        => new(client, options);
+        QueryObserverOptions<TData, TQueryData> options,
+        bool subscribed = true)
+        => new(client, options, subscribed);
 
     // ── Query collection ───────────────────────────────────────────────
 
@@ -220,6 +232,11 @@ public static class QueryClientExtensions
     /// <param name="client">The <see cref="QueryClient"/> that owns the cache.</param>
     /// <param name="options">The observer options.</param>
     /// <param name="update">Reconciles the collection with the raw cached items.</param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
+    /// </param>
     /// <returns>A new ViewModel that the caller must dispose.</returns>
     /// <remarks>
     /// Specify both type arguments or type the <paramref name="update"/> parameters: the options fix only
@@ -228,8 +245,9 @@ public static class QueryClientExtensions
     public static QueryCollectionViewModel<TItem, TQueryFnData> UseQueryCollection<TQueryFnData, TItem>(
         this QueryClient client,
         QueryObserverOptions<IEnumerable<TQueryFnData>> options,
-        Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update)
-        => new(client, options, update);
+        Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update,
+        bool subscribed = true)
+        => new(client, options, update, subscribed);
 
     // ── Infinite query ─────────────────────────────────────────────────
 
@@ -240,6 +258,11 @@ public static class QueryClientExtensions
     /// <typeparam name="TPageParam">The type of the page parameter, such as a cursor or page number.</typeparam>
     /// <param name="client">The <see cref="QueryClient"/> that owns the cache.</param>
     /// <param name="options">The infinite query observer options.</param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
+    /// </param>
     /// <returns>A new ViewModel that the caller must dispose.</returns>
     /// <example>
     /// <code>
@@ -256,8 +279,9 @@ public static class QueryClientExtensions
     /// </example>
     public static InfiniteQueryViewModel<TData, TPageParam> UseInfiniteQuery<TData, TPageParam>(
         this QueryClient client,
-        InfiniteQueryObserverOptions<TData, TPageParam> options)
-        => new(client, options);
+        InfiniteQueryObserverOptions<TData, TPageParam> options,
+        bool subscribed = true)
+        => new(client, options, subscribed);
 
     // ── Mutation ───────────────────────────────────────────────────────
 

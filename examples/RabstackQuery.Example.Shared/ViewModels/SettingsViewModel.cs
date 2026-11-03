@@ -100,7 +100,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         MutationCount = _client.MutationCache.GetAll().Count();
     }
 
-    // No subscriptions to clean up, but implements IDisposable for consistency
-    // with the page code-behind disposal pattern.
+    // RabstackComponentBase.Track requires IDisposable.
     public void Dispose() { }
 }

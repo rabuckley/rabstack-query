@@ -163,6 +163,149 @@ public sealed class QueryViewModelSubscribedTests : SyncContextTestBase
         Assert.False(vm.Subscribed);
     }
 
+    // TanStack useQuery.test.tsx: "should not be attached to the query when subscribed is false".
+    [Fact]
+    public void Constructed_Unsubscribed_Should_Not_Attach_Or_Fetch()
+    {
+        var client = new QueryClient(new QueryCache());
+        var fetchCount = 0;
+
+        using var vm = new QueryViewModel<string>(client, CountingOptions(["detached"], () => fetchCount++), subscribed: false);
+
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["detached"] });
+        Assert.NotNull(query);
+        Assert.False(vm.Subscribed);
+        Assert.Equal(0, query.ObserverCount);
+        Assert.Equal(0, fetchCount);
+        Assert.Equal(FetchStatus.Idle, vm.FetchStatus);
+    }
+
+    [Fact]
+    public void UseQuery_Unsubscribed_Should_Not_Attach_Or_Fetch()
+    {
+        var client = new QueryClient(new QueryCache());
+        var fetchCount = 0;
+
+        using var plain = client.UseQuery(CountingOptions(["plain"], () => fetchCount++), subscribed: false);
+        using var selecting = client.UseQuery(
+            new QueryObserverOptions<int, string>
+            {
+                QueryKey = ["selecting"],
+                QueryFn = _ =>
+                {
+                    fetchCount++;
+                    return Task.FromResult("data");
+                },
+                Select = data => data.Length,
+            },
+            subscribed: false);
+
+        Assert.False(plain.Subscribed);
+        Assert.False(selecting.Subscribed);
+        Assert.Equal(0, fetchCount);
+    }
+
+    [Fact]
+    public void Constructed_Unsubscribed_Should_Show_Cached_Data_As_Idle()
+    {
+        var client = new QueryClient(new QueryCache());
+        client.SetQueryData(["cached"], "cached");
+
+        using var vm = new QueryViewModel<string>(client, CountingOptions(["cached"], () => { }), subscribed: false);
+
+        Assert.Equal("cached", vm.Data);
+        Assert.True(vm.IsSuccess);
+        Assert.Equal(FetchStatus.Idle, vm.FetchStatus);
+    }
+
+    [Fact]
+    public async Task Constructed_Unsubscribed_Then_Subscribed_True_Should_Attach_And_Fetch()
+    {
+        var client = new QueryClient(new QueryCache());
+        var fetchCount = 0;
+        using var vm = new QueryViewModel<string>(client, CountingOptions(["resume-detached"], () => fetchCount++), subscribed: false);
+
+        vm.Subscribed = true;
+
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["resume-detached"] });
+        Assert.NotNull(query);
+        Assert.Equal(1, query.ObserverCount);
+        Assert.Equal(1, fetchCount);
+        await WaitForDataAsync(vm, "data");
+    }
+
+    [Fact]
+    public async Task Constructed_Unsubscribed_Should_Show_Shared_Fetch_Frozen_Until_Resume()
+    {
+        var client = new QueryClient(new QueryCache());
+        var fetch = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var options = new QueryObserverOptions<string>
+        {
+            QueryKey = ["shared"],
+            QueryFn = _ => fetch.Task,
+            StaleTime = TimeSpan.FromHours(1),
+        };
+        using var owner = new QueryViewModel<string>(client, options);
+        using var detached = new QueryViewModel<string>(client, options, subscribed: false);
+
+        fetch.SetResult("data");
+        await WaitForDataAsync(owner, "data");
+        var fetchingWhileDetached = detached.IsFetching;
+        var dataWhileDetached = detached.Data;
+        detached.Subscribed = true;
+
+        Assert.True(fetchingWhileDetached);
+        Assert.Null(dataWhileDetached);
+        Assert.Equal("data", detached.Data);
+        Assert.False(detached.IsFetching);
+    }
+
+    // TanStack useBaseQuery.ts reads getOptimisticResult even when subscribed is false.
+    [Fact]
+    public void SetOptions_While_Unsubscribed_Should_Show_New_Key_Without_Attaching_Or_Fetching()
+    {
+        var client = new QueryClient(new QueryCache());
+        client.SetQueryData(["before"], "before");
+        client.SetQueryData(["after"], "after");
+        var fetchCount = 0;
+        using var vm = new QueryViewModel<string>(client, CountingOptions(["before"], () => fetchCount++), subscribed: false);
+
+        vm.SetOptions(CountingOptions(["after"], () => fetchCount++));
+
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["after"] });
+        Assert.NotNull(query);
+        Assert.Equal("after", vm.Data);
+        Assert.False(vm.Subscribed);
+        Assert.Equal(0, query.ObserverCount);
+        Assert.Equal(0, fetchCount);
+    }
+
+    [Fact]
+    public void SetOptions_While_Unsubscribed_Should_Show_Uncached_Key_As_Pending_And_Idle()
+    {
+        var client = new QueryClient(new QueryCache());
+        client.SetQueryData(["before"], "before");
+        var fetchCount = 0;
+        using var vm = new QueryViewModel<string>(client, CountingOptions(["before"], () => fetchCount++), subscribed: false);
+
+        vm.SetOptions(CountingOptions(["uncached"], () => fetchCount++));
+
+        Assert.Null(vm.Data);
+        Assert.Equal(QueryStatus.Pending, vm.Status);
+        Assert.Equal(FetchStatus.Idle, vm.FetchStatus);
+        Assert.Equal(0, fetchCount);
+    }
+
+    private static QueryObserverOptions<string> CountingOptions(QueryKey key, Action onFetch) => new()
+    {
+        QueryKey = key,
+        QueryFn = _ =>
+        {
+            onFetch();
+            return Task.FromResult("data");
+        },
+    };
+
     // TanStack's useBaseQuery reads getOptimisticResult on every render, so subscribed: false still
     // shows the result for the current options. See the comment in QueryViewModel.SetOptions.
     [Fact]

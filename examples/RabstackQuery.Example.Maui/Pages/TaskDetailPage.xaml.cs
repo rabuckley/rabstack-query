@@ -20,8 +20,6 @@ public partial class TaskDetailPage : ContentPage, IQueryAttributable
         _client = client;
         _api = api;
         InitializeComponent();
-
-        Unloaded += OnPageUnloaded;
     }
 
     /// <summary>
@@ -109,9 +107,15 @@ public partial class TaskDetailPage : ContentPage, IQueryAttributable
         }
     }
 
-    private void OnPageUnloaded(object? sender, EventArgs e)
+    protected override void OnAppearing()
     {
-        Unloaded -= OnPageUnloaded;
-        _viewModel?.Dispose();
+        base.OnAppearing();
+        if (_viewModel is not null) _viewModel.Subscribed = true;
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        if (_viewModel is not null) _viewModel.Subscribed = false;
     }
 }

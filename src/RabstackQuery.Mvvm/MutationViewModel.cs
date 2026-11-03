@@ -19,7 +19,7 @@ namespace RabstackQuery.Mvvm;
 /// which fixes TError to <see cref="Exception"/> and TOnMutateResult to <c>object?</c>.
 /// If you do not need typed errors or optimistic update results, prefer that convenience subclass.
 /// </remarks>
-public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResult> : ObservableObject, IDisposable
+public partial class MutationViewModel<TData, TError, TVariables, TOnMutateResult> : ObservableObject, ISubscribableViewModel
     where TError : Exception
 {
     private readonly MutationObserver<TData, TError, TVariables, TOnMutateResult> _observer;

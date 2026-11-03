@@ -10,6 +10,58 @@ public sealed class QueryCollectionViewModelSubscribedTests : SyncContextTestBas
         foreach (var item in data ?? []) items.Add(item);
     }
 
+    // TanStack useQuery.test.tsx: "should not be attached to the query when subscribed is false".
+    [Fact]
+    public void Constructed_Unsubscribed_Should_Show_Cached_Items_Without_Attaching_Or_Fetching()
+    {
+        var client = new QueryClient(new QueryCache());
+        client.SetQueryData<IEnumerable<string>>(["detached"], ["cached"]);
+        var fetchCount = 0;
+
+        using var vm = new QueryCollectionViewModel<string, string>(
+            client,
+            new QueryObserverOptions<IEnumerable<string>>
+            {
+                QueryKey = ["detached"],
+                QueryFn = _ =>
+                {
+                    fetchCount++;
+                    return Task.FromResult<IEnumerable<string>>(["fetched"]);
+                },
+            },
+            Replace,
+            subscribed: false);
+
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["detached"] });
+        Assert.NotNull(query);
+        Assert.False(vm.Subscribed);
+        Assert.Equal(["cached"], vm.Items);
+        Assert.Equal(0, query.ObserverCount);
+        Assert.Equal(0, fetchCount);
+    }
+
+    [Fact]
+    public void UseQueryCollection_Unsubscribed_Should_Not_Attach_Until_Subscribed()
+    {
+        var client = new QueryClient(new QueryCache());
+        using var vm = client.UseQueryCollection<string, string>(
+            new QueryObserverOptions<IEnumerable<string>>
+            {
+                QueryKey = ["factory"],
+                QueryFn = _ => Task.FromResult<IEnumerable<string>>(["fetched"]),
+            },
+            Replace,
+            subscribed: false);
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["factory"] });
+        Assert.NotNull(query);
+        var observersWhileDetached = query.ObserverCount;
+
+        vm.Subscribed = true;
+
+        Assert.Equal(0, observersWhileDetached);
+        Assert.Equal(1, query.ObserverCount);
+    }
+
     [Fact]
     public async Task Subscribed_True_Should_Bring_Items_Up_To_Date_With_Cache()
     {

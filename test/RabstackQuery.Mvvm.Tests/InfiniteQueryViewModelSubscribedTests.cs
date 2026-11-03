@@ -13,6 +13,39 @@ public sealed class InfiniteQueryViewModelSubscribedTests : SyncContextTestBase
         GcTime = gcTime,
     };
 
+    // TanStack useQuery.test.tsx: "should not be attached to the query when subscribed is false".
+    [Fact]
+    public void Constructed_Unsubscribed_Should_Not_Attach_Or_Fetch_Until_Subscribed()
+    {
+        var client = new QueryClient(new QueryCache());
+        using var vm = new InfiniteQueryViewModel<string, int>(client, Options(["detached"]), subscribed: false);
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["detached"] });
+        Assert.NotNull(query);
+        var observersWhileDetached = query.ObserverCount;
+        var fetchStatusWhileDetached = vm.FetchStatus;
+
+        vm.Subscribed = true;
+
+        Assert.Equal(0, observersWhileDetached);
+        Assert.Equal(FetchStatus.Idle, fetchStatusWhileDetached);
+        Assert.Equal(1, query.ObserverCount);
+        Assert.True(vm.Subscribed);
+    }
+
+    [Fact]
+    public void UseInfiniteQuery_Unsubscribed_Should_Not_Attach()
+    {
+        var client = new QueryClient(new QueryCache());
+
+        using var vm = client.UseInfiniteQuery(Options(["factory"]), subscribed: false);
+
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["factory"] });
+        Assert.NotNull(query);
+        Assert.False(vm.Subscribed);
+        Assert.Equal(0, query.ObserverCount);
+        Assert.Equal(FetchStatus.Idle, vm.FetchStatus);
+    }
+
     [Fact]
     public void Subscribed_False_Then_True_Should_Detach_And_Reattach_Observer()
     {

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -17,12 +19,11 @@ namespace RabstackQuery.Example.Shared.ViewModels;
 /// - <b>PrefetchQuery</b> to warm the task list cache
 /// - <b>Staleness indicator</b> bound to <c>IsStale</c>
 /// </summary>
-public sealed partial class DashboardViewModel : ObservableObject, IDisposable
+public sealed partial class DashboardViewModel : PageViewModel
 {
     private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DashboardStaleTime = TimeSpan.FromSeconds(5);
 
-    private readonly QueryClient _client;
     private readonly ITaskBoardApi _api;
 
     // Stored so OnRefetchInBackgroundChanged can use `with` to toggle polling
@@ -48,12 +49,13 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool RefetchInBackground { get; set; }
 
+    [SetsRequiredMembers]
     public DashboardViewModel(QueryClient client, ITaskBoardApi api)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(api);
 
-        _client = client;
+        Client = client;
         _api = api;
 
         // Keep the cached type aligned with ProjectListViewModel's IEnumerable<Project>;
@@ -66,9 +68,9 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             StaleTime = DashboardStaleTime,
         };
 
-        TotalTaskCountQuery = client.UseQuery(_totalTaskCountBaseOptions);
+        TotalTaskCountQuery = UseQuery(_totalTaskCountBaseOptions);
 
-        CompletionRateQuery = client.UseQuery(projects.ToObserverOptions(ps =>
+        CompletionRateQuery = UseQuery(projects.ToObserverOptions(ps =>
         {
             var total = ps.Sum(p => p.TaskCount);
             if (total == 0) return "0%";
@@ -79,7 +81,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             StaleTime = DashboardStaleTime,
         });
 
-        MostActiveProjectQuery = client.UseQuery(projects.ToObserverOptions(ps => ps
+        MostActiveProjectQuery = UseQuery(projects.ToObserverOptions(ps => ps
             .OrderByDescending(p => p.TaskCount - p.CompletedTaskCount)
             .Select(p => p.Name)
             .FirstOrDefault()) with
@@ -108,7 +110,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task InvalidateAllProjectsAsync()
     {
-        await _client.InvalidateQueriesAsync(QueryKeys.Projects);
+        await Client.InvalidateQueriesAsync(QueryKeys.Projects);
     }
 
     /// <summary>
@@ -118,13 +120,6 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task PrefetchProjectAsync(int projectId)
     {
-        await _client.PrefetchQueryAsync(Queries.Tasks(_api, projectId));
-    }
-
-    public void Dispose()
-    {
-        TotalTaskCountQuery.Dispose();
-        CompletionRateQuery.Dispose();
-        MostActiveProjectQuery.Dispose();
+        await Client.PrefetchQueryAsync(Queries.Tasks(_api, projectId));
     }
 }

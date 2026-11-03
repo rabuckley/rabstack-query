@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 
 namespace RabstackQuery.Mvvm;
@@ -34,6 +35,107 @@ public sealed class PageViewModelTests : SyncContextTestBase
             StringQuery = UseQuery(["test"], _ => Task.FromResult("hello"));
             EchoMutation = UseMutation<string, string>((input, _, _) => Task.FromResult(input));
         }
+
+        public QueryViewModel<string> AddLateQuery() =>
+            UseQuery(["late"], _ => Task.FromResult("late"));
+    }
+
+    private sealed class HiddenPageViewModel : PageViewModel
+    {
+        private static readonly QueryKey Key = ["hidden"];
+        private int _fetchCount;
+
+        [SetsRequiredMembers]
+        public HiddenPageViewModel(QueryClient client) => Client = client;
+
+        public int FetchCount => Volatile.Read(ref _fetchCount);
+
+        public object Create(string factory) => factory switch
+        {
+            nameof(QueryFromKey) => QueryFromKey(),
+            nameof(QueryFromOptions) => QueryFromOptions(),
+            nameof(QueryFromOptionsWithSelect) => QueryFromOptionsWithSelect(),
+            nameof(QueryFromObserverOptions) => QueryFromObserverOptions(),
+            nameof(QueryFromSelectingObserverOptions) => QueryFromSelectingObserverOptions(),
+            nameof(CollectionFromKey) => CollectionFromKey(),
+            nameof(MappedCollectionFromKey) => MappedCollectionFromKey(),
+            nameof(CollectionFromOptions) => CollectionFromOptions(),
+            nameof(MappedCollectionFromOptions) => MappedCollectionFromOptions(),
+            nameof(CollectionFromObserverOptions) => CollectionFromObserverOptions(),
+            nameof(InfiniteQuery) => InfiniteQuery(),
+            _ => throw new ArgumentOutOfRangeException(nameof(factory)),
+        };
+
+        public QueryViewModel<string> QueryFromKey() => UseQuery(Key, FetchAsync);
+
+        public QueryViewModel<string> QueryFromOptions() =>
+            UseQuery(new QueryOptions<string> { QueryKey = Key, QueryFn = FetchAsync });
+
+        public QueryViewModel<int, string> QueryFromOptionsWithSelect() =>
+            UseQuery(new QueryOptions<string> { QueryKey = Key, QueryFn = FetchAsync }, data => data.Length);
+
+        public QueryViewModel<string> QueryFromObserverOptions() =>
+            UseQuery(new QueryObserverOptions<string> { QueryKey = Key, QueryFn = FetchAsync });
+
+        public QueryViewModel<int, string> QueryFromSelectingObserverOptions() =>
+            UseQuery(new QueryObserverOptions<int, string>
+            {
+                QueryKey = Key,
+                QueryFn = FetchAsync,
+                Select = data => data.Length,
+            });
+
+        public QueryCollectionViewModel<string, string> CollectionFromKey() =>
+            UseQueryCollection<string>(Key, FetchItemsAsync, ReplaceItems);
+
+        public QueryCollectionViewModel<string, string> MappedCollectionFromKey() =>
+            UseQueryCollection<string, string>(Key, FetchItemsAsync, ReplaceItems);
+
+        public QueryCollectionViewModel<string, string> CollectionFromOptions() =>
+            UseQueryCollection<string>(
+                new QueryOptions<IEnumerable<string>> { QueryKey = Key, QueryFn = FetchItemsAsync },
+                ReplaceItems);
+
+        public QueryCollectionViewModel<string, string> MappedCollectionFromOptions() =>
+            UseQueryCollection<string, string>(
+                new QueryOptions<IEnumerable<string>> { QueryKey = Key, QueryFn = FetchItemsAsync },
+                ReplaceItems);
+
+        public QueryCollectionViewModel<string, string> CollectionFromObserverOptions() =>
+            UseQueryCollection<string, string>(
+                new QueryObserverOptions<IEnumerable<string>> { QueryKey = Key, QueryFn = FetchItemsAsync },
+                ReplaceItems);
+
+        public InfiniteQueryViewModel<string, int> InfiniteQuery() =>
+            UseInfiniteQuery(new InfiniteQueryObserverOptions<string, int>
+            {
+                QueryKey = Key,
+                QueryFn = _ =>
+                {
+                    Interlocked.Increment(ref _fetchCount);
+                    return Task.FromResult("page");
+                },
+                InitialPageParam = 0,
+                GetNextPageParam = _ => PageParamResult<int>.None,
+            });
+
+        private Task<string> FetchAsync(QueryFunctionContext _)
+        {
+            Interlocked.Increment(ref _fetchCount);
+            return Task.FromResult("fetched");
+        }
+
+        private Task<IEnumerable<string>> FetchItemsAsync(QueryFunctionContext _)
+        {
+            Interlocked.Increment(ref _fetchCount);
+            return Task.FromResult<IEnumerable<string>>(["fetched"]);
+        }
+
+        private static void ReplaceItems(IEnumerable<string>? data, ObservableCollection<string> items)
+        {
+            items.Clear();
+            foreach (var item in data ?? []) items.Add(item);
+        }
     }
 
     // ── Disposal ──────────────────────────────────────────────────────
@@ -69,6 +171,209 @@ public sealed class PageViewModelTests : SyncContextTestBase
         // Act — should not throw
         vm.Dispose();
         vm.Dispose();
+    }
+
+    [Fact]
+    public async Task Subscribed_False_Then_True_DetachesAndReattachesOwnedObservers()
+    {
+        var client = CreateClient();
+        using var vm = new TestPageViewModel(client);
+        await WaitForAsync(() => vm.StringQuery.IsSuccess);
+        await vm.EchoMutation.InvokeAsync("x");
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["test"] });
+        var mutation = Assert.Single(client.MutationCache.GetAll());
+        Assert.NotNull(query);
+        Assert.True(vm.Subscribed);
+
+        vm.Subscribed = false;
+        var queryObserversWhileUnsubscribed = query.ObserverCount;
+        var mutationObservedWhileUnsubscribed = mutation.HasObservers;
+        vm.Subscribed = true;
+
+        Assert.Equal(0, queryObserversWhileUnsubscribed);
+        Assert.False(mutationObservedWhileUnsubscribed);
+        Assert.Equal(1, query.ObserverCount);
+        Assert.True(mutation.HasObservers);
+    }
+
+    [Fact]
+    public void Subscribed_False_AppliesToViewModelsCreatedWhileUnsubscribed()
+    {
+        var client = CreateClient();
+        using var vm = new TestPageViewModel(client);
+        vm.Subscribed = false;
+
+        var late = vm.AddLateQuery();
+
+        var query = client.QueryCache.Find(new QueryFilters { QueryKey = ["late"] });
+        Assert.NotNull(query);
+        Assert.False(late.Subscribed);
+        Assert.Equal(0, query.ObserverCount);
+
+        vm.Subscribed = true;
+
+        Assert.True(late.Subscribed);
+        Assert.Equal(1, query.ObserverCount);
+    }
+
+    // TanStack useQuery.test.tsx: "should not be attached to the query when subscribed is false".
+    [Theory]
+    [InlineData(nameof(HiddenPageViewModel.QueryFromKey))]
+    [InlineData(nameof(HiddenPageViewModel.QueryFromOptions))]
+    [InlineData(nameof(HiddenPageViewModel.QueryFromOptionsWithSelect))]
+    [InlineData(nameof(HiddenPageViewModel.QueryFromObserverOptions))]
+    [InlineData(nameof(HiddenPageViewModel.QueryFromSelectingObserverOptions))]
+    [InlineData(nameof(HiddenPageViewModel.CollectionFromKey))]
+    [InlineData(nameof(HiddenPageViewModel.MappedCollectionFromKey))]
+    [InlineData(nameof(HiddenPageViewModel.CollectionFromOptions))]
+    [InlineData(nameof(HiddenPageViewModel.MappedCollectionFromOptions))]
+    [InlineData(nameof(HiddenPageViewModel.CollectionFromObserverOptions))]
+    [InlineData(nameof(HiddenPageViewModel.InfiniteQuery))]
+    public void QueryCreatedWhileUnsubscribed_FetchesOnlyAfterResume(string factory)
+    {
+        var client = CreateClient();
+        using var page = new HiddenPageViewModel(client);
+        page.Subscribed = false;
+
+        page.Create(factory);
+        var fetchesWhileUnsubscribed = page.FetchCount;
+        page.Subscribed = true;
+
+        Assert.Equal(0, fetchesWhileUnsubscribed);
+        Assert.Equal(1, page.FetchCount);
+    }
+
+    [Fact]
+    public void QueryCreatedWhileUnsubscribed_ShowsCachedDataAsIdle()
+    {
+        var client = CreateClient();
+        client.SetQueryData(["hidden"], "cached");
+        using var page = new HiddenPageViewModel(client);
+        page.Subscribed = false;
+
+        var query = page.QueryFromObserverOptions();
+
+        Assert.False(query.Subscribed);
+        Assert.Equal("cached", query.Data);
+        Assert.True(query.IsSuccess);
+        Assert.Equal(FetchStatus.Idle, query.FetchStatus);
+        Assert.Equal(0, page.FetchCount);
+    }
+
+    [Fact]
+    public void CollectionCreatedWhileUnsubscribed_ShowsCachedItems()
+    {
+        var client = CreateClient();
+        client.SetQueryData<IEnumerable<string>>(["hidden"], ["cached"]);
+        using var page = new HiddenPageViewModel(client);
+        page.Subscribed = false;
+
+        var collection = page.CollectionFromObserverOptions();
+
+        Assert.False(collection.Subscribed);
+        Assert.Equal(["cached"], collection.Items);
+        Assert.Equal(0, page.FetchCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Subscribed_AppliesToEveryChild_WhenChildCallbackCreatesViewModel(bool target)
+    {
+        var client = CreateClient();
+        using var vm = new TestPageViewModel(client);
+        vm.Subscribed = !target;
+        QueryViewModel<string>? late = null;
+        vm.StringQuery.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.StringQuery.Subscribed)) late = vm.AddLateQuery();
+        };
+
+        vm.Subscribed = target;
+
+        Assert.Equal(target, vm.StringQuery.Subscribed);
+        Assert.Equal(target, vm.EchoMutation.Subscribed);
+        Assert.NotNull(late);
+        Assert.Equal(target, late.Subscribed);
+    }
+
+    [Fact]
+    public void Subscribed_LeavesChildrenConsistent_WhenChildCallbackChangesPageValue()
+    {
+        var client = CreateClient();
+        using var vm = new TestPageViewModel(client);
+        var changes = new List<bool>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.Subscribed)) changes.Add(vm.Subscribed);
+        };
+        vm.StringQuery.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.StringQuery.Subscribed) && !vm.StringQuery.Subscribed)
+                vm.Subscribed = true;
+        };
+
+        vm.Subscribed = false;
+
+        Assert.True(vm.Subscribed);
+        Assert.True(vm.StringQuery.Subscribed);
+        Assert.True(vm.EchoMutation.Subscribed);
+        Assert.All(changes, Assert.True);
+    }
+
+    // Page children have no per-child opt-out: see "Pausing MVVM ViewModels" in ARCHITECTURE.md.
+    [Fact]
+    public void ManuallyDetachedChild_FollowsPage_WhenPageResumes()
+    {
+        using var vm = new TestPageViewModel(CreateClient());
+        vm.StringQuery.Subscribed = false;
+        vm.Subscribed = false;
+
+        vm.Subscribed = true;
+
+        Assert.True(vm.StringQuery.Subscribed);
+    }
+
+    [Fact]
+    public void Subscribed_RaisesPropertyChangedOnlyWhenValueChanges()
+    {
+        var client = CreateClient();
+        using var vm = new TestPageViewModel(client);
+        var changes = 0;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.Subscribed)) changes++;
+        };
+
+        vm.Subscribed = true;
+        vm.Subscribed = false;
+        vm.Subscribed = false;
+
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void Subscribed_True_AfterDispose_Throws()
+    {
+        var client = CreateClient();
+        var vm = new TestPageViewModel(client);
+        vm.Dispose();
+
+        void Act() => vm.Subscribed = true;
+
+        Assert.Throws<ObjectDisposedException>(Act);
+    }
+
+    [Fact]
+    public void Subscribed_False_AfterDispose_DoesNothing()
+    {
+        var client = CreateClient();
+        var vm = new TestPageViewModel(client);
+        vm.Dispose();
+
+        vm.Subscribed = false;
+
+        Assert.False(vm.Subscribed);
     }
 
     // ── Query Factory Methods ─────────────────────────────────────────

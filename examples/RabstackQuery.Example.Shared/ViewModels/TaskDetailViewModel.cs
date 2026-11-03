@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -16,10 +18,10 @@ namespace RabstackQuery.Example.Shared.ViewModels;
 /// - <b>Infinite query</b> for paginated comments with reverse pagination (newest first)
 /// - <b>Optimistic status update</b> with detail + list cache invalidation
 /// </summary>
-public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
+public sealed partial class TaskDetailViewModel : PageViewModel
 {
-    private readonly QueryClient _client;
     private readonly ITaskBoardApi _api;
+    private bool _addCommentSucceeded;
 
     public int ProjectId { get; }
     public int TaskId { get; }
@@ -45,19 +47,20 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string NewCommentText { get; set; } = string.Empty;
 
+    [SetsRequiredMembers]
     public TaskDetailViewModel(QueryClient client, ITaskBoardApi api, int projectId, int taskId)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(api);
 
-        _client = client;
+        Client = client;
         _api = api;
         ProjectId = projectId;
         TaskId = taskId;
 
         // -- Task detail query with placeholder data from infinite list cache --
 
-        TaskQuery = client.UseQuery(
+        TaskQuery = UseQuery(
             Queries.Task(api, projectId, taskId).ToObserverOptions() with
             {
                 Enabled = taskId > 0,
@@ -95,7 +98,7 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Update task mutation (title, description, priority) ──────────
 
-        UpdateTaskMutation = client.UseMutation(
+        UpdateTaskMutation = UseMutation(
             new MutationOptions<TaskItem, (string Title, string? Description, TaskPriority Priority)>
             {
                 MutationFn = async (variables, context, ct) =>
@@ -110,7 +113,7 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Optimistic status update mutation ────────────────────────────
 
-        UpdateStatusMutation = client.UseMutation(
+        UpdateStatusMutation = UseMutation(
             new MutationOptions<TaskItem, TaskItemStatus>
             {
                 MutationFn = async (status, context, ct) =>
@@ -147,7 +150,7 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Paginated comments (reverse chronological, newest first) ─────
 
-        CommentsQuery = client.UseInfiniteQuery(new InfiniteQueryObserverOptions<PagedResult<Comment>, string?>
+        CommentsQuery = UseInfiniteQuery(new InfiniteQueryObserverOptions<PagedResult<Comment>, string?>
         {
             QueryKey = QueryKeys.Comments(taskId),
             QueryFn = async ctx => await api.GetCommentsAsync(taskId, ctx.PageParam, 10, ctx.CancellationToken),
@@ -162,12 +165,13 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
 
         // -- Add comment mutation ─────────────────────────────────────────
 
-        AddCommentMutation = client.UseMutation(new MutationOptions<Comment, string>
+        AddCommentMutation = UseMutation(new MutationOptions<Comment, string>
         {
             MutationFn = async (body, context, ct) =>
                 await api.AddCommentAsync(taskId, body, ct),
             OnSuccess = async (_, _, _, context) =>
             {
+                _addCommentSucceeded = true;
                 await context.Client.InvalidateQueriesAsync(QueryKeys.Comments(taskId));
             },
         });
@@ -193,20 +197,13 @@ public sealed partial class TaskDetailViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Use the callback result because IsSuccess stops updating while the page is hidden.
+        _addCommentSucceeded = false;
         await AddCommentMutation.MutateCommand.ExecuteAsync(NewCommentText);
 
-        if (AddCommentMutation.IsSuccess)
+        if (_addCommentSucceeded)
         {
             NewCommentText = string.Empty;
         }
-    }
-
-    public void Dispose()
-    {
-        TaskQuery.Dispose();
-        UpdateTaskMutation.Dispose();
-        UpdateStatusMutation.Dispose();
-        CommentsQuery.Dispose();
-        AddCommentMutation.Dispose();
     }
 }

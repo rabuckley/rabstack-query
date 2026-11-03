@@ -82,16 +82,17 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
         Func<TQueryData, TData> select)
         => Track(Client.UseQuery(options, select));
 
-    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData}(QueryClient, QueryObserverOptions{TData})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData}(QueryClient, QueryObserverOptions{TData}, bool)" path="/summary|/typeparam|/param[@name!='client']"/>
     /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
-    protected QueryViewModel<TData> UseQuery<TData>(QueryObserverOptions<TData> options)
-        => Track(Client.UseQuery(options));
+    protected QueryViewModel<TData> UseQuery<TData>(QueryObserverOptions<TData> options, bool subscribed = true)
+        => Track(Client.UseQuery(options, subscribed));
 
-    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData, TQueryData}(QueryClient, QueryObserverOptions{TData, TQueryData})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <inheritdoc cref="QueryClientExtensions.UseQuery{TData, TQueryData}(QueryClient, QueryObserverOptions{TData, TQueryData}, bool)" path="/summary|/typeparam|/param[@name!='client']"/>
     /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryViewModel<TData, TQueryData> UseQuery<TData, TQueryData>(
-        QueryObserverOptions<TData, TQueryData> options)
-        => Track(Client.UseQuery(options));
+        QueryObserverOptions<TData, TQueryData> options,
+        bool subscribed = true)
+        => Track(Client.UseQuery(options, subscribed));
 
     // ── Query collection ───────────────────────────────────────────────
 
@@ -125,20 +126,22 @@ public abstract class RabstackComponentBase : ComponentBase, IDisposable
         Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update)
         => TrackCollection(Client.UseQueryCollection(options, update));
 
-    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TQueryFnData, TItem}(QueryClient, QueryObserverOptions{IEnumerable{TQueryFnData}}, Action{IEnumerable{TQueryFnData}, ObservableCollection{TItem}})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <inheritdoc cref="QueryClientExtensions.UseQueryCollection{TQueryFnData, TItem}(QueryClient, QueryObserverOptions{IEnumerable{TQueryFnData}}, Action{IEnumerable{TQueryFnData}, ObservableCollection{TItem}}, bool)" path="/summary|/typeparam|/param[@name!='client']"/>
     /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected QueryCollectionViewModel<TItem, TQueryFnData> UseQueryCollection<TQueryFnData, TItem>(
         QueryObserverOptions<IEnumerable<TQueryFnData>> options,
-        Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update)
-        => TrackCollection(Client.UseQueryCollection(options, update));
+        Action<IEnumerable<TQueryFnData>?, ObservableCollection<TItem>> update,
+        bool subscribed = true)
+        => TrackCollection(Client.UseQueryCollection(options, update, subscribed));
 
     // ── Infinite query ─────────────────────────────────────────────────
 
-    /// <inheritdoc cref="QueryClientExtensions.UseInfiniteQuery{TData, TPageParam}(QueryClient, InfiniteQueryObserverOptions{TData, TPageParam})" path="/summary|/typeparam|/param[@name!='client']"/>
+    /// <inheritdoc cref="QueryClientExtensions.UseInfiniteQuery{TData, TPageParam}(QueryClient, InfiniteQueryObserverOptions{TData, TPageParam}, bool)" path="/summary|/typeparam|/param[@name!='client']"/>
     /// <returns>A new ViewModel that renders this component on change and is disposed with it.</returns>
     protected InfiniteQueryViewModel<TData, TPageParam> UseInfiniteQuery<TData, TPageParam>(
-        InfiniteQueryObserverOptions<TData, TPageParam> options)
-        => Track(Client.UseInfiniteQuery(options));
+        InfiniteQueryObserverOptions<TData, TPageParam> options,
+        bool subscribed = true)
+        => Track(Client.UseInfiniteQuery(options, subscribed));
 
     // ── Mutation ───────────────────────────────────────────────────────
 

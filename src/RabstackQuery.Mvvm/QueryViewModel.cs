@@ -21,7 +21,7 @@ namespace RabstackQuery.Mvvm;
 /// </remarks>
 /// <typeparam name="TData">The transformed data type returned to the UI.</typeparam>
 /// <typeparam name="TQueryData">The source data type stored in the cache.</typeparam>
-public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisposable
+public partial class QueryViewModel<TData, TQueryData> : ObservableObject, ISubscribableViewModel
 {
     private readonly QueryClient _client;
     private readonly ILogger _logger;
@@ -95,6 +95,11 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
     /// <param name="options">The full set of observer options.</param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// No <see cref="SynchronizationContext"/> is present on the calling thread.
     /// </exception>
@@ -103,7 +108,8 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
     /// </remarks>
     public QueryViewModel(
         QueryClient client,
-        QueryObserverOptions<TData, TQueryData> options)
+        QueryObserverOptions<TData, TQueryData> options,
+        bool subscribed = true)
     {
         ArgumentNullException.ThrowIfNull(client);
         _client = client;
@@ -123,8 +129,16 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, IDisp
             listener => _observer.Subscribe(result => listener(result)),
             () => _observer.CurrentResult,
             UpdateFromResult);
-        _subscription.SetActive(true);
-        _logger.QueryViewModelSubscribed(_queryKeyDisplay);
+
+        if (subscribed)
+        {
+            _subscription.SetActive(true);
+            _logger.QueryViewModelSubscribed(_queryKeyDisplay);
+        }
+        else
+        {
+            UpdateFromResult(_observer.CurrentResult);
+        }
     }
 
     /// <summary>
@@ -247,11 +261,12 @@ public sealed class QueryViewModel<TData> : QueryViewModel<TData, TData>
     {
     }
 
-    /// <inheritdoc cref="QueryViewModel{TData, TQueryData}(QueryClient, QueryObserverOptions{TData, TQueryData})"/>
+    /// <inheritdoc cref="QueryViewModel{TData, TQueryData}(QueryClient, QueryObserverOptions{TData, TQueryData}, bool)"/>
     public QueryViewModel(
         QueryClient client,
-        QueryObserverOptions<TData> options)
-        : base(client, options)
+        QueryObserverOptions<TData> options,
+        bool subscribed = true)
+        : base(client, options, subscribed)
     {
     }
 

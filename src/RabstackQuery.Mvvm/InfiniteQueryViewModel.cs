@@ -11,7 +11,7 @@ namespace RabstackQuery.Mvvm;
 /// properties. Follows the same composition approach as
 /// <see cref="InfiniteQueryObserver{TData,TPageParam}"/>.
 /// </summary>
-public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : ObservableObject, IDisposable
+public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : ObservableObject, ISubscribableViewModel
 {
     private readonly QueryClient _client;
     private readonly ILogger _logger;
@@ -71,6 +71,11 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     /// </summary>
     /// <param name="client">The QueryClient instance.</param>
     /// <param name="options">The infinite query observer options.</param>
+    /// <param name="subscribed">
+    /// <see langword="true"/> to attach and fetch according to the mount options;
+    /// <see langword="false"/> to read the current state without attaching or starting a mount fetch.
+    /// Set <c>Subscribed</c> to <see langword="true"/> to attach later.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// No <see cref="SynchronizationContext"/> is present on the calling thread.
     /// </exception>
@@ -79,7 +84,8 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
     /// </remarks>
     public InfiniteQueryViewModel(
         QueryClient client,
-        InfiniteQueryObserverOptions<TData, TPageParam> options)
+        InfiniteQueryObserverOptions<TData, TPageParam> options,
+        bool subscribed = true)
     {
         ArgumentNullException.ThrowIfNull(client);
         _client = client;
@@ -99,8 +105,16 @@ public sealed partial class InfiniteQueryViewModel<TData, TPageParam> : Observab
             listener => _observer.Subscribe(result => listener(result)),
             () => _observer.CurrentResult,
             UpdateFromResult);
-        _subscription.SetActive(true);
-        _logger.InfiniteQueryViewModelSubscribed(_queryKeyDisplay);
+
+        if (subscribed)
+        {
+            _subscription.SetActive(true);
+            _logger.InfiniteQueryViewModelSubscribed(_queryKeyDisplay);
+        }
+        else
+        {
+            UpdateFromResult(_observer.CurrentResult);
+        }
     }
 
     /// <summary>

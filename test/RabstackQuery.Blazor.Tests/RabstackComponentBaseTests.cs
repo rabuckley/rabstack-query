@@ -180,6 +180,34 @@ public sealed class RabstackComponentBaseTests : IDisposable
         Assert.Equal(1, query.ObserverCount);
     }
 
+    // TanStack useQuery.test.tsx: "should not be attached to the query when subscribed is false".
+    [Fact]
+    public async Task ObserverOptionFactories_ForwardSubscribedFalse()
+    {
+        var component = new DetachedComponent(_client);
+
+        await _renderer.RenderAsync(component);
+
+        Assert.False(component.Plain.Subscribed);
+        Assert.False(component.Selecting.Subscribed);
+        Assert.False(component.Collection.Subscribed);
+        Assert.False(component.Infinite.Subscribed);
+        Assert.Equal(0, component.FetchCount);
+    }
+
+    [Fact]
+    public async Task DetachedQuery_AttachesAndRenders_WhenSubscribed()
+    {
+        var component = new DetachedComponent(_client);
+        await _renderer.RenderAsync(component);
+        var rendersBefore = component.RenderCount;
+
+        await _renderer.Dispatcher.InvokeAsync(() => component.Plain.Subscribed = true);
+
+        await WaitForAsync(() => component.Plain.IsSuccess && component.RenderCount > rendersBefore);
+        Assert.Equal(1, component.FetchCount);
+    }
+
     private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5_000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
@@ -188,6 +216,72 @@ public sealed class RabstackComponentBaseTests : IDisposable
             if (Environment.TickCount64 > deadline)
                 throw new TimeoutException("Condition not met within timeout.");
             await Task.Delay(10);
+        }
+    }
+
+    private sealed class DetachedComponent : RabstackComponentBase
+    {
+        private int _fetchCount;
+
+        public DetachedComponent(QueryClient client) => Client = client;
+
+        public QueryViewModel<string> Plain { get; private set; } = null!;
+
+        public QueryViewModel<int, string> Selecting { get; private set; } = null!;
+
+        public QueryCollectionViewModel<string, string> Collection { get; private set; } = null!;
+
+        public InfiniteQueryViewModel<string, int> Infinite { get; private set; } = null!;
+
+        public int FetchCount => Volatile.Read(ref _fetchCount);
+
+        public int RenderCount { get; private set; }
+
+        protected override void OnInitialized()
+        {
+            Plain = UseQuery(
+                new QueryObserverOptions<string> { QueryKey = ["plain"], QueryFn = _ => FetchAsync() },
+                subscribed: false);
+
+            Selecting = UseQuery(
+                new QueryObserverOptions<int, string>
+                {
+                    QueryKey = ["selecting"],
+                    QueryFn = _ => FetchAsync(),
+                    Select = data => data.Length,
+                },
+                subscribed: false);
+
+            Collection = UseQueryCollection<string, string>(
+                new QueryObserverOptions<IEnumerable<string>>
+                {
+                    QueryKey = ["collection"],
+                    QueryFn = async _ => [await FetchAsync()],
+                },
+                (data, items) =>
+                {
+                    items.Clear();
+                    foreach (var item in data ?? []) items.Add(item);
+                },
+                subscribed: false);
+
+            Infinite = UseInfiniteQuery(
+                new InfiniteQueryObserverOptions<string, int>
+                {
+                    QueryKey = ["infinite"],
+                    QueryFn = _ => FetchAsync(),
+                    InitialPageParam = 0,
+                    GetNextPageParam = _ => PageParamResult<int>.None,
+                },
+                subscribed: false);
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder) => RenderCount++;
+
+        private Task<string> FetchAsync()
+        {
+            Interlocked.Increment(ref _fetchCount);
+            return Task.FromResult("data");
         }
     }
 
