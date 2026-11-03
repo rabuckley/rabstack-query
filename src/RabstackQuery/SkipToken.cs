@@ -1,15 +1,9 @@
 namespace RabstackQuery;
 
 /// <summary>
-/// Provides a sentinel query function that disables a query without using
-/// <c>Enabled = false</c>. This is the C# equivalent of TanStack Query's
-/// <c>skipToken</c> — a composable alternative for dependent queries where
-/// the consumer sets <c>QueryFn = SkipToken.QueryFn&lt;TData&gt;()</c> when
-/// data dependencies aren't ready, then switches to a real function via
-/// <c>SetOptions</c> when they become available.
-/// <para>
-/// TanStack reference: <c>utils.ts:423-424, 435-449</c>.
-/// </para>
+/// Provides a sentinel query function that disables a query until its dependencies are ready.
+/// Set <c>QueryFn = SkipToken.QueryFn&lt;TData&gt;()</c>, then supply a real function through
+/// <c>SetOptions</c> when those dependencies become available.
 /// </summary>
 public static class SkipToken
 {

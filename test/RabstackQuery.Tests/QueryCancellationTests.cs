@@ -386,16 +386,9 @@ public class QueryCancellationTests
         Assert.Null(query.State.Error);
     }
 
-    // ── AbortSignalConsumed tests ──────────────────────────────────────
-    // Mirrors TanStack query.test.tsx:252-311.
-
     [Fact]
     public async Task RemoveObserver_SignalNotConsumed_FetchContinues()
     {
-        // When the query function does NOT read ctx.CancellationToken, removing
-        // the last observer should soft-cancel (CancelRetry) — the current fetch
-        // attempt finishes and its result is cached. Mirrors TanStack
-        // query.test.tsx:252-279.
 
         // Arrange
         var client = CreateQueryClient();
@@ -439,9 +432,6 @@ public class QueryCancellationTests
     [Fact]
     public async Task RemoveObserver_SignalConsumed_FetchCancelledWithRevert()
     {
-        // When the query function reads ctx.CancellationToken, removing the last
-        // observer should hard-cancel with state revert. Mirrors TanStack
-        // query.test.tsx:281-311.
 
         // Arrange
         var client = CreateQueryClient();

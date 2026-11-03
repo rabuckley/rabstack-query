@@ -220,9 +220,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // queryObserver.ts #updateQuery().
         _currentQueryInitialState = _currentQuery.State;
 
-        // TanStack queryObserver.ts:712-715 — only register with the query when
-        // there are listeners. In the constructor path (no listeners yet), we skip
-        // AddObserver; OnSubscribe will add it when the first listener arrives.
         if (HasListeners)
         {
             _currentQuery.AddObserver(this);
@@ -567,14 +564,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             await ExecuteFetch(cancelRefetch);
         }
 
-        // Explicit UpdateResult after the fetch completes. When the observer has
-        // listeners, Dispatch inside Fetch already triggers OnQueryUpdate →
-        // UpdateResult on each state change. But when called without listeners
-        // (e.g., Enabled=false, no Subscribe), the observer isn't registered on
-        // the query, so OnQueryUpdate never fires. This ensures _currentResult
-        // reflects the latest query state regardless of subscription status.
-        // Mirrors TanStack's protected fetch() which calls updateResult() after
-        // the fetch promise resolves (queryObserver.ts:329-331).
         UpdateResult();
 
         return CurrentResult;
@@ -624,11 +613,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         }
     }
 
-    /// <summary>
-    /// Determines whether a fetch should be triggered when a listener subscribes.
-    /// Split into initial load (<see cref="ShouldLoadOnMount"/>) vs refetch-on-mount.
-    /// Mirrors TanStack's <c>shouldFetchOnMount</c> (<c>queryObserver.ts:755-763</c>).
-    /// </summary>
     private bool ShouldFetchOnMount()
     {
         // Data exists when the query has been fetched at least once (DataUpdatedAt > 0).
@@ -638,12 +622,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         return ShouldLoadOnMount() || (hasData && ShouldFetchOn(_settings.RefetchOnMount));
     }
 
-    /// <summary>
-    /// Determines whether this is the initial load (no data exists yet).
-    /// When no data has ever been fetched, we always fetch regardless of
-    /// <see cref="QueryObserverOptions{TData,TQueryData}.RefetchOnMount"/>.
-    /// Mirrors TanStack's <c>shouldLoadOnMount</c> (<c>queryObserver.ts:744-752</c>).
-    /// </summary>
     private bool ShouldLoadOnMount()
     {
         if (!ResolveEnabled()) return false;
@@ -751,23 +729,12 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         return _options.RefetchInterval;
     }
 
-    /// <summary>
-    /// Re-evaluates all time-dependent behaviors. Called after every state change
-    /// (from <see cref="OnQueryUpdate"/>) and on subscribe. Mirrors TanStack's
-    /// <c>#updateTimers()</c> (<c>queryObserver.ts:410-413</c>).
-    /// </summary>
     private void UpdateTimers()
     {
         UpdateStaleTimeout();
         UpdateRefetchInterval(ComputeRefetchInterval());
     }
 
-    /// <summary>
-    /// Sets a one-shot timer that fires when cached data transitions from fresh
-    /// to stale, triggering an <see cref="UpdateResult"/> so listeners are notified
-    /// of the <see cref="IQueryResult{TData}.IsStale"/> change. Mirrors TanStack's
-    /// <c>#updateStaleTimeout()</c> (<c>queryObserver.ts:354-376</c>).
-    /// </summary>
     private void UpdateStaleTimeout()
     {
         ClearStaleTimeout();
@@ -801,10 +768,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
         var timeUntilStale = Math.Max(dataUpdatedAtMs + staleMs - now, 0);
 
-        // TanStack adds 1ms because "the timeout is sometimes triggered 1 ms
-        // before the stale time expiration" (queryObserver.ts:367-369).
-        // Guard: if the +1 would exceed the OS timer API limit, skip
-        // scheduling — the timer duration is effectively infinite.
+        // TanStack queryObserver.ts QueryObserver#updateStaleTimeout adds 1 ms to avoid
+        // firing before expiration. Skip durations that would exceed the OS timer limit.
         const long maxTimerMs = 4294967294L; // uint.MaxValue - 1: OS timer limit (~49.7 days)
         if (timeUntilStale >= maxTimerMs)
         {
@@ -831,10 +796,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         }, null, timeout, Timeout.InfiniteTimeSpan);
     }
 
-    /// <summary>
-    /// Cancels any pending stale-transition timer. Mirrors TanStack's
-    /// <c>#clearStaleTimeout()</c> (<c>queryObserver.ts:415-419</c>).
-    /// </summary>
     private void ClearStaleTimeout()
     {
         if (_staleTimeoutTimer is not null)

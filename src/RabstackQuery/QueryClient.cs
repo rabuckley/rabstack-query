@@ -162,8 +162,7 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Resumes all paused mutations. Only has an effect when the client is online.
-    /// Matches TanStack's <c>queryClient.resumePausedMutations()</c> at queryClient.ts:450-455.
+    /// Resumes paused mutations when the client is online.
     /// </summary>
     public void ResumePausedMutations()
     {
@@ -780,9 +779,8 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Refetches all queries matching the given filters, with explicit
-    /// <see cref="RefetchOptions"/> for <c>CancelRefetch</c> and <c>ThrowOnError</c>.
-    /// Mirrors TanStack <c>queryClient.ts:319–338</c>.
+    /// Asynchronously refetches matching queries, excluding disabled and static queries.
+    /// Paused fetches continue in the background without delaying completion.
     /// </summary>
     public async Task RefetchQueriesAsync(QueryFilters? filters, RefetchOptions? options)
     {
@@ -790,28 +788,20 @@ public sealed class QueryClient : IDisposable
         _logger.RefetchQueries();
         var cancelRefetch = options?.CancelRefetch ?? true;
 
-        // Skip disabled and static queries. Mirrors TanStack queryClient.ts:326
-        // which filters with `!query.isDisabled() && !query.isStatic()`.
         var tasks = _queryCache.FindAll(filters)
             .Where(q => !q.IsDisabled() && !q.IsStatic())
             .Select(q =>
             {
                 var fetchTask = q.Fetch(cancelRefetch);
 
-                // TanStack queryClient.ts:332–334 — resolve immediately for paused
-                // queries. Their retryer blocks on a TCS until the network is
-                // restored, so awaiting them would hang RefetchQueriesAsync indefinitely.
-                // The check works because Retryer.ExecuteAsync fires OnPause
-                // synchronously before its first suspension point, so FetchStatus is
-                // already Paused by the time Fetch() returns the incomplete task.
+                // As in queryClient.ts QueryClient#refetchQueries, do not await paused fetches,
+                // which wait for connectivity. OnPause runs before Fetch's first suspension,
+                // so the paused status is available here.
                 if (q.CurrentFetchStatus is FetchStatus.Paused)
                 {
                     return Task.CompletedTask;
                 }
 
-                // TanStack queryClient.ts:332–337 — when throwOnError is true,
-                // let errors propagate through Task.WhenAll. Otherwise swallow
-                // per-query errors so one failure doesn't abort the batch.
                 if (options?.ThrowOnError is true)
                 {
                     return fetchTask;
@@ -1003,11 +993,8 @@ public sealed class QueryClient : IDisposable
     /// });
     /// </code>
     /// </example>
-    // TODO: TanStack applies structuralSharing in Query.setData() (query.ts:231)
-    // before dispatching the success state. In C#, SetQueryData dispatches state
-    // directly. Observer-level structural sharing in UpdateResult() covers the
-    // same data path for subscribed observers. Query-level integration would
-    // require threading the option through QueryConfiguration.
+    // TODO: Unlike query.ts Query#setData, SetQueryData bypasses structural sharing.
+    // Sharing runs in QueryObserver.UpdateResult, so direct cache reads do not benefit.
     public void SetQueryData<TData>(QueryKey queryKey, TData data)
     {
         ArgumentNullException.ThrowIfNull(queryKey);

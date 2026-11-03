@@ -537,10 +537,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public async Task RefetchQueriesAsync_Should_Complete_When_Paused_Queries_Are_In_Result_Set()
     {
-        // Regression: RefetchQueriesAsync hung when paused queries were included
-        // because their retryer blocks on a TCS indefinitely. TanStack
-        // queryClient.ts:332–334 resolves immediately for paused queries.
-        // Arrange
         var onlineManager = new OnlineManager();
         onlineManager.SetOnline(false);
         var client = new QueryClient(new QueryCache(), onlineManager: onlineManager);
@@ -704,9 +700,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public async Task RefetchQueriesAsync_CancelRefetchTrue_CancelsInFlightFetch()
     {
-        // TanStack ref: queryClient.test.tsx:1541-1562
-        // CancelRefetch=true should cancel the in-flight fetch and start a new one.
-        // Arrange
         var client = CreateQueryClient();
         client.SetQueryData(["cancel-test"], "seeded");
 
@@ -757,10 +750,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public async Task RefetchQueriesAsync_CancelRefetchFalse_DeduplicatesInFlightFetch()
     {
-        // TanStack ref: queryClient.test.tsx:1564-1586
-        // CancelRefetch=false should deduplicate: the original in-flight fetch
-        // continues and no new fetch starts.
-        // Arrange
         var client = CreateQueryClient();
         client.SetQueryData(["dedup-test"], "seeded");
 
@@ -798,10 +787,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public async Task RefetchQueriesAsync_ThrowOnErrorTrue_PropagatesErrors()
     {
-        // TanStack ref: queryClient.test.tsx:1302-1320
-        // ThrowOnError=true should propagate query function errors to the caller
-        // via AggregateException from Task.WhenAll.
-        // Arrange
         var client = CreateQueryClient();
         var cache = client.QueryCache;
 
@@ -879,10 +864,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public void SetQueryData_UpdaterReturnsNull_IsNoOp()
     {
-        // TanStack ref: queryClient.ts:980-983
-        // When the updater function returns null, SetQueryData is a no-op —
-        // the existing data in the cache is preserved.
-        // Arrange
         var client = CreateQueryClient();
         client.SetQueryData(["updater-null"], "original");
 
@@ -896,10 +877,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public async Task RefetchQueriesAsync_TypeAll_RefetchesBothActiveAndInactive()
     {
-        // TanStack ref: queryClient.test.tsx:1233-1254
-        // Type=All should refetch both active (with observers) and inactive
-        // (no observers but has cached data) queries.
-        // Arrange
         var client = CreateQueryClient();
         var activeFetchCount = 0;
         var inactiveFetchCount = 0;

@@ -15,10 +15,9 @@ public sealed record RefetchOptions
     public bool ThrowOnError { get; init; }
 
     /// <summary>
-    /// When true (default), an in-flight fetch with existing data is cancelled
-    /// and a new fetch starts. When false, the existing in-flight fetch is
-    /// deduplicated (returned as-is). Mirrors TanStack's
-    /// <c>cancelRefetch ?? true</c> at <c>queryClient.ts:321</c>.
+    /// Gets or initializes a value that indicates whether to cancel an in-flight fetch
+    /// with existing data and start another. The default is <see langword="true"/>.
+    /// If <see langword="false"/>, the existing fetch is reused.
     /// </summary>
     public bool CancelRefetch { get; init; } = true;
 }

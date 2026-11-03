@@ -1,20 +1,12 @@
 namespace RabstackQuery;
 
 /// <summary>
-/// Context passed to query functions. Provides a cancellation token whose access
-/// is tracked — when the query function reads <see cref="CancellationToken"/>,
-/// the query records that cancellation is consumed. This enables automatic fetch
-/// cancellation when all observers unsubscribe. Mirrors TanStack's
-/// <c>context.signal</c> getter trap (<c>query.ts:430-442</c>).
+/// Provides query function inputs. Reading <see cref="CancellationToken"/> enables
+/// cancellation when the last observer unsubscribes.
 /// </summary>
 /// <remarks>
-/// Query functions that access <see cref="CancellationToken"/> signal that they
-/// support cooperative cancellation. When the last observer unsubscribes:
-/// <list type="bullet">
-/// <item><b>Token consumed:</b> fetch is cancelled with state revert (hard stop).</item>
-/// <item><b>Token not consumed:</b> retries are stopped but the current attempt
-/// finishes so the result can be cached (soft stop).</item>
-/// </list>
+/// If the token is read, unsubscribing cancels the fetch and reverts its state.
+/// Otherwise, retries stop but the current attempt can finish and populate the cache.
 /// </remarks>
 public sealed class QueryFunctionContext
 {

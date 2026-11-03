@@ -14,18 +14,9 @@ public sealed class Retryer<TData> : IDisposable
     private readonly CancellationTokenSource _cts;
     private int _failureCount;
 
-    // ── Pause / CancelRetry state ──────────────────────────────────
-    // Mirrors TanStack's `isRetryCancelled`, `continueFn` from retryer.ts:78–80.
-    //
-    // Thread-safety: These fields are written by public methods called from
-    // event-handler threads (OnFocus/OnOnline → Continue(), RemoveObserver →
-    // CancelRetry()) and read by ExecuteAsync on its async-continuation thread.
-    // JavaScript's single-threaded model doesn't need synchronization here;
-    // C#'s memory model requires `volatile` to guarantee cross-thread visibility.
-    // Without it, the JIT may cache reads in registers or reorder stores,
-    // causing CancelRetry writes to be invisible to the retry loop, or
-    // PauseAsync's _continueFn assignment to be invisible to Continue() callers
-    // — permanently stalling the retryer.
+    // Unlike retryer.ts createRetryer's single-threaded state, these fields cross
+    // event-handler and async-continuation threads. Volatile access makes retry
+    // cancellation and pause callbacks visible to those threads.
 
     /// <summary>
     /// When true, the next retry is prevented but the current attempt is not
@@ -101,7 +92,6 @@ public sealed class Retryer<TData> : IDisposable
     /// </summary>
     public async Task<TData> ExecuteAsync()
     {
-        // TanStack retryer.ts:218–224 — if we can't start, pause until we can.
         if (!CanStart())
         {
             await PauseAsync();
@@ -123,8 +113,6 @@ public sealed class Retryer<TData> : IDisposable
             {
                 _failureCount++;
 
-                // TanStack retryer.ts:180 — if retry is cancelled or retries
-                // exhausted, reject immediately.
                 if (_isRetryCancelled || _failureCount >= _options.MaxRetries)
                 {
                     throw;
@@ -154,15 +142,11 @@ public sealed class Retryer<TData> : IDisposable
                     throw;
                 }
 
-                // TanStack retryer.ts:194–196 — after delay, check if we can
-                // continue (focused + online). If not, pause until we can.
                 if (!CanContinue())
                 {
                     await PauseAsync();
                 }
 
-                // TanStack retryer.ts:198 — check isRetryCancelled again after
-                // the pause in case it was set while we were paused.
                 if (_isRetryCancelled)
                 {
                     throw;
@@ -191,11 +175,6 @@ public sealed class Retryer<TData> : IDisposable
 
     // ── Private helpers ────────────────────────────────────────────
 
-    /// <summary>
-    /// Whether the retryer can resume from a pause. All three conditions must
-    /// hold: app is focused, network is suitable, and <c>canRun()</c> is true.
-    /// Mirrors TanStack's <c>canContinue()</c> from retryer.ts:103–106.
-    /// </summary>
     private bool CanContinue()
     {
         var focusManager = _options.FocusManager;
@@ -207,12 +186,6 @@ public sealed class Retryer<TData> : IDisposable
         return isFocused && isOnlineSuitable && canRun;
     }
 
-    /// <summary>
-    /// Pauses execution by creating a <see cref="TaskCompletionSource"/> gate.
-    /// Calls <c>OnPause</c>, then awaits the gate (resolved by <see cref="Continue"/>
-    /// or when <see cref="CanContinue"/> becomes true), then calls <c>OnContinue</c>.
-    /// Mirrors TanStack's <c>pause()</c> from retryer.ts:124–137.
-    /// </summary>
     private async Task PauseAsync()
     {
         // RunContinuationsAsynchronously prevents Continue() (called from an
@@ -223,7 +196,6 @@ public sealed class Retryer<TData> : IDisposable
 
         _continueFn = () =>
         {
-            // TanStack retryer.ts:127 — only resolve if we're done or can continue.
             if (IsCancelled || CanContinue())
             {
                 tcs.TrySetResult();
@@ -249,8 +221,6 @@ public sealed class Retryer<TData> : IDisposable
             _continueFn = null;
         }
 
-        // TanStack retryer.ts:134 — only call OnContinue if we're not resolved
-        // (i.e. not cancelled).
         if (!IsCancelled)
         {
             _options.OnContinue?.Invoke();

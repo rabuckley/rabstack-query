@@ -865,10 +865,6 @@ public sealed class MutationCacheTests
         Assert.Same(mutation, removedEvent.Mutation);
     }
 
-    /// <summary>
-    /// MutationCache.Clear() should fire a MutationCacheRemovedEvent for each mutation.
-    /// Mirrors TanStack's mutationCache.clear() at mutationCache.ts:190-198.
-    /// </summary>
     [Fact]
     public void Clear_Should_Fire_Removed_For_Each_Mutation()
     {

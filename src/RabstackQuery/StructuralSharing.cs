@@ -3,9 +3,7 @@ using System.Collections;
 namespace RabstackQuery;
 
 /// <summary>
-/// Provides structural sharing utilities that preserve old object references
-/// when new data is deeply equal. Analogous to TanStack's
-/// <c>replaceEqualDeep</c> (<c>utils.ts:267</c>).
+/// Preserves previous data references when new data is deeply equal.
 /// </summary>
 public static class StructuralSharing
 {

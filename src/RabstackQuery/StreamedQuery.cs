@@ -1,15 +1,9 @@
 namespace RabstackQuery;
 
 /// <summary>
-/// Factory for query functions that progressively update the cache from an
-/// <see cref="IAsyncEnumerable{T}"/> stream. Each chunk updates the cache and
-/// triggers observer notifications mid-fetch, so consumers see partial results
-/// while <see cref="FetchStatus"/> remains <see cref="FetchStatus.Fetching"/>.
-/// <para>
-/// Port of TanStack's experimental <c>streamedQuery</c> helper
-/// (<c>streamedQuery.ts:51-122</c>). The helper is purely a query function
-/// factory — it requires no changes to core query/observer/cache infrastructure.
-/// </para>
+/// Creates query functions that update the cache for each <see cref="IAsyncEnumerable{T}"/>
+/// chunk. Observers receive partial results while <see cref="FetchStatus"/> remains
+/// <see cref="FetchStatus.Fetching"/>.
 /// </summary>
 public static class StreamedQuery
 {
@@ -90,7 +84,6 @@ public static class StreamedQuery
 
         return async context =>
         {
-            // Mirrors streamedQuery.ts:66-69
             var client = context.Client
                 ?? throw new InvalidOperationException(
                     "StreamedQuery requires QueryFunctionContext to have a Client. " +
@@ -107,8 +100,6 @@ public static class StreamedQuery
                 .Find(new QueryFilters { QueryKey = queryKey }) as Query<TData>;
             var isRefetch = query is { State.Data: not null };
 
-            // Reset mode on refetch: clear data and revert to pending state.
-            // Mirrors streamedQuery.ts:70-77
             if (isRefetch && refetchMode is StreamRefetchMode.Reset
                 && query is { State: { } existingState })
             {
@@ -124,13 +115,8 @@ public static class StreamedQuery
                 });
             }
 
-            // Two-level cancellation, mirroring addConsumeAwareSignal
-            // (streamedQuery.ts:82-94). The inner context's OnSignalConsumed:
-            // 1) Propagates to the outer context (query-level tracking)
-            // 2) Sets a local cancelled flag checked between iterations
-            //
-            // In C# we use CancellationToken.Register instead of
-            // addEventListener('abort', ...) — same semantics.
+            // As in utils.ts addConsumeAwareSignal, track cancellation only when the stream
+            // reads the token, so streams that ignore cancellation can finish and populate the cache.
             var cancelled = false;
             var innerContext = new QueryFunctionContext(
                 context.RawCancellationToken,
@@ -185,9 +171,6 @@ public static class StreamedQuery
                 cancelled = true;
             }
 
-            // Finalize: replace-refetch writes the buffered result to cache
-            // when the stream completes without cancellation.
-            // Mirrors streamedQuery.ts:116-118
             if (isReplaceRefetch && !cancelled)
             {
                 client.SetQueryData(queryKey, result);

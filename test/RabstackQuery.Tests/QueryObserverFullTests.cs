@@ -842,10 +842,6 @@ public sealed class QueryObserverFullTests
         Assert.False(result.IsFetchedAfterMount);
     }
 
-    /// <summary>
-    /// TanStack: isFetchedAfterMount should be true after a fetch completes
-    /// subsequent to the observer attaching. Mirrors queryObserver.ts:576–578.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task IsFetchedAfterMount_Should_Be_True_After_Fetch_Completes()
     {
@@ -877,13 +873,6 @@ public sealed class QueryObserverFullTests
         Assert.True(result.IsFetchedAfterMount);
     }
 
-    /// <summary>
-    /// When the query already has cached data before the observer attaches,
-    /// IsFetched should be true (the query has been fetched) but
-    /// IsFetchedAfterMount should be false (no fetch completed since this
-    /// observer attached). This is the key distinction between the two properties.
-    /// Mirrors TanStack queryObserver.ts:576–578 baseline snapshot behavior.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task IsFetchedAfterMount_Should_Be_False_When_Using_Cached_Data()
     {
@@ -935,11 +924,6 @@ public sealed class QueryObserverFullTests
         Assert.Equal("cached", result.Data);
     }
 
-    /// <summary>
-    /// IsFetchedAfterMount should be true after an error fetch completes
-    /// (not just successful fetches). Mirrors TanStack's errorUpdateCount
-    /// comparison in queryObserver.ts:578.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task IsFetchedAfterMount_Should_Be_True_After_Error_Fetch()
     {
@@ -3321,11 +3305,6 @@ public sealed class QueryObserverFullTests
 
     #region RefetchOnMount
 
-    /// <summary>
-    /// Initial load should fetch even when RefetchOnMount is Never — RefetchOnMount
-    /// only controls *re*fetching when data already exists.
-    /// TanStack useQuery.test.tsx:591.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task RefetchOnMount_Never_Should_Still_Fetch_On_Initial_Load()
     {
@@ -3355,10 +3334,6 @@ public sealed class QueryObserverFullTests
         Assert.Equal(1, fetchCount);
     }
 
-    /// <summary>
-    /// When data already exists and RefetchOnMount is Never, subscribing should not
-    /// trigger a refetch. TanStack useQuery.test.tsx:613.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void RefetchOnMount_Never_Should_Not_Refetch_When_Data_Exists()
     {
@@ -3388,10 +3363,6 @@ public sealed class QueryObserverFullTests
         Assert.Equal("prefetched", observer.CurrentResult.Data);
     }
 
-    /// <summary>
-    /// RefetchOnMount=Always should refetch even when data is fresh (large finite StaleTime).
-    /// TanStack useQuery.test.tsx:2731.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task RefetchOnMount_Always_Should_Refetch_Fresh_Data()
     {
@@ -3434,10 +3405,6 @@ public sealed class QueryObserverFullTests
         Assert.Equal(2, fetchCount);
     }
 
-    /// <summary>
-    /// Default WhenStale should refetch when data is stale (StaleTime=0).
-    /// TanStack useQuery.test.tsx:2768.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task RefetchOnMount_WhenStale_Default_Should_Refetch_Stale_Data()
     {
@@ -3478,10 +3445,6 @@ public sealed class QueryObserverFullTests
         Assert.Equal(2, fetchCount);
     }
 
-    /// <summary>
-    /// RefetchOnMount=Always should refetch even with a positive StaleTime that
-    /// hasn't elapsed yet. TanStack useQuery.test.tsx:3089.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task RefetchOnMount_Always_Should_Refetch_With_Positive_StaleTime()
     {
@@ -3562,12 +3525,6 @@ public sealed class QueryObserverFullTests
 
     #region Stale Timeout and GC Race
 
-    /// <summary>
-    /// When GC time is short and the observer unsubscribes, the GC timer starts.
-    /// AddObserver (called from OnSubscribe) must cancel the GC timer so a
-    /// re-subscribe finds cached data instead of a fresh, empty query.
-    /// Validates the ClearGcTimeout() call in Query.AddObserver (query.ts:348).
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void Resubscribe_After_GcTime_Should_See_Cached_Data()
     {
@@ -3833,10 +3790,6 @@ public sealed class QueryObserverFullTests
         Assert.Equal(1, Assert.Single(client.QueryCache.GetAll()).ObserverCount);
     }
 
-    /// <summary>
-    /// UpdateStaleTimeout should schedule a timer that notifies listeners when
-    /// data transitions from fresh to stale. Validates queryObserver.ts:354-376.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void StaleTimeout_Should_Notify_When_Data_Becomes_Stale()
     {
@@ -3873,14 +3826,6 @@ public sealed class QueryObserverFullTests
         Assert.True(results[^1].IsStale);
     }
 
-    /// <summary>
-    /// StaleTime = TimeSpan.MaxValue should not throw ArgumentOutOfRangeException
-    /// in UpdateStaleTimeout. The +1ms TanStack adjustment pushes the timer past
-    /// what TimeSpan.FromMilliseconds can represent — the overflow guards must
-    /// skip scheduling instead of throwing. In TanStack, Infinity is filtered by
-    /// isValidTimeout (utils.ts:104-106); in C# the overflow guards serve the
-    /// same purpose for TimeSpan.MaxValue.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void StaleTimeout_Should_Not_Throw_With_MaxValue_StaleTime()
     {
@@ -3911,11 +3856,6 @@ public sealed class QueryObserverFullTests
         Assert.False(observer.CurrentResult.IsStale);
     }
 
-    /// <summary>
-    /// Unsubscribing should clear the stale timeout timer so no notification
-    /// fires after the observer is detached. Validates the ClearStaleTimeout()
-    /// call in Destroy() (queryObserver.ts:131-136).
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void StaleTimeout_Should_Not_Fire_After_Unsubscribe()
     {
@@ -3953,12 +3893,6 @@ public sealed class QueryObserverFullTests
 
     #region SetOptions_and_CacheNotifications
 
-    /// <summary>
-    /// TanStack ref: queryObserver.test.tsx:1130-1148
-    /// Calling SetOptions on a subscribed observer should fire a
-    /// <see cref="QueryCacheObserverOptionsUpdatedEvent"/> through the QueryCache's
-    /// event stream.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void SetOptions_NotifiesCacheListeners()
     {
@@ -4104,12 +4038,6 @@ public sealed class QueryObserverFullTests
         subscription.Dispose();
     }
 
-    /// <summary>
-    /// TanStack ref: queryObserver.test.tsx:1150-1160
-    /// A disabled observer with no data should report IsStale = false.
-    /// Disabled observers should not trigger refetches, so marking them as
-    /// stale would be misleading.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public void DisabledObserver_IsNotStale()
     {

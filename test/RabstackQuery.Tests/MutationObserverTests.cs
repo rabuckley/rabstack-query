@@ -562,12 +562,6 @@ public sealed class MutationObserverTests
 
     #region SetOptions Tests
 
-    /// <summary>
-    /// TanStack: "changing mutation keys should reset the observer"
-    /// After a successful mutation with key ["x", "1"], calling SetOptions with
-    /// key ["x", "2"] resets the observer to idle state.
-    /// See tanstack/query-core/src/__tests__/mutationObserver.test.tsx:88-116.
-    /// </summary>
     [Fact]
     public async Task SetOptions_Should_Reset_Observer_When_MutationKey_Changes()
     {
@@ -599,12 +593,6 @@ public sealed class MutationObserverTests
         Assert.True(resultAfterSetOptions.IsIdle);
     }
 
-    /// <summary>
-    /// TanStack: "changing mutation keys should not affect already existing mutations"
-    /// The completed mutation in the cache retains its original key and state after
-    /// the observer's key changes.
-    /// See tanstack/query-core/src/__tests__/mutationObserver.test.tsx:118-157.
-    /// </summary>
     [Fact]
     public async Task SetOptions_Should_Not_Affect_Already_Existing_Mutations_In_Cache()
     {
@@ -638,12 +626,6 @@ public sealed class MutationObserverTests
         Assert.Equal("INPUT", typed.State.Data);
     }
 
-    /// <summary>
-    /// TanStack: "changing mutation meta should not affect successful mutations"
-    /// After a mutation succeeds, calling SetOptions with new meta does not
-    /// retroactively change the completed mutation's options.
-    /// See tanstack/query-core/src/__tests__/mutationObserver.test.tsx:159-193.
-    /// </summary>
     [Fact]
     public async Task SetOptions_Should_Not_Affect_Successful_Mutation_Meta()
     {
@@ -674,12 +656,6 @@ public sealed class MutationObserverTests
         Assert.Equal(1, cachedMutation.Meta["a"]);
     }
 
-    /// <summary>
-    /// TanStack: "changing mutation meta should not affect rejected mutations"
-    /// After a mutation errors, calling SetOptions with new meta does not
-    /// change the errored mutation's options.
-    /// See tanstack/query-core/src/__tests__/mutationObserver.test.tsx:236-269.
-    /// </summary>
     [Fact]
     public async Task SetOptions_Should_Not_Affect_Errored_Mutation_Meta()
     {
@@ -713,12 +689,6 @@ public sealed class MutationObserverTests
         Assert.Equal(1, cachedMutation.Meta["a"]);
     }
 
-    /// <summary>
-    /// TanStack: "mutation cache should have different meta when updated between mutations"
-    /// Calling SetOptions with new meta between two mutate calls produces two
-    /// mutations in the cache with different meta values.
-    /// See tanstack/query-core/src/__tests__/mutationObserver.test.tsx:195-234.
-    /// </summary>
     [Fact]
     public async Task SetOptions_Should_Produce_Different_Meta_Between_Mutations()
     {
@@ -765,12 +735,6 @@ public sealed class MutationObserverTests
         Assert.Equal(MutationStatus.Success, second.CurrentStatus);
     }
 
-    /// <summary>
-    /// TanStack: "changing mutation meta should affect pending mutations"
-    /// While a mutation is pending, calling SetOptions updates the pending
-    /// mutation's options in-place.
-    /// See tanstack/query-core/src/__tests__/mutationObserver.test.tsx:271-302.
-    /// </summary>
     [Fact]
     public async Task SetOptions_Should_Affect_Pending_Mutation_Meta()
     {

@@ -62,12 +62,6 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
 
     public bool IsFetched => _state.DataUpdateCount > 0 || _state.ErrorUpdateCount > 0;
 
-    /// <summary>
-    /// Whether the query has completed at least one fetch since this observer
-    /// attached. Compares current update counts against the snapshot captured
-    /// when the observer bound to the query. Mirrors TanStack's
-    /// <c>isFetchedAfterMount</c> in <c>queryObserver.ts:576–578</c>.
-    /// </summary>
     public bool IsFetchedAfterMount =>
         _state.DataUpdateCount > _initialDataUpdateCount
         || _state.ErrorUpdateCount > _initialErrorUpdateCount;

@@ -171,21 +171,17 @@ public record QueryObserverOptions<TData, TQueryData>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
     /// <summary>
-    /// Custom function to control structural sharing of query data. Called with
-    /// the previous and new data after <see cref="Select"/> (or after the raw
-    /// cache-to-output conversion when Select is null). Return the previous
-    /// reference when deeply equal to preserve reference stability and suppress
-    /// spurious change notifications. Only invoked when previous data exists.
+    /// Gets or initializes a function that merges previous and new data after <see cref="Select"/>.
+    /// It runs only when previous data exists. Return the previous reference for equal data
+    /// to preserve reference stability and suppress change notifications.
     /// <para>
-    /// <c>null</c> (default) = structural sharing disabled — new data is used
-    /// as-is. Set to <see cref="RabstackQuery.StructuralSharing.ReplaceEqualDeep{T}"/>
-    /// for the built-in deep-equality implementation, or provide a custom function.
+    /// The default is <see langword="null"/>, which uses new data unchanged. Use
+    /// <see cref="RabstackQuery.StructuralSharing.ReplaceEqualDeep{T}"/> or a custom function
+    /// to enable sharing.
     /// </para>
     /// <para>
-    /// Mirrors TanStack's <c>structuralSharing</c> option (<c>types.ts:265</c>).
-    /// TanStack defaults to <c>true</c>; C# defaults to <c>null</c> (disabled)
-    /// because a generic property-walking implementation requires reflection,
-    /// incompatible with AOT/trimming.
+    /// Unlike TanStack's enabled default in types.ts QueryOptions, sharing is opt-in
+    /// because arbitrary property traversal requires reflection, incompatible with AOT/trimming.
     /// </para>
     /// </summary>
     public Func<TData, TData, TData>? StructuralSharing { get; init; }

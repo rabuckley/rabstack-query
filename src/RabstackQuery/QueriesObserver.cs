@@ -3,40 +3,20 @@ using Microsoft.Extensions.Logging;
 namespace RabstackQuery;
 
 /// <summary>
-/// Manages multiple <see cref="QueryObserver{TData,TQueryData}"/> instances as a group,
-/// providing a unified notification stream when any individual query changes state.
-///
+/// Observes queries with a shared <typeparamref name="TData"/> type and notifies listeners
+/// when their results change.
 /// <para>
-/// Useful for dashboards and any scenario where several independent queries must be
-/// tracked together — e.g., pre-fetching a page of items or combining data from
-/// multiple endpoints into a single result object.
+/// <see cref="SetQueries(IReadOnlyList{QueryObserverOptions{TData,TData}})"/> reuses observers
+/// by query key hash, including when keys change position. Observers for removed keys are destroyed.
 /// </para>
-///
 /// <para>
-/// <b>Homogeneous type constraint:</b> all queries in the group must share the same
-/// <typeparamref name="TData"/> type. For queries that return different raw types,
-/// use per-observer <c>Select</c> transforms to normalise them to a common shape
-/// before constructing the group.
-/// </para>
-///
-/// <para>
-/// <b>Observer reuse:</b> <see cref="SetQueries(IReadOnlyList{QueryObserverOptions{TData,TData}})"/>
-/// reuses existing observers when the new query list contains a matching query key hash.
-/// This avoids unnecessary subscription teardown and re-fetch. When a key moves position
-/// the observer moves with it; when it disappears entirely the observer is destroyed.
-/// </para>
-///
-/// <para>
-/// <b>Combine memoization:</b> when a <c>combine</c> function is configured via
-/// <see cref="SetQueries(IReadOnlyList{QueryObserverOptions{TData,TData}}, Func{IReadOnlyList{IQueryResult{TData}}, TCombinedResult}?)"/>,
-/// the combined result is memoized. Outer listeners are suppressed when the combined
-/// output hasn't changed (by reference equality). Mirrors TanStack's
-/// <c>#combineResult</c> / <c>#notify</c> in <c>queriesObserver.ts:172–309</c>.
+/// When a combine function is configured, its result is memoized. Listeners are not notified
+/// when the combined result retains the same reference.
 /// </para>
 /// </summary>
 /// <remarks>
-/// The only intended subclass is <see cref="QueriesObserver{TData}"/>, a convenience
-/// alias that defaults <typeparamref name="TCombinedResult"/>. Do not subclass externally.
+/// External subclassing is unsupported. <see cref="QueriesObserver{TData}"/> provides
+/// a convenience alias for the combined result type.
 /// </remarks>
 public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObserverListener<TData>>
 {
@@ -61,10 +41,6 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
 
     // Acquire _listenersLock before _stateLock, as subscription callbacks do, to avoid deadlock.
     private readonly Lock _stateLock = new();
-
-    // ── Combine memoization state ──────────────────────────────────────────────
-    // Mirrors TanStack's `#lastCombine`, `#lastResult`, `#lastQueryHashes`,
-    // `#combinedResult` in queriesObserver.ts:43–47.
 
     private Func<IReadOnlyList<IQueryResult<TData>>, TCombinedResult>? _combine;
     private TCombinedResult? _combinedResult;
@@ -385,23 +361,6 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
         Notify();
     }
 
-    /// <summary>
-    /// Runs the combine function and memoizes the result. Re-runs when:
-    /// <list type="bullet">
-    /// <item>First call (no previous combined result)</item>
-    /// <item>Result list reference changed</item>
-    /// <item>Query hashes changed</item>
-    /// <item>Combine function reference changed</item>
-    /// </list>
-    /// Mirrors TanStack's <c>#combineResult</c> (<c>queriesObserver.ts:172–250</c>).
-    /// </summary>
-    /// <remarks>
-    /// TanStack wraps the output in <c>replaceEqualDeep</c> for deep structural
-    /// sharing (<c>queriesObserver.ts:241-244</c>). This implementation uses
-    /// <see cref="EqualityComparer{T}.Default"/> to detect value-equal results
-    /// (works for records) and preserve the previous reference. For deeper sharing,
-    /// implement structural sharing inside the combine function itself.
-    /// </remarks>
     private TCombinedResult CombineResult(
         IReadOnlyList<IQueryResult<TData>> results,
         Func<IReadOnlyList<IQueryResult<TData>>, TCombinedResult>? combine,
@@ -432,10 +391,8 @@ public class QueriesObserver<TData, TCombinedResult> : Subscribable<QueriesObser
         // Notify, both callers may reach here; last writer wins the memo cache.
         var result = combine(results);
 
-        // TanStack queriesObserver.ts:241-244 — structural sharing on combine output.
-        // Use EqualityComparer to detect value-equal results (works for records) and
-        // preserve the previous reference. For deeper sharing, implement it inside the
-        // combine function itself. Write memoization state under _stateLock.
+        // TanStack queriesObserver.ts QueriesObserver#combineResult uses replaceEqualDeep.
+        // C# uses value equality instead; deeper sharing belongs in the combine function.
         lock (_stateLock)
         {
             if (_hasCombinedResult

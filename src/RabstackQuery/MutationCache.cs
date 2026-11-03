@@ -82,8 +82,6 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(options);
 
-        // Apply key-prefix and global defaults before creating the mutation.
-        // Mirrors TanStack's mutationCache.build() at mutationCache.ts:114.
         options = client.DefaultMutationOptions(options);
 
         var mutationId = Interlocked.Increment(ref _nextId);
@@ -116,8 +114,6 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     /// </summary>
     public void Clear()
     {
-        // Batch-notify removed for each mutation before clearing, matching
-        // TanStack's mutationCache.clear() at mutationCache.ts:190-198.
         _notifyManager.Batch(() =>
         {
             foreach (var mutation in _mutations.Values)
@@ -180,9 +176,7 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
     }
 
     /// <summary>
-    /// Wakes all paused mutations by calling <see cref="Mutation.Continue"/>.
-    /// Individual errors are swallowed (matching TanStack's <c>.catch(noop)</c>
-    /// at mutationCache.ts:231-239) but logged at Warning level.
+    /// Resumes paused mutations. Individual failures are logged at Warning level and do not propagate.
     /// </summary>
     public void ResumePausedMutations()
     {
@@ -192,8 +186,6 @@ public sealed class MutationCache : Subscribable<MutationCacheListener>
 
         _logger.MutationCacheResumingPaused(paused.Count);
 
-        // Batch notifications so observers see a single flush after all mutations
-        // are woken, matching TanStack's notifyManager.batch() at mutationCache.ts:234.
         _notifyManager.Batch(() =>
         {
             foreach (var mutation in paused)

@@ -63,14 +63,8 @@ public interface IQueryResult<TData>
     public bool IsFetched { get; }
 
     /// <summary>
-    /// Whether the query has completed at least one fetch (success or error)
-    /// since this observer attached. Distinguishes cached-before-mount data from
-    /// freshly-fetched data.
-    /// <para>
-    /// Mirrors TanStack's <c>isFetchedAfterMount</c> which compares current
-    /// update counts against a snapshot captured when the observer bound to the
-    /// query (<c>queryObserver.ts:576–578</c>).
-    /// </para>
+    /// Gets a value that indicates whether a fetch has completed, successfully or with an error,
+    /// since this observer attached. Previously cached data does not count.
     /// </summary>
     public bool IsFetchedAfterMount { get; }
 

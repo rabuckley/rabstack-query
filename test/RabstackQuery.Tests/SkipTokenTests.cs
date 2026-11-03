@@ -1,10 +1,5 @@
 namespace RabstackQuery;
 
-/// <summary>
-/// Tests for <see cref="SkipToken"/> — the composable alternative to
-/// <c>Enabled = false</c> for dependent queries.
-/// TanStack reference: utils.ts:423-424, 435-449.
-/// </summary>
 public sealed class SkipTokenTests
 {
     private static QueryClient CreateQueryClient()
@@ -236,8 +231,6 @@ public sealed class SkipTokenTests
     [Fact]
     public async Task InvalidateQueriesAsync_Skips_SkipToken_Queries()
     {
-        // Mirrors TanStack queryClient.test.tsx:1519-1539 — invalidating
-        // a query with skipToken should not trigger a refetch.
         var client = CreateQueryClient();
 
         var observer = new QueryObserver<string, string>(

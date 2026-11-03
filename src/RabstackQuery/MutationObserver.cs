@@ -26,26 +26,19 @@ public sealed class MutationObserver<TData, TError, TVariables, TOnMutateResult>
     }
 
     /// <summary>
-    /// Updates the observer's options. If the mutation key changed, the observer
-    /// resets to idle state (any completed/errored mutation is detached). If the
-    /// current mutation is still pending, its options are updated in-place so that
-    /// changes like new Meta take effect immediately.
-    /// Matches TanStack's <c>mutationObserver.setOptions()</c> in mutationObserver.ts:65-93.
+    /// Updates the observer's options. A changed mutation key resets the observer to idle.
+    /// Otherwise, new options apply to the current mutation only while it is pending.
     /// </summary>
     public void SetOptions(MutationOptions<TData, TError, TVariables, TOnMutateResult> options)
     {
         var prevOptions = _options;
         _options = _client.DefaultMutationOptions(options);
 
-        // Notify cache subscribers of options change, matching TanStack's
-        // mutationObserver.ts:77-82 which fires observerOptionsUpdated.
         _client.MutationCache.Notify(new MutationCacheObserverOptionsUpdatedEvent
         {
             Mutation = _currentMutation
         });
 
-        // If the mutation key changed, reset the observer to start fresh.
-        // Matches TanStack's hashKey comparison in mutationObserver.ts:85-93.
         if (prevOptions.MutationKey is not null
             && _options.MutationKey is not null
             && DefaultQueryKeyHasher.Instance.HashQueryKey(prevOptions.MutationKey)

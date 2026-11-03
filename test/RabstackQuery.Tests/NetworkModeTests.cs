@@ -536,10 +536,7 @@ public sealed class NetworkModeTests : IDisposable
         // Act — call ResumePausedMutations while still offline
         _client.ResumePausedMutations();
 
-        // Assert — mutation is still paused because we're offline.
-        // This is a negative assertion: we're verifying the mutation did NOT execute.
-        // Task.Delay is the only option here — there's no event to signal "nothing happened".
-        // Per CLAUDE.md: "If Task.Delay is the only option, keep it generous and document why."
+        // Wait to observe non-execution; there is no completion signal for a mutation that stays paused.
         await Task.Delay(250);
         Assert.False(executed);
         Assert.True(observer.CurrentResult.IsPaused);

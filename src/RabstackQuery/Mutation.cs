@@ -163,9 +163,6 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
     {
         return action switch
         {
-            // Pending: clear stale fields from prior execution, set new variables.
-            // Context is also cleared (bug fix: previously leaked from prior execution).
-            // Mirrors TanStack's pending reducer (mutation.ts:352-364).
             MutationPendingAction<TVariables> pending => new MutationState<TData, TVariables, TOnMutateResult>
             {
                 Status = MutationStatus.Pending,
@@ -246,10 +243,7 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
     }
 
     /// <summary>
-    /// Updates this mutation's options. Called by
-    /// <see cref="MutationObserver{TData,TError,TVariables,TOnMutateResult}.SetOptions"/>
-    /// to forward option changes (e.g., new Meta) to a pending mutation.
-    /// Matches TanStack's <c>mutation.setOptions()</c> in mutation.ts:116-121.
+    /// Updates this mutation's options, including while it is pending.
     /// </summary>
     public void SetOptions(MutationOptions<TData, TError, TVariables, TOnMutateResult> options)
     {
@@ -315,9 +309,6 @@ public sealed class Mutation<TData, TError, TVariables, TOnMutateResult> : Mutat
         var retryer = new Retryer<TData>(retryerOptions);
         _retryer = retryer;
 
-        // Mirrors TanStack's dispatch({ type: 'pending' }) which atomically
-        // sets isPaused from canStart() and clears stale fields from any prior
-        // execution (mutation.ts:352-364).
         Dispatch(new MutationPendingAction<TVariables>
         {
             Variables = variables,

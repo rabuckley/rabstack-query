@@ -1549,11 +1549,6 @@ public sealed class QueryTests
 
     #region CancelRefetch_GC_Retry_Advanced
 
-    /// <summary>
-    /// TanStack ref: retryer.ts:260-264 — default exponential backoff is 1s, 2s, 4s.
-    /// Verifies that without a custom retryDelay the retryer uses the default
-    /// exponential backoff schedule and that FakeTimeProvider can drive it.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task Retry_ExponentialBackoff_TimingVerification()
     {
@@ -1612,11 +1607,6 @@ public sealed class QueryTests
         Assert.Equal(QueryStatus.Errored, query.State!.Status);
     }
 
-    /// <summary>
-    /// TanStack ref: query.test.tsx:561-574 — GC timer fires when the last
-    /// observer is removed and gcTime elapses. Verifies the cache removes
-    /// the query deterministically via FakeTimeProvider.
-    /// </summary>
     [Fact]
     public async Task GcTimer_ScheduledOnLastObserverRemoval()
     {
@@ -1654,11 +1644,6 @@ public sealed class QueryTests
         Assert.Null(cache.Get<string>(query.QueryHash!));
     }
 
-    /// <summary>
-    /// TanStack ref: query.test.tsx:596-613 — GC timer is cleared when a new
-    /// observer subscribes before the timer fires. Query survives past the
-    /// original gcTime.
-    /// </summary>
     [Fact]
     public async Task GcTimer_ClearedWhenObserverReaddedBeforeExpiry()
     {
@@ -1709,10 +1694,6 @@ public sealed class QueryTests
         sub2.Dispose();
     }
 
-    /// <summary>
-    /// TanStack ref: query.test.tsx:536-558 — GC timer fires and removes the
-    /// query from cache when there are no observers and gcTime elapses.
-    /// </summary>
     [Fact]
     public void GcTimer_FiresAndRemovesQueryFromCache()
     {
@@ -1735,10 +1716,6 @@ public sealed class QueryTests
         Assert.Null(cache.GetByHash(query.QueryHash!));
     }
 
-    /// <summary>
-    /// TanStack ref: query.test.tsx:108-153 — a fetch pauses when the device
-    /// is offline and resumes when connectivity is restored.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task Retry_PausesOnOffline_ResumesOnOnline()
     {
@@ -1773,10 +1750,6 @@ public sealed class QueryTests
         client.Dispose();
     }
 
-    /// <summary>
-    /// TanStack ref: query.test.tsx:61-106 — a retry pauses when the app
-    /// loses focus and resumes when focus returns.
-    /// </summary>
     [Fact(Timeout = 10_000)]
     public async Task Retry_PausesOnFocusLoss_ResumesOnFocus()
     {
@@ -1965,7 +1938,6 @@ public sealed class QueryTests
         Assert.Same(expectedError, capturedArgs[1].Error);
     }
 
-    // TanStack query.ts:592 refetches on focus with cancelRefetch=false.
     [Fact(Timeout = 10_000)]
     public async Task OnFocus_DoesNotCancelInFlightFetch()
     {

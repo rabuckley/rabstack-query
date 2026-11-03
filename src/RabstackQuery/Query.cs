@@ -179,12 +179,9 @@ public sealed class Query<TData> : Query
 
     internal Func<QueryFunctionContext, Task<TData>>? QueryFn => _queryFn;
 
-    // Tracks whether the query function accessed QueryFunctionContext.CancellationToken
-    // during the current fetch. When true, RemoveObserver performs a hard cancel (with
-    // state revert) instead of a soft CancelRetry. Mirrors TanStack's
-    // #abortSignalConsumed flag (query.ts:177).
-    // Kept separate from FetchOperation because it's written mid-flight by the query
-    // function callback — bundling would capture a stale reference after an atomic swap.
+    // Unlike query.ts Query#fetch's single-threaded signal tracking, this flag is
+    // written by the query function across threads. Keep it outside FetchOperation
+    // so the callback cannot retain an operation replaced by an atomic swap.
     private volatile bool _abortSignalConsumed;
 
     private volatile FetchOperation? _activeFetch;
@@ -193,11 +190,8 @@ public sealed class Query<TData> : Query
     // revert state before FetchOperation is published.
     private volatile QueryState<TData>? _revertState;
 
-    // Fetch deduplication: when a fetch is in-flight, subsequent Fetch() calls
-    // return this same Task instead of starting a new fetch. This mirrors
-    // TanStack's pattern of returning `this.#retryer.promise` (query.ts:404).
-    // Kept separate from FetchOperation because the task IS FetchCore — creating
-    // the bundle inside FetchCore would require a self-reference to the task.
+    // This task runs FetchCore, so bundling it inside FetchCore's FetchOperation
+    // would require a self-reference.
     private volatile Task? _currentFetchTask;
 
     private sealed class FetchOperation
@@ -234,14 +228,11 @@ public sealed class Query<TData> : Query
             {
                 _observers.Add(observer);
 
-                // TanStack query.ts:347-350 — cancel any pending GC timer when
-                // an observer attaches so the query isn't removed from the cache
-                // while actively observed.
                 ClearGcTimeout();
             }
         }
 
-        // TanStack query.ts:350 — notify outside the lock (listeners may re-enter).
+        // Notify outside the lock because listeners may re-enter.
         _cache.Notify(new QueryCacheObserverAddedEvent { Query = this, Observer = observer });
     }
 
@@ -254,13 +245,6 @@ public sealed class Query<TData> : Query
                 return;
             }
 
-            // TanStack query.ts:358–369 — when the last observer leaves, decide
-            // how to handle the in-flight fetch based on whether the query function
-            // consumed the cancellation token:
-            //   - Consumed: hard cancel with state revert (the function cooperates
-            //     with cancellation, so stopping it is safe and expected).
-            //   - Not consumed: soft CancelRetry (stop future retries but let the
-            //     current attempt finish so the result can be cached).
             if (_observers.Count == 0)
             {
                 if (_abortSignalConsumed)
@@ -501,7 +485,6 @@ public sealed class Query<TData> : Query
             _ = refetcher.RefetchInBackgroundAsync();
         }
 
-        // TanStack query.ts:331 — resume paused retryer when focus returns.
         _activeFetch?.Retryer.Continue();
     }
 
@@ -527,16 +510,13 @@ public sealed class Query<TData> : Query
             _ = refetcher.RefetchInBackgroundAsync();
         }
 
-        // TanStack query.ts:340 — resume paused retryer when connectivity returns.
         _activeFetch?.Retryer.Continue();
     }
 
     private QueryState<TData> GetDefaultState(QueryConfiguration<TData> options)
     {
-        // TanStack query.ts:729–732 — resolve initialData if it's a function.
-        // HasInitialData tracks whether InitialData was explicitly assigned,
-        // which matters for value types where default(TData) (e.g. 0 for int)
-        // is a valid value and indistinguishable from "not set" via null checks.
+        // Unlike query.ts getDefaultState's undefined check, C# needs HasInitialData
+        // to distinguish an unset value from valid default(TData), such as zero.
         var hasExplicitData = options.InitialDataFactory is not null || options.HasInitialData;
         var data = options.InitialDataFactory is not null
             ? options.InitialDataFactory()
@@ -547,8 +527,6 @@ public sealed class Query<TData> : Query
         // both reference types (where null means "no data") and value types.
         var hasData = hasExplicitData && data is not null;
 
-        // TanStack query.ts:736–740 — resolve initialDataUpdatedAt, falling
-        // back to the current time when data is present but no timestamp given
         long dataUpdatedAt;
         if (!hasData)
         {
@@ -649,11 +627,8 @@ public sealed class Query<TData> : Query
 
     private Task FetchInternal(FetchMeta? meta, bool cancelRefetch, QueryConfiguration<TData>? options = null)
     {
-        // Deduplication: if a fetch is already in-flight and the retryer hasn't
-        // been rejected/cancelled, decide whether to cancel it (cancelRefetch=true)
-        // or deduplicate (cancelRefetch=false). Mirrors TanStack query.ts:390–405.
-        // Capture volatile fields to locals to prevent torn reads — another thread
-        // may null these between the null check and the dereference.
+        // Capture volatile references once so another thread cannot clear them
+        // between a null check and dereference.
         var op = _activeFetch;
         var fetchTask = _currentFetchTask;
         var state = State;
@@ -664,10 +639,6 @@ public sealed class Query<TData> : Query
             && !op.Retryer.IsCancelled
             && fetchTask is not null)
         {
-            // TanStack query.ts:397–405 — when the query already has data and
-            // cancelRefetch is true, cancel the in-flight fetch silently and fall
-            // through to start a new one. Otherwise, deduplicate by returning the
-            // existing task.
             if (state.Data is not null && cancelRefetch)
             {
                 // Unlike TanStack's microtasks, C# fetch completions can run concurrently.
@@ -682,9 +653,6 @@ public sealed class Query<TData> : Query
             }
             else
             {
-                // TanStack query.ts:400–404 — when deduplicating, undo any
-                // cancelRetry from a previous RemoveObserver so the in-flight
-                // fetch can continue retrying.
                 op.Retryer.ContinueRetry();
 
                 _logger.QueryFetchDeduplicated(QueryHash);
@@ -715,9 +683,6 @@ public sealed class Query<TData> : Query
         // Capture state before fetch so Cancel(revert: true) can restore it
         _revertState = State;
 
-        // Reset the signal-consumed flag for this fetch. The flag is set when
-        // the query function accesses QueryFunctionContext.CancellationToken.
-        // Mirrors TanStack's `this.#abortSignalConsumed = false` (query.ts:443).
         _abortSignalConsumed = false;
 
         // Read the options once so a concurrent SetOptions can't mix two callers' settings.
@@ -730,11 +695,6 @@ public sealed class Query<TData> : Query
         // null check at the top of FetchCore and the lambda capture below.
         var queryFn = _queryFn!;
 
-        // Create retryer with exponential backoff and network mode support.
-        // Mirrors TanStack query.ts:516–543.
-        // The Fn wrapper creates a QueryFunctionContext that tracks whether the
-        // query function accesses the CancellationToken — the C# equivalent of
-        // TanStack's Object.defineProperty getter trap on context.signal.
         var retryerOptions = new RetryerOptions<TData>
         {
             Fn = ct =>
@@ -1017,8 +977,6 @@ public sealed class Query<TData> : Query
 
                 SuccessAction<TData> successAction => ApplySuccess(state, successAction),
 
-                // TanStack query.ts:628–633 + fetchState():690–708 — set initial
-                // fetch status based on network availability.
                 FetchAction fetchAction => state with
                 {
                     FetchMeta = fetchAction.Meta,
@@ -1053,10 +1011,8 @@ public sealed class Query<TData> : Query
 
                 InvalidateAction => state with { IsInvalidated = true },
 
-                // TanStack query.ts:620–622 — retryer entered pause (offline/unfocused).
                 PauseAction => state with { FetchStatus = FetchStatus.Paused },
 
-                // TanStack query.ts:623–627 — retryer resumed from pause.
                 ContinueAction => state with { FetchStatus = FetchStatus.Fetching },
 
                 _ => throw new InvalidOperationException($"Unknown action type: {action.GetType().Name}"),

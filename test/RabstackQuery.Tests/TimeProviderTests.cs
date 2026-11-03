@@ -462,9 +462,6 @@ public sealed class TimeProviderTests
     [Fact]
     public async Task IsStale_Should_Return_True_When_Invalidated_Even_If_StaleTime_Not_Elapsed()
     {
-        // Arrange — fetch data so the query is fresh, then invalidate it.
-        // Tests QueryResult.IsStale's isInvalidated check, mirroring TanStack's
-        // isStaleByTime (query.ts:318): `if (this.state.isInvalidated) return true`.
         var timeProvider = new FakeTimeProvider();
         var client = CreateQueryClient(timeProvider);
 
@@ -489,8 +486,6 @@ public sealed class TimeProviderTests
         var result = observer.CurrentResult;
         Assert.False(result.IsStale);
 
-        // Act — call Invalidate() directly on the query, mirroring the first
-        // half of TanStack's invalidateQueries (queryClient.ts:298-300).
         var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["invalidated-stale"]);
         var query = client.QueryCache.Get<string>(queryHash)!;
         query.Invalidate();

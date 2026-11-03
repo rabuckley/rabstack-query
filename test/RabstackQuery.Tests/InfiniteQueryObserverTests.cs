@@ -264,7 +264,6 @@ public sealed class InfiniteQueryObserverTests
     [Fact]
     public async Task FetchNextPage_Should_Cancel_A_Page_Fetch_In_Progress()
     {
-        // TanStack queryObserver.ts:471-477 defaults cancelRefetch to true.
         var client = CreateQueryClient();
         var fetchCount = 0;
         var fetchGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -307,7 +306,6 @@ public sealed class InfiniteQueryObserverTests
     [Fact]
     public async Task FetchNextPage_Should_Cancel_A_Refetch_In_Progress()
     {
-        // TanStack queryObserver.ts:471-477 defaults cancelRefetch to true.
         var client = CreateQueryClient();
         var refetchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var refetchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -494,10 +492,6 @@ public sealed class InfiniteQueryObserverTests
     [Fact]
     public async Task Unsubscribe_During_Fetch_Cancels_When_Token_Consumed()
     {
-        // Arrange — the query function reads ctx.CancellationToken, which sets the
-        // abort-signal-consumed flag. When all observers unsubscribe, this triggers
-        // a hard cancel (with state revert) rather than a soft CancelRetry.
-        // Mirrors TanStack's behavior from query.ts:354-366.
         var client = CreateQueryClient();
         var fetchGate = new TaskCompletionSource<bool>();
         var pageToken = CancellationToken.None;
@@ -598,7 +592,6 @@ public sealed class InfiniteQueryObserverTests
     [Fact]
     public async Task IsRefetching_Should_Exclude_Page_Fetches()
     {
-        // Arrange — mirrors infiniteQueryObserver.ts:177–181
         var client = CreateQueryClient();
         var fetchGate = new TaskCompletionSource<bool>();
 

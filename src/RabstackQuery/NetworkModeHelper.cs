@@ -1,9 +1,5 @@
 namespace RabstackQuery;
 
-/// <summary>
-/// Utility methods for <see cref="NetworkMode"/>. Mirrors TanStack's
-/// <c>canFetch(networkMode)</c> from <c>retryer.ts:52–56</c>.
-/// </summary>
 public static class NetworkModeHelper
 {
     /// <summary>

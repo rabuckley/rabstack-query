@@ -1,12 +1,5 @@
 namespace RabstackQuery;
 
-/// <summary>
-/// Internal implementation of <see cref="IInfiniteQueryResult{TData,TPageParam}"/>.
-/// Wraps a base <see cref="IQueryResult{TData}"/> (where TData is
-/// <see cref="InfiniteData{TData,TPageParam}"/>) and adds computed properties
-/// for page navigation status. Mirrors TanStack's result computation in
-/// <c>infiniteQueryObserver.ts:152–181</c>.
-/// </summary>
 internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryResult<TData, TPageParam>
 {
     private readonly IQueryResult<InfiniteData<TData, TPageParam>> _inner;
@@ -60,10 +53,6 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
 
     public Task FetchPreviousPageAsync(FetchPreviousPageOptions? options = null)
         => _observer.FetchPreviousPageAsync(options);
-
-    // ── Overridden base properties to exclude page-specific fetches ─────
-    // Mirrors infiniteQueryObserver.ts:177–181 which overrides isRefetching
-    // and isRefetchError to exclude directional page fetches.
 
     /// <summary>
     /// A refetch is a background fetch that is NOT a directional page fetch.
