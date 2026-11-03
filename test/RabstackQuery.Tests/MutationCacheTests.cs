@@ -544,6 +544,7 @@ public sealed class MutationCacheTests
     /// On error: cache.onError → mutation.onError → cache.onSettled → mutation.onSettled.
     /// On success: cache.onSuccess → mutation.onSuccess → cache.onSettled → mutation.onSettled.
     /// </summary>
+    // Ports: mutation.test.tsx > mutation > callback return types > should handle error cases with all callback patterns
     [Fact]
     public async Task CacheLevel_Callbacks_Should_Be_Awaited_In_Order_On_Error()
     {
@@ -598,6 +599,7 @@ public sealed class MutationCacheTests
     /// Mirrors TanStack: success-path cache-level callbacks should be awaited in order.
     /// Order: cache.onSuccess → mutation.onSuccess → cache.onSettled → mutation.onSettled.
     /// </summary>
+    // Ports: mutation.test.tsx > mutation > callback return types > should handle all async callback patterns
     [Fact]
     public async Task CacheLevel_Callbacks_Should_Be_Awaited_In_Order_On_Success()
     {

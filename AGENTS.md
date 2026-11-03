@@ -29,18 +29,33 @@ C#'s concurrency model (Tasks, async/await, `SynchronizationContext`, `Cancellat
 
 ### Citing TanStack
 
-Cite upstream by file and symbol or test name, never by line number: `query.ts Query#fetch`, `retryer.ts createRetryer`, `query.test.tsx 'should be garbage collected when unsubscribed to'`. Quote test names exactly, with upstream's quote characters, so they can be searched. Line numbers shift with every upstream release, while a renamed symbol fails a search in `.upstream/` and shows the citation needs updating. For a line-level reference, use a permalink with a full commit hash (`blob/<sha>/...#L123`). CI runs `eng/check-tanstack-citations.sh`, which rejects `file.ts:N` citations.
+Cite upstream by file and symbol or test name, never by line number: `query.ts Query#fetch`, `retryer.ts createRetryer`, `query.test.tsx 'should be garbage collected when unsubscribed to'`. Quote test names exactly, with upstream's quote characters, so they can be searched. Line numbers shift with every upstream release, while a renamed symbol fails a search in `.upstream/` and shows the citation needs updating. For a line-level reference, use a permalink with a full commit hash (`blob/<sha>/...#L123`). CI runs `eng/check-tanstack-citations.sh`, which rejects `file.ts:N` citations. A C# test that ports an upstream test uses a `Ports:` marker instead (see "Tracking upstream tests").
 
 ### Bumping the pin
 
-Bumping `eng/tanstack.ref` adopts upstream changes, so the upstream diff is the parity backlog:
+Bumping `eng/tanstack.ref` adopts upstream changes. The upstream diff shows what changed since the old pin:
 
 ```bash
 git -C .upstream fetch --depth=1 --filter=blob:none https://github.com/TanStack/query.git <new-sha>
 git -C .upstream diff <old-sha> <new-sha> -- packages/query-core/src packages/react-query/src
 ```
 
-After bumping, search `.upstream/` for every symbol and test name cited in `src/` and `test/`, and update any that are gone.
+After bumping:
+
+1. Run `eng/check-upstream-tests.sh --since <old-sha>` to list test keys added and removed.
+2. Run `eng/check-upstream-tests.sh` and resolve every stale `Ports:` marker and ledger entry. Upstream often rewords tests, so read the new test before re-pointing a citation.
+3. Search `.upstream/` for the symbols and free-form test names cited in `src/` and `test/`, which the check doesn't cover, and update any that are gone.
+4. Run `eng/check-upstream-tests.sh --update` and commit the summary.
+
+### Tracking upstream tests
+
+Every upstream test at the pin is ported, omitted, todo or unreviewed. `eng/check-upstream-tests.sh` keeps that account, and `--list` prints the unreviewed tests. CI requires the account to be accurate, and the unreviewed count can stay above zero.
+
+- **Ported:** a `// Ports: <file> > <describe path> > <name>` line directly above a `[Fact]` or `[Theory]`, for a C# test that asserts the same behaviour as the upstream test. Several C# tests can port one upstream test.
+- **Omitted or todo:** an entry in `eng/upstream-tests.json` with a `status`, `key` and `reason`. Use `omitted` when the test can't apply here, and `todo` when it was reviewed and still needs a port or fix. A key ending in ` > *` covers a whole prefix.
+- **Unreviewed:** everything else. These tests have no entry.
+
+A similar name is not evidence of a port, so read both tests before adding a marker. If the closest C# test misses upstream's main assertion, record a `todo`. After any change to a marker or entry, run `eng/check-upstream-tests.sh --update` and commit the summary.
 
 ### APIs Without a Direct TanStack Equivalent
 
@@ -89,8 +104,9 @@ This project uses **Microsoft Testing Platform 2** (via `global.json`). Filter s
 Before finishing work, run exactly what CI's `build-and-test` job runs. `RabstackQuery.CI.slnf` is the one list of projects CI checks (every library and test suite except MAUI). Add new libraries and test projects there, not to `ci.yml`.
 
 ```bash
-# Match CI: check citations, then build and test every non-MAUI library and test suite
+# Match CI: check citations and upstream test accounting, then build and test every non-MAUI library and test suite
 eng/check-tanstack-citations.sh
+eng/check-upstream-tests.sh
 dotnet build RabstackQuery.CI.slnf
 dotnet test --solution RabstackQuery.CI.slnf
 

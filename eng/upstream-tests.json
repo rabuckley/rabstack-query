@@ -1,0 +1,177 @@
+[
+  {
+    "status": "omitted",
+    "key": "useSuspenseQuery.test.tsx > *",
+    "reason": "React Suspense has no equivalent in the MVVM or Blazor adapters."
+  },
+  {
+    "status": "omitted",
+    "key": "useSuspenseQueries.test.tsx > *",
+    "reason": "React Suspense has no equivalent in the MVVM or Blazor adapters."
+  },
+  {
+    "status": "omitted",
+    "key": "useSuspenseInfiniteQuery.test.tsx > *",
+    "reason": "React Suspense has no equivalent in the MVVM or Blazor adapters."
+  },
+  {
+    "status": "omitted",
+    "key": "suspense.test.tsx > *",
+    "reason": "React Suspense has no equivalent in the MVVM or Blazor adapters."
+  },
+  {
+    "status": "omitted",
+    "key": "QueryResetErrorBoundary.test.tsx > *",
+    "reason": "React error boundaries have no equivalent in the adapters."
+  },
+  {
+    "status": "omitted",
+    "key": "HydrationBoundary.test.tsx > *",
+    "reason": "React component; callers use QueryClient.Hydrate directly."
+  },
+  {
+    "status": "omitted",
+    "key": "QueryClientProvider.test.tsx > *",
+    "reason": "React context; dependency injection supplies the client here."
+  },
+  {
+    "status": "omitted",
+    "key": "ssr.test.tsx > *",
+    "reason": "Covers React renderToString."
+  },
+  {
+    "status": "omitted",
+    "key": "ssr-hydration.test.tsx > *",
+    "reason": "Covers React renderToString and hydrateRoot."
+  },
+  {
+    "status": "omitted",
+    "key": "transition.test.tsx > *",
+    "reason": "Covers React startTransition."
+  },
+  {
+    "status": "omitted",
+    "key": "Activity.test.tsx > *",
+    "reason": "Covers the React Activity component."
+  },
+  {
+    "status": "omitted",
+    "key": "mutation.test.tsx > mutation > callback return types > should handle all sync callback patterns",
+    "reason": "Callbacks return Task, so the compiler rules out the dynamic return shapes this test covers."
+  },
+  {
+    "status": "omitted",
+    "key": "mutation.test.tsx > mutation > callback return types > should handle Promise.all() and Promise.allSettled() patterns",
+    "reason": "Promise combinators are JavaScript-specific; awaiting a returned Task is covered by the async callback test."
+  },
+  {
+    "status": "omitted",
+    "key": "mutation.test.tsx > mutation > callback return types > should handle mixed sync/async patterns and return value isolation",
+    "reason": "Callbacks return Task and the result type is TData, so the compiler enforces this isolation."
+  },
+  {
+    "status": "omitted",
+    "key": "mutation.test.tsx > mutation > should not add an existing observer with addObserver",
+    "reason": "Mutation counts observers rather than tracking their identity, and AddObserver takes no observer."
+  },
+  {
+    "status": "omitted",
+    "key": "mutation.test.tsx > mutation > should release the retryer once a mutation settles",
+    "reason": "Observes the promise returned by continue(); Continue() returns void here."
+  },
+  {
+    "status": "omitted",
+    "key": "mutation.test.tsx > mutation > should release the retryer of a mutation that settled with an error",
+    "reason": "Observes the promise returned by continue(); Continue() returns void here."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should be able to set defaults with setMutationDefaults",
+    "reason": "Gap: SetMutationDefaults has no MutationFn. Decide whether it should."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should set correct success states on mutation",
+    "reason": "No test asserts the full state sequence, including context after OnMutate."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should set correct error states on mutation",
+    "reason": "No test asserts the full state sequence across a retry."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should be able to restore a mutation",
+    "reason": "Divergence: resuming a restored mutation reruns OnMutate; TanStack skips it."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should update the mutation state with mutate even without an active subscription 1",
+    "reason": "Divergence: per-call callbacks run without listeners; TanStack skips them."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should update the mutation state with mutate even without an active subscription 2",
+    "reason": "Divergence: per-call callbacks run without listeners; TanStack skips them."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should see updated options in mutation callbacks",
+    "reason": "Only updated meta is tested, not updated callbacks."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should not continue a retry while the window is not focused",
+    "reason": "No test for a mutation retry waiting on focus."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > scoped mutations > should start the next mutation in the same scope while the window is not focused",
+    "reason": "No test for scope handoff while unfocused."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > scoped mutations > should not start the next mutation in the same scope when paused mutations are resumed while the previous one is running",
+    "reason": "No test for resuming while the scope predecessor runs."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > scoped mutations > should keep a queued mutation paused when its onMutate resolves before its turn",
+    "reason": "Divergence: OnMutate waits for the scope gate here; TanStack runs it while queued."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should unpause a mutation that goes back online while its onMutate runs",
+    "reason": "No test for coming online during OnMutate."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > erroneous mutation callback > should trigger onError callback on error by global onSuccess",
+    "reason": "The closest test asserts failure and OnSettled but not the mutation-level OnError."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > erroneous mutation callback > should trigger onError callback on error by global onSettled, calling global onSettled callback twice",
+    "reason": "The code has this shape but no test asserts it."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > erroneous mutation callback > should trigger onError callback on error by mutations onSettled, calling both onSettled callbacks twice",
+    "reason": "The code has this shape but no test asserts it."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should not remove mutation when one observer is removed but another still exists",
+    "reason": "Tests cover one observer, not one of two leaving."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should not re-execute a settled mutation when it is continued",
+    "reason": "The closest test checks status but not that the function ran once."
+  },
+  {
+    "status": "todo",
+    "key": "mutation.test.tsx > mutation > should still continue a restored paused mutation that has no retryer",
+    "reason": "Divergence: Continue() ignores a restored mutation with null variables; TanStack runs it."
+  }
+]

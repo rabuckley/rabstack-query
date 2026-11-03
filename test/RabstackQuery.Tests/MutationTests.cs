@@ -652,6 +652,7 @@ public sealed class MutationTests
 
     #region Edge Case Tests
 
+    // Ports: mutation.test.tsx > mutation > should throw an error from mutate if no mutationFn found
     [Fact]
     public async Task Execute_Should_Throw_When_MutationFn_Not_Set()
     {
@@ -673,6 +674,7 @@ public sealed class MutationTests
         Assert.Contains("not set", ex.Message);
     }
 
+    // Ports: mutation.test.tsx > mutation > should accept null values in mutate
     [Fact]
     public async Task Mutation_Should_Accept_Null_Variables()
     {
@@ -869,13 +871,7 @@ public sealed class MutationTests
 
     #region Error Callback Isolation
 
-    /// <summary>
-    /// TanStack mutations.test.tsx: "error by mutations onSuccess triggers onError
-    /// callback". When <c>OnSuccess</c> throws, the exception should fall through to
-    /// the error path: <c>OnError</c> runs, <c>OnSettled</c> runs, and the error from
-    /// <c>OnSuccess</c> is what propagates to the caller. The mutation state should end
-    /// as <c>Error</c>, not <c>Success</c>.
-    /// </summary>
+    // Ports: mutation.test.tsx > mutation > erroneous mutation callback > should trigger onError callback on error by mutations onSuccess
     [Fact]
     public async Task OnSuccess_Throwing_Should_Trigger_OnError_Callback()
     {
@@ -919,11 +915,9 @@ public sealed class MutationTests
         Assert.Equal(MutationStatus.Error, observer.CurrentResult.Status);
     }
 
-    /// <summary>
-    /// TanStack mutations.test.tsx: error-path callbacks are isolated. If <c>OnError</c>
-    /// throws, <c>OnSettled</c> still runs. The original mutation error propagates, not
-    /// the callback error.
-    /// </summary>
+    // TanStack reports callback errors as unhandled rejections; C# logs them
+    // so the original mutation exception remains the caller's failure.
+    // Ports: mutation.test.tsx > mutation > erroneous mutation callback > should transfer errors by onError and consecutive onSettled callbacks to different execution context where they are reported
     [Fact]
     public async Task OnError_Throwing_Should_Not_Prevent_OnSettled()
     {
@@ -957,10 +951,9 @@ public sealed class MutationTests
         Assert.Equal(["onError", "onSettled"], results);
     }
 
-    /// <summary>
-    /// TanStack mutations.test.tsx: error-path callbacks are isolated. If <c>OnSettled</c>
-    /// throws in the error path, the original mutation error still propagates.
-    /// </summary>
+    // TanStack reports callback errors as unhandled rejections; C# logs them
+    // so the original mutation exception remains the caller's failure.
+    // Ports: mutation.test.tsx > mutation > erroneous mutation callback > should transfer errors by onError and consecutive onSettled callbacks to different execution context where they are reported
     [Fact]
     public async Task OnSettled_Throwing_In_Error_Path_Should_Not_Mask_Original_Error()
     {
@@ -1039,11 +1032,7 @@ public sealed class MutationTests
 
     #region Scope Tests
 
-    /// <summary>
-    /// TanStack: "mutations in the same scope should run in serial"
-    /// Two mutations with the same scope ID must not overlap. The second waits
-    /// (IsPaused=true) until the first completes, then starts.
-    /// </summary>
+    // Ports: mutation.test.tsx > mutation > scoped mutations > should run mutations in the same scope in serial
     [Fact]
     public async Task ScopedMutations_SameScope_Should_Run_Serially()
     {
@@ -1103,11 +1092,7 @@ public sealed class MutationTests
         Assert.Equal(["start-A", "finish-A", "start-B", "finish-B"], results);
     }
 
-    /// <summary>
-    /// TanStack: "mutations without scope should run in parallel"
-    /// Unscoped mutations must not block each other. Verified by confirming both
-    /// mutations are in-flight simultaneously — both start before either finishes.
-    /// </summary>
+    // Ports: mutation.test.tsx > mutation > should run mutations without scope in parallel
     [Fact]
     public async Task UnscopedMutations_Should_Run_In_Parallel()
     {
@@ -1167,11 +1152,7 @@ public sealed class MutationTests
         Assert.Equal(MutationStatus.Success, mutationB.State.Status);
     }
 
-    /// <summary>
-    /// TanStack: "each scope should run in parallel, serial within scope"
-    /// Scope-1 mutations are serial; Scope-2 mutations are serial; but Scope-1 and
-    /// Scope-2 run concurrently with each other.
-    /// </summary>
+    // Ports: mutation.test.tsx > mutation > should run each scope in parallel, serial within scope
     [Fact]
     public async Task ScopedMutations_DifferentScopes_RunInParallel_SerialWithinScope()
     {
