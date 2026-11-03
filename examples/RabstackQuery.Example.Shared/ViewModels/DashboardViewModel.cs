@@ -39,9 +39,9 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
     // -- Derived queries (select transforms, no polling) ----------------------
 
-    public QueryViewModel<string, IReadOnlyList<Project>> CompletionRateQuery { get; }
+    public QueryViewModel<string, IEnumerable<Project>> CompletionRateQuery { get; }
 
-    public QueryViewModel<string?, IReadOnlyList<Project>> MostActiveProjectQuery { get; }
+    public QueryViewModel<string?, IEnumerable<Project>> MostActiveProjectQuery { get; }
 
     // -- Runtime toggle -------------------------------------------------------
 
@@ -72,7 +72,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
         TotalTaskCountQuery = client.UseQuery(_totalTaskCountBaseOptions);
 
-        CompletionRateQuery = client.UseQuery(
+        CompletionRateQuery = client.UseQuery<string, IEnumerable<Project>>(
             queryKey: QueryKeys.Projects,
             queryFn: async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
             enabled: true,
@@ -86,8 +86,8 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             staleTime: DashboardStaleTime
         );
 
-        MostActiveProjectQuery = client.UseQuery(
-            queryKey: ["projects"],
+        MostActiveProjectQuery = client.UseQuery<string?, IEnumerable<Project>>(
+            queryKey: QueryKeys.Projects,
             queryFn: async ctx => await api.GetProjectsAsync(ctx.CancellationToken),
             select: projects => projects
                 .OrderByDescending(p => p.TaskCount - p.CompletedTaskCount)
