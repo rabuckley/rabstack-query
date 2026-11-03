@@ -46,7 +46,7 @@ internal sealed class QueryDetailPage : ContentPage
         statusGrid.Add(CreateField("Status", item.StatusLabel, statusColor), 0, 0);
         statusGrid.Add(CreateField("Fetch Status", item.FetchStatus.ToString()), 1, 0);
         statusGrid.Add(CreateField("Observers", item.ObserverCount.ToString()), 0, 1);
-        statusGrid.Add(CreateField("Last Updated", FormatRelativeTime(item.DataUpdatedAt)), 1, 1);
+        statusGrid.Add(CreateField("Last Updated", FormatRelativeTime(item.DataUpdatedAt, queryClient.TimeProvider)), 1, 1);
         statusGrid.Add(CreateField("Invalidated", item.IsInvalidated ? "Yes" : "No"), 0, 2);
         statusGrid.Add(CreateField("Failure Count", item.FetchFailureCount.ToString()), 1, 2);
 
@@ -324,11 +324,11 @@ internal sealed class QueryDetailPage : ContentPage
         return button;
     }
 
-    private static string FormatRelativeTime(long unixMs)
+    private static string FormatRelativeTime(long unixMs, TimeProvider timeProvider)
     {
         if (unixMs == 0) return "never";
 
-        var elapsed = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(unixMs);
+        var elapsed = timeProvider.GetUtcNow() - DateTimeOffset.FromUnixTimeMilliseconds(unixMs);
         return elapsed.TotalSeconds switch
         {
             < 5 => "just now",

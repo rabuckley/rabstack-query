@@ -96,11 +96,11 @@ public partial class QueryDetail : ComponentBase
             Observer.TriggerError(Item.QueryHash, new Exception("Triggered from devtools"));
     }
 
-    private static string FormatRelativeTime(long unixMs)
+    private string FormatRelativeTime(long unixMs)
     {
         if (unixMs == 0) return "never";
 
-        var elapsed = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(unixMs);
+        var elapsed = QueryClient.TimeProvider.GetUtcNow() - DateTimeOffset.FromUnixTimeMilliseconds(unixMs);
         return elapsed.TotalSeconds switch
         {
             < 5 => "just now",
