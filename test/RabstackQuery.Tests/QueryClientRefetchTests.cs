@@ -953,9 +953,6 @@ public sealed class QueryClientRefetchTests
     [Fact]
     public async Task FocusEvent_DoesNotCrash_WhenQueryFnThrows()
     {
-        // Defensive test: a focus event that triggers a refetch on a query whose
-        // function throws must not propagate exceptions to the caller. The query's
-        // FetchSilentAsync swallows exceptions from background refetches.
         // Arrange
         var focusManager = new FocusManager();
         focusManager.SetFocused(false); // Start unfocused so we can trigger focus gain
@@ -993,7 +990,6 @@ public sealed class QueryClientRefetchTests
         var sub = observer.Subscribe(_ => { });
         await initialFetch.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Act — trigger focus gain; FetchSilentAsync should swallow the exception
         var exception = Record.Exception(() => focusManager.SetFocused(true));
 
         // Assert — no exception propagates

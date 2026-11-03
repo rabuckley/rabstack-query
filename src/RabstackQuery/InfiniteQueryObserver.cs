@@ -51,19 +51,18 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     /// </remarks>
     public async Task FetchNextPageAsync()
     {
-        var query = _inner.CurrentQuery;
-        if (query is not null)
+        try
         {
-            try
-            {
-                await query.Fetch(
-                    new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Forward } });
-            }
-            catch
-            {
-                // Errors are captured in query state via ErrorAction dispatch.
-                // Suppress here, matching TanStack's pattern.
-            }
+            // Fetches through the inner observer so page fetches use its options, as
+            // TanStack's fetchNextPage/fetchPreviousPage go through observer.fetch.
+            await _inner.FetchQuery(
+                new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Forward } },
+                cancelRefetch: false);
+        }
+        catch
+        {
+            // Errors are captured in query state via ErrorAction dispatch.
+            // Suppress here, matching TanStack's pattern.
         }
     }
 
@@ -75,19 +74,18 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     /// </remarks>
     public async Task FetchPreviousPageAsync()
     {
-        var query = _inner.CurrentQuery;
-        if (query is not null)
+        try
         {
-            try
-            {
-                await query.Fetch(
-                    new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Backward } });
-            }
-            catch
-            {
-                // Errors are captured in query state via ErrorAction dispatch.
-                // Suppress here, matching TanStack's pattern.
-            }
+            // Fetches through the inner observer so page fetches use its options, as
+            // TanStack's fetchNextPage/fetchPreviousPage go through observer.fetch.
+            await _inner.FetchQuery(
+                new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Backward } },
+                cancelRefetch: false);
+        }
+        catch
+        {
+            // Errors are captured in query state via ErrorAction dispatch.
+            // Suppress here, matching TanStack's pattern.
         }
     }
 

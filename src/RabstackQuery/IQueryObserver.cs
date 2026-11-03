@@ -9,6 +9,8 @@ internal interface IQueryObserver
     bool ShouldFetchOnWindowFocus();
     bool ShouldFetchOnReconnect();
 
+    Task RefetchInBackgroundAsync();
+
     /// <summary>
     /// Whether this observer is enabled. Resolves the static Enabled flag or
     /// the dynamic EnabledFn callback. Used by <see cref="Query{TData}.IsDisabled"/>

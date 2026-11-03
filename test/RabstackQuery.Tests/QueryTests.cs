@@ -1638,6 +1638,7 @@ public sealed class QueryTests
             {
                 QueryKey = ["gc-observer-removal"],
                 QueryFn = _ => Task.FromResult("data"),
+                GcTime = TimeSpan.FromMilliseconds(100),
                 Enabled = false
             });
         var subscription = observer.Subscribe(_ => { });
@@ -1900,6 +1901,8 @@ public sealed class QueryTests
             {
                 QueryKey = ["retry-failure-count"],
                 QueryFn = _ => throw new InvalidOperationException("always fails"),
+                Retry = 2,
+                RetryDelay = (_, _) => TimeSpan.Zero,
                 Enabled = false
             });
 
@@ -1962,11 +1965,7 @@ public sealed class QueryTests
         Assert.Same(expectedError, capturedArgs[1].Error);
     }
 
-    /// <summary>
-    /// TanStack ref: query.ts:328 — OnFocus triggers FetchSilentAsync with
-    /// cancelRefetch=false, which means an in-flight fetch is NOT cancelled;
-    /// it is deduplicated instead.
-    /// </summary>
+    // TanStack query.ts:592 refetches on focus with cancelRefetch=false.
     [Fact(Timeout = 10_000)]
     public async Task OnFocus_DoesNotCancelInFlightFetch()
     {
@@ -2013,9 +2012,6 @@ public sealed class QueryTests
             });
         var sub = observer.Subscribe(_ => { });
 
-        // Act — trigger focus event while fetch is in-flight.
-        // OnFocus calls FetchSilentAsync which passes cancelRefetch: false,
-        // so the existing in-flight fetch should be deduplicated (not cancelled).
         focusManager.SetFocused(false);
         focusManager.SetFocused(true);
 

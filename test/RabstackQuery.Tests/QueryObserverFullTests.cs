@@ -943,23 +943,14 @@ public sealed class QueryObserverFullTests
     [Fact(Timeout = 10_000)]
     public async Task IsFetchedAfterMount_Should_Be_True_After_Error_Fetch()
     {
-        // Arrange — pre-build the query with Retry=0 so the error completes immediately
         var client = CreateQueryClient();
-        var queryHash = DefaultQueryKeyHasher.Instance.HashQueryKey(["fetched-after-mount-err"]);
-        var cache = client.QueryCache;
-        cache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
-        {
-            QueryKey = ["fetched-after-mount-err"],
-            QueryHash = queryHash,
-            GcTime = QueryTimeDefaults.GcTime,
-            Retry = 0
-        });
 
         var observer = new QueryObserver<string, string>(client,
             new QueryObserverOptions<string, string>
             {
                 QueryKey = ["fetched-after-mount-err"],
-                QueryFn = _ => throw new InvalidOperationException("boom")
+                QueryFn = _ => throw new InvalidOperationException("boom"),
+                Retry = 0
             });
 
         // Act

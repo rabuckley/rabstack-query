@@ -16,7 +16,7 @@ TanStack Query uses a single mega-object for all options. C# splits this into pu
 
 | Type | Why it exists |
 |------|---------------|
-| `QueryConfiguration<TData>` | Cache-level config (`GcTime`, `Retry`, `InitialData`, `NetworkMode`) passed to `QueryCache.GetOrCreate`. Separating this from observer options lets multiple observers share cache config without re-specifying it. |
+| `QueryConfiguration<TData>` | Holds cache settings and initial data. Observers and imperative fetches supply resolved settings under [query settings ownership](#query-settings-ownership). |
 | `QueryOptions<TData>` | Reusable query definition (key + fn + config). Use `ToObserverOptions()` or `ToObserverOptions(select)` with `with` to add observer settings. The select conversion drops `StructuralSharing`, which operates on the selected output type. |
 | `QueryObserverOptions<TData, TQueryData>` | Observer-level config (`Select`, `RefetchInterval`, `Enabled`, `PlaceholderData`). A `record` so `with` expressions can toggle individual properties (e.g., switching polling on/off). |
 | `FetchQueryOptions<TData>` | Imperative fetch config for `FetchQueryAsync`/`PrefetchQueryAsync`/`EnsureQueryDataAsync`. Exists because these methods don't create persistent observer subscriptions and fall back to different defaults (no retries). |
@@ -74,9 +74,27 @@ as `fetchQuery` does after `defaultQueryOptions`. Hydration passes the hydrate d
 per-query layer. Mutations fold the same way in `DefaultMutationOptions` and fill the fallbacks
 (`Retry` 0, `GcTime` 5 minutes, `NetworkMode.Online`) into the defaulted options.
 
-Cache-level settings (`GcTime`, `Retry`, `RetryDelay`, `NetworkMode`) apply when a query is created.
-A later observer with different values does not change an existing query; TanStack's
-`query.setOptions` on each fetch has no C# equivalent yet.
+### Query settings ownership
+
+Query settings (`GcTime`, `Retry`, `RetryDelay`, `NetworkMode`, `Meta`) follow TanStack's
+last-writer-wins `query.setOptions`:
+
+- Observers apply settings at construction and on `SetOptions`.
+- Observer, page and stale imperative fetches apply settings when they start. Joining an
+  in-flight fetch leaves settings unchanged.
+- Client invalidations, refetches and resets use the last applied settings. Focus and reconnect
+  use the settings of the first observer that requests a refetch.
+- `QueryCache.GetOrCreate` applies settings only when creating a query.
+
+A stale imperative fetch with unset `Retry` applies its default of 0 to later client refetches,
+even with observers mounted. An observer fetch or options update can replace it.
+The GC timeout keeps the largest `GcTime` supplied, even when `Options.GcTime` decreases.
+
+C# preserves the key and initial-data fields on options updates because `Reset()` recomputes
+its target from `Options`; TanStack stores a separate `#initialState`. A volatile reference
+publishes each configuration, and each fetch reads it once to avoid mixing concurrent updates.
+Observers look up the cached query before fetching so a refetch after `RemoveQueries` repopulates
+the cache.
 
 ## Hydration / Dehydration
 

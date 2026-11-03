@@ -291,16 +291,25 @@ public sealed class Query<TData> : Query
         _onRetryerPause = () => Dispatch(new PauseAction());
         _onRetryerContinue = () => Dispatch(new ContinueAction());
 
-        SetOptions(config.Options);
-        _initialState = GetDefaultState(Options!);
+        Options = config.Options ?? _client.DefaultQueryOptions(new QueryConfiguration<TData> { QueryKey = QueryKey });
+        UpdateGcTime(Options.GcTime);
+        _initialState = GetDefaultState(Options);
         State = config.State ?? _initialState;
         ScheduleGc();
     }
 
+    // Observers can replace options on other threads; publish each configuration as one reference.
+    private volatile QueryConfiguration<TData> _options = null!;
+
     /// <summary>
     /// Gets the query's cache-level options. Fetches read these values when they start.
     /// </summary>
-    public QueryConfiguration<TData> Options { get; private set; } = null!;
+    /// <remarks>
+    /// The last observer or fetch to supply options replaces <see cref="QueryConfiguration{TData}.GcTime"/>,
+    /// <see cref="QueryConfiguration{TData}.Retry"/>, <see cref="QueryConfiguration{TData}.RetryDelay"/>,
+    /// <see cref="QueryConfiguration{TData}.NetworkMode"/> and <see cref="QueryConfiguration{TData}.Meta"/>.
+    /// </remarks>
+    public QueryConfiguration<TData> Options { get => _options; private set => _options = value; }
 
     // Volatile: State is written by Dispatch (any thread via Retryer callbacks) and
     // read from event threads (OnFocus, OnOnline), timer callbacks (OptionalRemove),
@@ -470,91 +479,56 @@ public sealed class Query<TData> : Query
         return op.Settled.Task;
     }
 
-    /// <summary>
-    /// Finds the first observer that wants to refetch on window focus and triggers
-    /// a fetch. Only one observer needs to say "yes" since data is shared at the
-    /// query level. Mirrors TanStack's <c>query.onFocus()</c> pattern.
-    /// </summary>
     public override void OnFocus()
     {
-        // Capture the fetch decision under the lock; perform I/O outside to
-        // keep lock scope minimal and avoid holding it during FetchSilentAsync.
-        bool shouldFetch;
+        IQueryObserver? refetcher = null;
         lock (_observerLock)
         {
-            shouldFetch = false;
             foreach (var observer in _observers)
             {
                 if (observer.ShouldFetchOnWindowFocus())
                 {
-                    shouldFetch = true;
+                    refetcher = observer;
                     break;
                 }
             }
         }
 
-        if (shouldFetch)
+        if (refetcher is not null)
         {
             _logger.QueryOnFocusRefetch(QueryHash);
             _metrics?.RefetchOnFocusTotal?.Add(1);
-
-            // Only one observer needs to say "yes" since data is shared at the
-            // query level. We call Fetch() directly rather than observer.Refetch()
-            // — the Dispatch path notifies all observers regardless.
-            // FetchSilentAsync passes cancelRefetch: false, matching TanStack's
-            // observer.refetch({ cancelRefetch: false }) (query.ts:328).
-            _ = FetchSilentAsync();
+            _ = refetcher.RefetchInBackgroundAsync();
         }
 
         // TanStack query.ts:331 — resume paused retryer when focus returns.
         _activeFetch?.Retryer.Continue();
     }
 
-    /// <summary>
-    /// Finds the first observer that wants to refetch on reconnect and triggers
-    /// a fetch. Mirrors TanStack's <c>query.onOnline()</c> pattern.
-    /// </summary>
     public override void OnOnline()
     {
-        bool shouldFetch;
+        IQueryObserver? refetcher = null;
         lock (_observerLock)
         {
-            shouldFetch = false;
             foreach (var observer in _observers)
             {
                 if (observer.ShouldFetchOnReconnect())
                 {
-                    shouldFetch = true;
+                    refetcher = observer;
                     break;
                 }
             }
         }
 
-        if (shouldFetch)
+        if (refetcher is not null)
         {
             _logger.QueryOnOnlineRefetch(QueryHash);
             _metrics?.RefetchOnReconnectTotal?.Add(1);
-            _ = FetchSilentAsync();
+            _ = refetcher.RefetchInBackgroundAsync();
         }
 
         // TanStack query.ts:340 — resume paused retryer when connectivity returns.
         _activeFetch?.Retryer.Continue();
-    }
-
-    /// <summary>
-    /// Fire-and-forget fetch that swallows all exceptions. Used by
-    /// <see cref="OnFocus"/> and <see cref="OnOnline"/> where errors are
-    /// silently ignored — same as TanStack's <c>.catch(noop)</c> pattern.
-    /// Unlike <c>Task.Run</c>, this runs the synchronous preamble of
-    /// <see cref="Fetch"/> on the current thread, avoiding thread pool
-    /// scheduling delays. Passes <c>cancelRefetch: false</c> to match
-    /// TanStack's <c>observer.refetch({ cancelRefetch: false })</c>
-    /// (<c>query.ts:328</c>).
-    /// </summary>
-    private async Task FetchSilentAsync()
-    {
-        try { await Fetch(cancelRefetch: false); }
-        catch (Exception) { /* swallow — background refetch errors are silent */ }
     }
 
     private QueryState<TData> GetDefaultState(QueryConfiguration<TData> options)
@@ -605,10 +579,35 @@ public sealed class Query<TData> : Query
         };
     }
 
-    private void SetOptions(QueryConfiguration<TData>? configOptions)
+    // TanStack keeps a separate #initialState. Reset() here recomputes it from Options,
+    // so option updates must preserve the key and initial-data fields from creation.
+    internal void SetOptions(QueryConfiguration<TData> options)
     {
-        Options = configOptions ?? _client.DefaultQueryOptions(new QueryConfiguration<TData> { QueryKey = QueryKey });
-        UpdateGcTime(Options.GcTime);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var current = Options;
+        var next = new QueryConfiguration<TData>
+        {
+            QueryKey = current.QueryKey,
+            QueryHash = current.QueryHash,
+            QueryKeyHasher = current.QueryKeyHasher,
+            InitialDataFactory = current.InitialDataFactory,
+            InitialDataUpdatedAt = current.InitialDataUpdatedAt,
+            InitialDataUpdatedAtFactory = current.InitialDataUpdatedAtFactory,
+            GcTime = options.GcTime,
+            Retry = options.Retry,
+            RetryDelay = options.RetryDelay,
+            NetworkMode = options.NetworkMode,
+            Meta = options.Meta,
+        };
+
+        if (current.HasInitialData)
+        {
+            next.InitialData = current.InitialData;
+        }
+
+        Options = next;
+        UpdateGcTime(next.GcTime);
     }
 
     internal void SetState(QueryState<TData> state, SetStateOptions? options = null)
@@ -645,15 +644,10 @@ public sealed class Query<TData> : Query
     internal override Task Fetch(bool cancelRefetch)
         => FetchInternal(meta: null, cancelRefetch);
 
-    /// <summary>
-    /// Fetches with directional metadata for infinite queries. The FetchMeta
-    /// is written to State via Dispatch(FetchAction) so the query function can
-    /// read State.FetchMeta.FetchMore.Direction at execution time.
-    /// </summary>
-    internal Task Fetch(FetchMeta meta)
-        => FetchInternal(meta, cancelRefetch: false);
+    internal Task Fetch(QueryConfiguration<TData> options, FetchMeta? meta, bool cancelRefetch)
+        => FetchInternal(meta, cancelRefetch, options);
 
-    private Task FetchInternal(FetchMeta? meta, bool cancelRefetch)
+    private Task FetchInternal(FetchMeta? meta, bool cancelRefetch, QueryConfiguration<TData>? options = null)
     {
         // Deduplication: if a fetch is already in-flight and the retryer hasn't
         // been rejected/cancelled, decide whether to cancel it (cancelRefetch=true)
@@ -699,6 +693,11 @@ public sealed class Query<TData> : Query
             }
         }
 
+        if (options is not null)
+        {
+            SetOptions(options);
+        }
+
         _logger.QueryFetchStarted(QueryHash);
         var fetch = FetchCore(meta);
         _currentFetchTask = fetch;
@@ -721,6 +720,9 @@ public sealed class Query<TData> : Query
         // Mirrors TanStack's `this.#abortSignalConsumed = false` (query.ts:443).
         _abortSignalConsumed = false;
 
+        // Read the options once so a concurrent SetOptions can't mix two callers' settings.
+        var options = Options;
+
         // Set fetching state (with optional FetchMeta for infinite query direction)
         Dispatch(new FetchAction { Meta = meta });
 
@@ -740,13 +742,13 @@ public sealed class Query<TData> : Query
                 var ctx = new QueryFunctionContext(ct, () => _abortSignalConsumed = true, _client, QueryKey!);
                 return StopWaitingOnCancel(queryFn(ctx), ct);
             },
-            MaxRetries = (Options.Retry ?? OptionsDefaulting.FallbackQueryRetry) is > 0 and var r ? r + 1 : 1,
-            RetryDelay = Options.RetryDelay,
+            MaxRetries = (options.Retry ?? OptionsDefaulting.FallbackQueryRetry) is > 0 and var r ? r + 1 : 1,
+            RetryDelay = options.RetryDelay,
             TimeProvider = _client.TimeProvider,
             LoggerFactory = _client.LoggerFactory,
             Metrics = _metrics,
             RetrySource = "query",
-            NetworkMode = Options.NetworkMode ?? OptionsDefaulting.FallbackNetworkMode,
+            NetworkMode = options.NetworkMode ?? OptionsDefaulting.FallbackNetworkMode,
             CanRun = AlwaysCanRun, // Queries always allow running; mutations use this for scope coordination
             OnlineManager = _client.OnlineManager,
             FocusManager = _client.FocusManager,

@@ -220,7 +220,8 @@ public sealed class QueryClient : IDisposable
         }
 
         Metrics.CacheMissTotal?.Add(1);
-        await query.Fetch();
+
+        await query.Fetch(queryOptions, meta: null, cancelRefetch: false);
 
         Debug.Assert(query.State is not null);
         return query.State.Data!;
@@ -373,7 +374,8 @@ public sealed class QueryClient : IDisposable
         }
 
         Metrics.CacheMissTotal?.Add(1);
-        await query.Fetch();
+
+        await query.Fetch(queryOptions, meta: null, cancelRefetch: false);
 
         Debug.Assert(query.State is not null);
         return query.State.Data!;

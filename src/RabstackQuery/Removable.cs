@@ -18,7 +18,8 @@ namespace RabstackQuery;
 public abstract class Removable : IDisposable
 {
     private readonly TimeProvider _timeProvider;
-    private TimeSpan _gcTime;
+    // Unlike TanStack's single-threaded updates, concurrent callers must not lower GC time.
+    private long _gcTimeTicks;
 
     // Accessed from timer callbacks (arbitrary thread pool threads) and from
     // ScheduleGc/ClearGcTimeout/Dispose (caller threads). Use
@@ -39,7 +40,8 @@ public abstract class Removable : IDisposable
     {
         ClearGcTimeout();
 
-        if (IsValidTimeout(_gcTime))
+        var gcTime = TimeSpan.FromTicks(Interlocked.Read(ref _gcTimeTicks));
+        if (IsValidTimeout(gcTime))
         {
             var newTimer = _timeProvider.CreateTimer(_ =>
             {
@@ -52,7 +54,7 @@ public abstract class Removable : IDisposable
                     // swallow or log — mimic JS behaviour where exceptions
                     // in timeouts don't crash the process unless you want them to.
                 }
-            }, null, _gcTime, Timeout.InfiniteTimeSpan);
+            }, null, gcTime, Timeout.InfiniteTimeSpan);
 
             // Atomically publish the new timer. If another thread raced and
             // cleared the field (via ClearGcTimeout), dispose the timer we
@@ -64,7 +66,17 @@ public abstract class Removable : IDisposable
 
     protected void UpdateGcTime(TimeSpan? newGcTime)
     {
-        _gcTime = MaxGcTime(_gcTime, newGcTime ?? QueryTimeDefaults.GcTime);
+        var candidate = newGcTime ?? QueryTimeDefaults.GcTime;
+        var current = Interlocked.Read(ref _gcTimeTicks);
+        while (true)
+        {
+            var next = MaxGcTime(TimeSpan.FromTicks(current), candidate).Ticks;
+            if (next == current) return;
+
+            var observed = Interlocked.CompareExchange(ref _gcTimeTicks, next, current);
+            if (observed == current) return;
+            current = observed;
+        }
     }
 
     protected void ClearGcTimeout()

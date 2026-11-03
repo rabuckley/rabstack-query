@@ -87,6 +87,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         _options = options;
         _settings = client.ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults());
         UpdateQuery();
+
+        _currentQuery?.SetOptions(BuildQueryConfiguration());
     }
 
     public bool IsEnabled => ResolveEnabled();
@@ -124,6 +126,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
             // Register with new query
             UpdateQuery();
+            _currentQuery?.SetOptions(BuildQueryConfiguration());
 
             if (ListenerCount > 0 && ShouldFetchOptionally(queryChanged: true, prevEnabled))
             {
@@ -132,6 +135,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         }
         else
         {
+            _currentQuery?.SetOptions(BuildQueryConfiguration());
+
             // Key unchanged — update the query function if a real one is provided
             // (skip the sentinel so Query.IsDisabled() stays correct).
             if (_options.QueryFn is not null
@@ -179,10 +184,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         }
     }
 
-    private void UpdateQuery()
+    private QueryConfiguration<TQueryData> BuildQueryConfiguration()
     {
-        var queryCache = _client.QueryCache;
-
         // Deliberately omit InitialData — the observer creates a bare query that
         // starts as Pending. Setting InitialData (even to default) would mark the
         // query as Succeeded, which is wrong for value types like int where
@@ -194,8 +197,12 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             Meta = _options.Meta,
         };
         _settings.CopyTo(queryOptions);
+        return queryOptions;
+    }
 
-        _currentQuery = queryCache.GetOrCreate<TQueryData, TQueryData>(_client, queryOptions);
+    private void UpdateQuery()
+    {
+        _currentQuery = _client.QueryCache.GetOrCreate<TQueryData, TQueryData>(_client, BuildQueryConfiguration());
 
         // Set query function if provided — but never install the skipToken
         // sentinel onto the query. Without this guard, the throwing sentinel
@@ -509,16 +516,42 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
 
     private async Task ExecuteFetch(bool cancelRefetch = false)
     {
-        if (_currentQuery is null) return;
-
         try
         {
-            await _currentQuery.Fetch(cancelRefetch);
+            await FetchQuery(meta: null, cancelRefetch);
         }
         catch
         {
         }
     }
+
+    internal Task FetchQuery(FetchMeta? meta, bool cancelRefetch)
+    {
+        RefreshQuery();
+
+        return _currentQuery is { } query
+            ? query.Fetch(BuildQueryConfiguration(), meta, cancelRefetch)
+            : Task.CompletedTask;
+    }
+
+    private void RefreshQuery()
+    {
+        var previous = _currentQuery;
+        if (previous is { QueryHash: { } hash }
+            && ReferenceEquals(_client.QueryCache.GetByHash(hash), previous))
+        {
+            return;
+        }
+
+        UpdateQuery();
+        if (HasListeners)
+        {
+            previous?.RemoveObserver(this);
+        }
+    }
+
+    Task IQueryObserver.RefetchInBackgroundAsync()
+        => RefetchAsync(new RefetchOptions { CancelRefetch = false });
 
     public async Task<IQueryResult<TData>> RefetchAsync(
         RefetchOptions? options = null)
@@ -528,16 +561,13 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // `cancelRefetch ?? true` in observer.fetch(), queryObserver.ts:237).
         var cancelRefetch = options?.CancelRefetch ?? true;
 
-        if (_currentQuery is not null)
+        if (options?.ThrowOnError is true)
         {
-            if (options?.ThrowOnError is true)
-            {
-                await _currentQuery.Fetch(cancelRefetch);
-            }
-            else
-            {
-                await ExecuteFetch(cancelRefetch);
-            }
+            await FetchQuery(meta: null, cancelRefetch);
+        }
+        else
+        {
+            await ExecuteFetch(cancelRefetch);
         }
 
         // Explicit UpdateResult after the fetch completes. When the observer has
