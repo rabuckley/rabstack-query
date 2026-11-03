@@ -22,6 +22,37 @@ public static class SkipToken
         => ReferenceEquals(queryFn, Sentinel<TData>.Instance);
 
     /// <summary>
+    /// Returns the cached sentinel delegate for an infinite query with these type arguments.
+    /// </summary>
+    /// <typeparam name="TData">The type of a single page.</typeparam>
+    /// <typeparam name="TPageParam">The type of the parameter that identifies a page.</typeparam>
+    /// <returns>A delegate that causes an infinite query observer to treat the query as disabled.</returns>
+    public static Func<InfiniteQueryFunctionContext<TPageParam>, Task<TData>> InfiniteQueryFn<TData, TPageParam>()
+        => Sentinel<TData, TPageParam>.Instance;
+
+    /// <summary>
+    /// Determines whether <paramref name="queryFn"/> is the infinite query skip-token sentinel.
+    /// </summary>
+    /// <typeparam name="TData">The type of a single page.</typeparam>
+    /// <typeparam name="TPageParam">The type of the parameter that identifies a page.</typeparam>
+    /// <param name="queryFn">The query function to check.</param>
+    /// <returns>
+    /// <see langword="true"/> if <paramref name="queryFn"/> is the sentinel; otherwise, <see langword="false"/>.
+    /// </returns>
+    public static bool IsSkipToken<TData, TPageParam>(Func<InfiniteQueryFunctionContext<TPageParam>, Task<TData>>? queryFn)
+        => ReferenceEquals(queryFn, Sentinel<TData, TPageParam>.Instance);
+
+    // Unlike the single skipToken in utils.ts, C# needs a sentinel for each delegate type.
+    private static class Sentinel<TData, TPageParam>
+    {
+        internal static readonly Func<InfiniteQueryFunctionContext<TPageParam>, Task<TData>> Instance = _ =>
+            throw new InvalidOperationException(
+                "An infinite query with skipToken should never be executed. " +
+                "This indicates a bug in RabstackQuery — the query should have been " +
+                "disabled before reaching the fetch path.");
+    }
+
+    /// <summary>
     /// Generic cache holding one sentinel delegate per <typeparamref name="TData"/>.
     /// The delegate throws <see cref="InvalidOperationException"/> if invoked,
     /// mirroring TanStack's <c>ensureQueryFn</c> safety net.

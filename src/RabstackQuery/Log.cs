@@ -42,6 +42,14 @@ internal static partial class Log
         Message = "CancelQueries")]
     public static partial void CancelQueries(this ILogger logger);
 
+    [LoggerMessage(Level = LogLevel.Information, EventId = 1004,
+        Message = "Query for key {QueryHash}")]
+    public static partial void ExecuteQuery(this ILogger logger, string queryHash);
+
+    [LoggerMessage(Level = LogLevel.Information, EventId = 1013,
+        Message = "InfiniteQuery for key {QueryHash}")]
+    public static partial void ExecuteInfiniteQuery(this ILogger logger, string queryHash);
+
     [LoggerMessage(Level = LogLevel.Information, EventId = 1010,
         Message = "FetchInfiniteQuery for key {QueryHash}")]
     public static partial void FetchInfiniteQuery(this ILogger logger, string queryHash);
@@ -99,6 +107,10 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Debug, EventId = 2006,
         Message = "EnsureInfiniteQueryData cache hit for key {QueryHash}")]
     public static partial void EnsureInfiniteQueryDataCacheHit(this ILogger logger, string queryHash);
+
+    [LoggerMessage(Level = LogLevel.Debug, EventId = 2007,
+        Message = "Query cache hit for key {QueryHash}")]
+    public static partial void ExecuteQueryCacheHit(this ILogger logger, string queryHash);
 
     // ── QueryCache: Debug (21xx) ─────────────────────────────────────────
 

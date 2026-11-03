@@ -20,6 +20,7 @@ TanStack Query uses a single mega-object for all options. C# splits this into pu
 | `QueryOptions<TData>` | Reusable query definition (key + fn + config). Use `ToObserverOptions()` or `ToObserverOptions(select)` with `with` to add observer settings. The select conversion drops `StructuralSharing`, which operates on the selected output type. |
 | `QueryObserverOptions<TData, TQueryData>` | Observer-level config (`Select`, `RefetchInterval`, `Enabled`, `PlaceholderData`). A `record` so `with` expressions can toggle individual properties (e.g., switching polling on/off). |
 | `FetchQueryOptions<TData>` | Imperative fetch config for `FetchQueryAsync`/`PrefetchQueryAsync`/`EnsureQueryDataAsync`. Exists because these methods don't create persistent observer subscriptions and fall back to different defaults (no retries). |
+| `QueryExecuteOptions<TData>` / `InfiniteQueryExecuteOptions<TData, TPageParam>` | Config for `QueryAsync`/`InfiniteQueryAsync`, TanStack's `query`/`infiniteQuery`. They leave out the `FetchQueryOptions` revalidation setting, which only applies to `EnsureQueryDataAsync`. `select` is a method parameter rather than an option so C# can infer the result type. |
 | `QueryDefaults` / `MutationDefaults` | The defaultable subset, shared by client-wide defaults (`QueryClientDefaultOptions.Queries`/`.Mutations`) and key-prefix defaults (`SetQueryDefaults`/`SetMutationDefaults`), as TanStack shares one shape between `defaultOptions.queries` and `setQueryDefaults`. |
 
 ## Factory overloads

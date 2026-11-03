@@ -463,6 +463,252 @@ public sealed class QueryClient : IDisposable
     private bool IsDataStale(long dataUpdatedAt, TimeSpan staleTime, bool isInvalidated = false)
         => QueryTimeDefaults.IsStale(dataUpdatedAt, staleTime, isInvalidated, TimeProvider.GetUtcNowMs());
 
+    // ── Imperative query execution ──────────────────────────────────
+
+    /// <summary>
+    /// Asynchronously returns the cached data of a query, fetching it if it is missing or stale.
+    /// </summary>
+    /// <typeparam name="TData">The type of the cached data.</typeparam>
+    /// <param name="options">The query to execute.</param>
+    /// <returns>The cached or fetched data.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/> is <see langword="null"/>. This exception is stored into the returned task.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">
+    /// The client is disposed. This exception is stored into the returned task.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// A fetch is needed and the query function is <see cref="SkipToken.QueryFn{TData}"/>.
+    /// This exception is stored into the returned task.
+    /// </exception>
+    /// <remarks>
+    /// A failed fetch rethrows the query function's exception through the returned task. Failed
+    /// fetches aren't retried unless <see cref="QueryExecuteOptions{TData}.Retry"/> or a default sets
+    /// retries. A concurrent fetch of the same query is joined rather than started again.
+    /// </remarks>
+    public async Task<TData> QueryAsync<TData>(QueryExecuteOptions<TData> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ThrowIfDisposed();
+
+        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
+        var queryHash = hasher.HashQueryKey(options.QueryKey);
+        _logger.ExecuteQuery(queryHash);
+
+        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
+        var configuration = new QueryConfiguration<TData>
+        {
+            QueryKey = options.QueryKey,
+            QueryKeyHasher = hasher,
+            InitialDataUpdatedAt = options.InitialDataUpdatedAt,
+            Meta = options.Meta,
+        };
+        if (options.HasInitialData)
+        {
+            configuration.InitialData = options.InitialData;
+        }
+
+        settings.CopyTo(configuration);
+
+        return await ExecuteQueryAsync(
+            configuration,
+            queryHash,
+            settings.StaleTime,
+            options.StaleTimeFn,
+            _ => SkipToken.IsSkipToken(options.QueryFn) ? MissingQueryFn<TData>(queryHash) : options.QueryFn);
+    }
+
+    /// <summary>
+    /// Asynchronously returns a value selected from the cached data of a query, fetching the data
+    /// if it is missing or stale.
+    /// </summary>
+    /// <typeparam name="TData">The type of the cached data.</typeparam>
+    /// <typeparam name="TResult">The type of the selected value.</typeparam>
+    /// <param name="options">The query to execute.</param>
+    /// <param name="select">
+    /// The function that transforms the data for this call. Its result isn't cached, and it doesn't
+    /// run if the fetch fails.
+    /// </param>
+    /// <returns>The selected value.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/> or <paramref name="select"/> is <see langword="null"/>.
+    /// This exception is stored into the returned task.
+    /// </exception>
+    /// <remarks>
+    /// Exceptions from the fetch or from <paramref name="select"/> are stored into the returned task.
+    /// </remarks>
+    public async Task<TResult> QueryAsync<TData, TResult>(
+        QueryExecuteOptions<TData> options,
+        Func<TData, TResult> select)
+    {
+        ArgumentNullException.ThrowIfNull(select);
+        return select(await QueryAsync(options));
+    }
+
+    /// <summary>Asynchronously returns cached data, fetching it if missing or stale.</summary>
+    public Task<TData> QueryAsync<TData>(QueryOptions<TData> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return QueryAsync(options.ToQueryExecuteOptions());
+    }
+
+    /// <summary>Asynchronously selects from cached or fetched data without caching the selected value.</summary>
+    public Task<TResult> QueryAsync<TData, TResult>(QueryOptions<TData> options, Func<TData, TResult> select)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return QueryAsync(options.ToQueryExecuteOptions(), select);
+    }
+
+    /// <summary>
+    /// Asynchronously returns the cached pages of an infinite query, fetching them if they are
+    /// missing or stale.
+    /// </summary>
+    /// <typeparam name="TData">The type of a single page.</typeparam>
+    /// <typeparam name="TPageParam">The type of the parameter that identifies a page.</typeparam>
+    /// <param name="options">The infinite query to execute.</param>
+    /// <returns>The cached or fetched pages and their page parameters.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/> is <see langword="null"/>. This exception is stored into the returned task.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <see cref="InfiniteQueryExecuteOptions{TData,TPageParam}.Pages"/> is set without
+    /// <see cref="InfiniteQueryExecuteOptions{TData,TPageParam}.GetNextPageParam"/>.
+    /// This exception is stored into the returned task.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">
+    /// The client is disposed. This exception is stored into the returned task.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// A fetch is needed and the query function is <see cref="SkipToken.InfiniteQueryFn{TData,TPageParam}"/>.
+    /// This exception is stored into the returned task.
+    /// </exception>
+    /// <remarks>
+    /// A failed fetch rethrows the query function's exception through the returned task. Failed
+    /// fetches aren't retried unless <see cref="InfiniteQueryExecuteOptions{TData,TPageParam}.Retry"/>
+    /// or a default sets retries. A concurrent fetch of the same query is joined rather than started again.
+    /// </remarks>
+    public async Task<InfiniteData<TData, TPageParam>> InfiniteQueryAsync<TData, TPageParam>(
+        InfiniteQueryExecuteOptions<TData, TPageParam> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ThrowIfDisposed();
+
+        // InfiniteQueryPages in types.ts enforces this pairing at compile time. A nullable property can't.
+        if (options.Pages is not null && options.GetNextPageParam is null)
+        {
+            throw new ArgumentException("GetNextPageParam is required when Pages is set.", nameof(options));
+        }
+
+        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
+        var queryHash = hasher.HashQueryKey(options.QueryKey);
+        _logger.ExecuteInfiniteQuery(queryHash);
+
+        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
+        var configuration = new QueryConfiguration<InfiniteData<TData, TPageParam>>
+        {
+            QueryKey = options.QueryKey,
+            QueryKeyHasher = hasher,
+            InitialDataUpdatedAt = options.InitialDataUpdatedAt,
+            Meta = options.Meta,
+        };
+        if (options.InitialData is not null)
+        {
+            configuration.InitialData = options.InitialData;
+        }
+
+        settings.CopyTo(configuration);
+
+        return await ExecuteQueryAsync(
+            configuration,
+            queryHash,
+            settings.StaleTime,
+            options.StaleTimeFn,
+            query =>
+            {
+                if (SkipToken.IsSkipToken(options.QueryFn))
+                {
+                    return MissingQueryFn<InfiniteData<TData, TPageParam>>(queryHash);
+                }
+
+                var behaviorOptions = new InfiniteQueryObserverOptions<TData, TPageParam>
+                {
+                    QueryKey = options.QueryKey,
+                    QueryFn = options.QueryFn,
+                    InitialPageParam = options.InitialPageParam,
+                    GetNextPageParam = options.GetNextPageParam ?? (static _ => PageParamResult<TPageParam>.None),
+                    MaxPages = options.MaxPages,
+                };
+
+                return InfiniteQueryBehavior.CreateFetchFn(behaviorOptions, query, options.Pages);
+            });
+    }
+
+    /// <summary>
+    /// Asynchronously returns a value selected from the cached pages of an infinite query, fetching
+    /// the pages if they are missing or stale.
+    /// </summary>
+    /// <typeparam name="TData">The type of a single page.</typeparam>
+    /// <typeparam name="TPageParam">The type of the parameter that identifies a page.</typeparam>
+    /// <typeparam name="TResult">The type of the selected value.</typeparam>
+    /// <param name="options">The infinite query to execute.</param>
+    /// <param name="select">
+    /// The function that transforms the pages for this call. Its result isn't cached, and it doesn't
+    /// run if the fetch fails.
+    /// </param>
+    /// <returns>The selected value.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/> or <paramref name="select"/> is <see langword="null"/>.
+    /// This exception is stored into the returned task.
+    /// </exception>
+    /// <remarks>
+    /// Exceptions from the fetch or from <paramref name="select"/> are stored into the returned task.
+    /// </remarks>
+    public async Task<TResult> InfiniteQueryAsync<TData, TPageParam, TResult>(
+        InfiniteQueryExecuteOptions<TData, TPageParam> options,
+        Func<InfiniteData<TData, TPageParam>, TResult> select)
+    {
+        ArgumentNullException.ThrowIfNull(select);
+        return select(await InfiniteQueryAsync(options));
+    }
+
+    // Mirrors queryClient.ts QueryClient#query, which infiniteQuery also calls. Unlike the fetch
+    // methods above, the query function is set only when a fetch is needed, as Query#fetch does,
+    // so a call served from the cache can't replace the function an observer's refetch uses.
+    private async Task<TData> ExecuteQueryAsync<TData>(
+        QueryConfiguration<TData> configuration,
+        string queryHash,
+        TimeSpan staleTime,
+        Func<Query<TData>, TimeSpan>? staleTimeFn,
+        Func<Query<TData>, Func<QueryFunctionContext, Task<TData>>> createQueryFn)
+    {
+        var query = _queryCache.GetOrCreate<TData, TData>(this, configuration);
+        var resolvedStaleTime = staleTimeFn?.Invoke(query) ?? staleTime;
+
+        // query.ts Query#isStaleByTime treats missing data as stale whatever the stale time. A
+        // failed refetch leaves Status Errored but keeps its data and non-zero DataUpdatedAt.
+        if (query.State is { } state
+            && (state.Status is QueryStatus.Succeeded || state.DataUpdatedAt > 0)
+            && !IsDataStale(state.DataUpdatedAt, resolvedStaleTime, state.IsInvalidated))
+        {
+            _logger.ExecuteQueryCacheHit(queryHash);
+            Metrics.CacheHitTotal?.Add(1);
+            return state.Data!;
+        }
+
+        Metrics.CacheMissTotal?.Add(1);
+
+        query.SetQueryFn(createQueryFn(query));
+        await query.Fetch(configuration, meta: null, cancelRefetch: false);
+
+        Debug.Assert(query.State is not null);
+        return query.State.Data!;
+    }
+
+    // Throw inside the fetch so query state and cache callbacks receive the failure,
+    // as in utils.ts ensureQueryFn.
+    private static Func<QueryFunctionContext, Task<TData>> MissingQueryFn<TData>(string queryHash)
+        => _ => Task.FromException<TData>(new InvalidOperationException($"Missing queryFn: '{queryHash}'"));
+
     // ── Accessors ──────────────────────────────────────────────────
 
     public QueryCache QueryCache

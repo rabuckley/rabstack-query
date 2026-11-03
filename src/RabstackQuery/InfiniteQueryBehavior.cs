@@ -12,27 +12,11 @@ namespace RabstackQuery;
 /// </summary>
 internal static class InfiniteQueryBehavior
 {
-    /// <summary>
-    /// Creates the fetch function for infinite queries. The returned function:
-    /// <list type="number">
-    /// <item>Reads <c>query.State.FetchMeta?.FetchMore</c> to determine direction.</item>
-    /// <item><b>Direction-based fetch</b> (fetchMore != null, pages exist): Calls
-    /// <c>GetNextPageParam</c>/<c>GetPreviousPageParam</c> on current data. If
-    /// <c>!HasValue</c>, returns current data unchanged. Fetches single page, applies
-    /// <c>AddToEnd</c>/<c>AddToStart</c> with <c>MaxPages</c> limit.</item>
-    /// <item><b>Full refetch</b> (no fetchMore): Sequentially re-fetches all existing
-    /// pages (or 1 if empty). First page uses <c>oldPageParams[0]</c> or
-    /// <c>InitialPageParam</c>. Subsequent pages use <c>GetNextPageParam</c> on
-    /// accumulated result. Stops if result <c>!HasValue</c> (pages may shrink — correct
-    /// per TanStack behavior). Sequential re-fetch of N pages can be slow;
-    /// <c>MaxPages</c> is the mitigation.</item>
-    /// <item>Checks <c>ct.ThrowIfCancellationRequested()</c> between page fetches.</item>
-    /// </list>
-    /// </summary>
     internal static Func<QueryFunctionContext, Task<InfiniteData<TData, TPageParam>>>
         CreateFetchFn<TData, TPageParam>(
             InfiniteQueryObserverOptions<TData, TPageParam> options,
-            Query<InfiniteData<TData, TPageParam>> query)
+            Query<InfiniteData<TData, TPageParam>> query,
+            int? pages = null)
     {
         return async ctx =>
         {
@@ -59,7 +43,7 @@ internal static class InfiniteQueryBehavior
             }
 
             // ── Full refetch of all existing pages (or initial fetch) ───
-            return await RefetchAllPages(options, oldPages, oldPageParams, ct, onSignalConsumed);
+            return await RefetchAllPages(options, oldPages, oldPageParams, pages, ct, onSignalConsumed);
         };
     }
 
@@ -150,15 +134,11 @@ internal static class InfiniteQueryBehavior
         InfiniteQueryObserverOptions<TData, TPageParam> options,
         IReadOnlyList<TData> oldPages,
         IReadOnlyList<TPageParam> oldPageParams,
+        int? requestedPages,
         CancellationToken ct,
         Action? onSignalConsumed)
     {
-        // Determine how many pages to refetch. If no existing pages, fetch one page
-        // using InitialPageParam.
-        var pagesToFetch = Math.Max(oldPages.Count, 1);
-
-        var pages = new List<TData>(pagesToFetch);
-        var pageParams = new List<TPageParam>(pagesToFetch);
+        var pagesToFetch = Math.Max(requestedPages ?? oldPages.Count, 1);
 
         // First page uses the original first page param, or InitialPageParam if
         // this is the initial fetch.
@@ -172,8 +152,8 @@ internal static class InfiniteQueryBehavior
             ct,
             onSignalConsumed));
 
-        pages.Add(firstPage);
-        pageParams.Add(firstPageParam);
+        var pages = AddToEnd<TData>([], firstPage, options.MaxPages);
+        var pageParams = AddToEnd<TPageParam>([], firstPageParam, options.MaxPages);
 
         // Sequentially re-fetch remaining pages. Use GetNextPageParam on the
         // accumulated result to determine each subsequent page param. Stop early
@@ -200,8 +180,8 @@ internal static class InfiniteQueryBehavior
                 ct,
                 onSignalConsumed));
 
-            pages.Add(page);
-            pageParams.Add(nextPageParam.Value);
+            pages = AddToEnd(pages, page, options.MaxPages);
+            pageParams = AddToEnd(pageParams, nextPageParam.Value, options.MaxPages);
         }
 
         return new InfiniteData<TData, TPageParam>

@@ -101,7 +101,9 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
         return new QueryObserverOptions<InfiniteData<TData, TPageParam>>
         {
             QueryKey = QueryKey,
-            QueryFn = queryFn,
+            QueryFn = SkipToken.IsSkipToken(QueryFn)
+                ? SkipToken.QueryFn<InfiniteData<TData, TPageParam>>()
+                : queryFn,
             Select = Select,
             Enabled = Enabled,
             StaleTime = StaleTime,

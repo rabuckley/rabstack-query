@@ -173,5 +173,85 @@
     "status": "todo",
     "key": "mutation.test.tsx > mutation > should still continue a restored paused mutation that has no retryer",
     "reason": "Divergence: Continue() ignores a restored mutation with null variables; TanStack runs it."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > infiniteQuery > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query used for prefetching > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > infiniteQuery used for prefetching > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query used for prefetching > should resolve to undefined when error is caught with noop",
+    "reason": "Exercises the JavaScript promise .catch(noop) idiom rather than library behaviour."
+  },
+  {
+    "status": "todo",
+    "key": "queryClient.test.tsx > queryClient > query > should allow new meta",
+    "reason": "QueryFunctionContext has no Meta property, so a query function cannot read the meta TanStack passes it."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch when disabled",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch when disabled by callback",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch when disabled and apply select",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch instead of returning initialData when disabled",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should return cached data when skipToken and enabled false are both provided",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch when enabled callback returns false",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch when enabled callback returns true and cache is stale",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > query > should fetch when enabled is true and cache is stale",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > infiniteQuery > should fetch when disabled",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > infiniteQuery > should fetch when disabled and apply select",
+    "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
   }
 ]

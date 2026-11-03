@@ -285,6 +285,28 @@ var result = await client.FetchQueryAsync(new FetchQueryOptions<List<Todo>>
     QueryKey = ["todos"],
     QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken),
 });
+
+// Imperative query with a per-call transform (throws on failure)
+var count = await client.QueryAsync(
+    new QueryExecuteOptions<List<Todo>>
+    {
+        QueryKey = ["todos"],
+        QueryFn = async ctx => await api.GetTodosAsync(ctx.CancellationToken),
+        StaleTime = TimeSpan.FromMinutes(1),
+    },
+    todos => todos.Count);
+
+// Imperative infinite query that fetches the first three pages
+var pages = await client.InfiniteQueryAsync(new InfiniteQueryExecuteOptions<TodoPage, int>
+{
+    QueryKey = ["todos", "paged"],
+    QueryFn = async ctx => await api.GetTodoPageAsync(ctx.PageParam, ctx.CancellationToken),
+    InitialPageParam = 0,
+    GetNextPageParam = ctx => ctx.Page.HasMore
+        ? PageParamResult<int>.Some(ctx.PageParam + 1)
+        : PageParamResult<int>.None,
+    Pages = 3,
+});
 ```
 
 ## Focus and Network Refetching

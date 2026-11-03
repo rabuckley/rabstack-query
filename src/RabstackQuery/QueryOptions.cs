@@ -119,6 +119,19 @@ public sealed class QueryOptions<TData>
         };
     }
 
+    internal QueryExecuteOptions<TData> ToQueryExecuteOptions() => new()
+    {
+        QueryKey = QueryKey,
+        QueryFn = QueryFn,
+        StaleTime = StaleTime,
+        GcTime = GcTime,
+        Retry = Retry,
+        RetryDelay = RetryDelay,
+        Meta = Meta,
+        NetworkMode = NetworkMode,
+        QueryKeyHasher = QueryKeyHasher,
+    };
+
     internal FetchQueryOptions<TData> ToFetchQueryOptions() => new()
     {
         QueryKey = QueryKey,
