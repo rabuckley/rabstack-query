@@ -17,7 +17,7 @@ will replace each other — only the last-deployed app survives.
 
 **Before creating or booting a simulator, check what's already in use:**
 ```bash
-maui-devflow list                             # shows agents with platform + port
+maui devflow list                             # shows agents with platform + port
 xcrun simctl list devices booted              # shows all booted simulators
 ```
 
@@ -71,12 +71,12 @@ apple simulator screenshot <UDID> --output output.png
 
 ### Screenshots (Mac Catalyst)
 
-**Use `maui-devflow MAUI screenshot`** for Mac Catalyst apps — it captures the UI in-process
+**Use `maui devflow ui screenshot`** for Mac Catalyst apps — it captures the UI in-process
 and does NOT require the app to be in the foreground. Never use `osascript` to bring the window
 to the front or `screencapture` for Mac Catalyst screenshots; they are unnecessary and unreliable.
 
 ```bash
-maui-devflow MAUI screenshot --output screen.png
+maui devflow ui screenshot --output screen.png
 ```
 
 ### Delete / erase
@@ -91,7 +91,7 @@ xcrun simctl delete unavailable               # clean up old sims
 ### Mac Catalyst
 
 **⚠️ Entitlements required:** Mac Catalyst apps are sandboxed by default and need the
-`com.apple.security.network.server` entitlement for MauiDevFlow's in-app HTTP server.
+`com.apple.security.network.server` entitlement for MAUI DevFlow's in-app HTTP server.
 Without it, the agent fails to bind its port and the app may crash silently.
 
 **Quick fix (disable sandbox for Debug):** Create `Platforms/MacCatalyst/Entitlements.Debug.plist`:
@@ -142,7 +142,7 @@ dotnet build -f net10.0-ios -t:Run -p:_DeviceName=:v2:udid=$UDID
 ```
 
 The `-t:Run` target keeps the process alive while the app runs — it **blocks until the app exits**.
-Always run in an async/background shell, then poll `maui-devflow MAUI status` to detect when the
+Always run in an async/background shell, then poll `maui devflow ui status` to detect when the
 app is ready. Do NOT wait for the process to finish.
 
 ### Determining the correct TFM
@@ -184,19 +184,24 @@ apple xcode list                                # installed Xcode versions
 
 ## xcrun simctl Reference
 
-Key subcommands beyond the basics:
+Key subcommands beyond the basics. Several of these are now wrapped by the `maui` CLI
+(`maui apple simulator …`) — prefer the wrapper when available so you get `--json` output and
+the standard error envelope:
 
-| Command | Use |
-|---------|-----|
-| `simctl addmedia <UDID> file.jpg` | Add photos/videos to sim |
-| `simctl openurl <UDID> "url"` | Open URL / deep link |
-| `simctl push <UDID> bundle payload.json` | Simulate push notification |
-| `simctl privacy <UDID> grant location bundle` | Grant permissions |
-| `simctl location <UDID> set 37.33,-122.03` | Set GPS location |
-| `simctl pbcopy <UDID>` | Copy stdin to clipboard |
-| `simctl pbpaste <UDID>` | Read clipboard |
-| `simctl get_app_container <UDID> bundle` | App container path |
-| `simctl listapps <UDID>` | Installed apps |
+| Command | Use | `maui` equivalent |
+|---------|-----|-------------------|
+| `simctl addmedia <UDID> file.jpg` | Add photos/videos to sim | `maui apple simulator add-media <UDID> file.jpg` |
+| `simctl openurl <UDID> "url"` | Open URL / deep link | `maui apple simulator openurl <UDID> "url"` |
+| `simctl push <UDID> bundle payload.json` | Simulate push notification | `maui apple simulator push <UDID> bundle payload.json` |
+| `simctl privacy <UDID> grant location bundle` | Grant permissions | `maui apple simulator privacy grant <UDID> location --bundle-id bundle` |
+| `simctl location <UDID> set 37.33,-122.03` | Set GPS location | `maui apple simulator location set <UDID> 37.33 -122.03` |
+| `simctl status_bar <UDID> override --time 9:41` | Override status bar | `maui apple simulator status-bar override <UDID> --time 9:41` |
+| `simctl ui <UDID> appearance dark` | Set light/dark appearance | `maui apple simulator appearance dark <UDID>` |
+| `simctl io <UDID> screenshot out.png` | Capture screenshot | `maui apple simulator screenshot <UDID> out.png` |
+| `simctl pbcopy <UDID>` | Copy stdin to clipboard | — |
+| `simctl pbpaste <UDID>` | Read clipboard | — |
+| `simctl get_app_container <UDID> bundle` | App container path | `maui apple simulator get-app-container <UDID> bundle` |
+| `simctl listapps <UDID>` | Installed apps | — |
 
 ## Troubleshooting
 
@@ -206,15 +211,14 @@ Key subcommands beyond the basics:
   ```bash
   rm -rf ~/Library/Saved\ Application\ State/<bundle-id>.savedState
   ```
-  Or detect and dismiss via AppleScript:
-  ```bash
-  osascript -e 'tell application "System Events" to tell process "AppName" to click button "Reopen" of window 1'
-  ```
+  If the "Reopen windows?" dialog is already on screen, ask the user to dismiss it manually,
+  then relaunch. Do not use AppleScript here by default — it steals focus from the user's
+  desktop session.
 - **"Unable to lookup in current state: Shutdown"**: Simulator not booted. Run `xcrun simctl boot <UDID>`.
 - **Build error NETSDK1005 "Assets file doesn't have a target"**: Wrong TFM. Check
   `<TargetFrameworks>` in .csproj and use matching version (e.g. `net10.0-ios` not `net9.0-ios`).
 - **Agent not connecting after deploy**: The app may still be launching. Poll
-  `maui-devflow MAUI status` every few seconds. If it hasn't connected after ~60-90s, read the
+  `maui devflow ui status` every few seconds. If it hasn't connected after ~60-90s, read the
   async shell output from `dotnet build -t:Run` for build/launch errors.
 - **Mac Catalyst app name vs binary name**: The `.app` bundle name may differ from the project
   name (e.g. `MauiTodo.app` vs `SampleMauiApp`). Check the `ApplicationTitle` in .csproj.
@@ -223,10 +227,22 @@ Key subcommands beyond the basics:
 ## Permission & Dialog Handling
 
 ### Pre-grant permissions (prevents dialogs from appearing)
+
+**Prefer the `maui` CLI** — `maui apple simulator privacy` now wraps `simctl privacy`
+(the `bundle-id` is optional, so you can grant for all apps). For
+`maui devflow ui permission`, pass `--udid` to target the intended simulator.
+Without it, the command selects the first booted simulator, not the simulator
+associated with the connected agent.
+```bash
+maui apple simulator privacy grant <UDID> location --bundle-id com.company.appid
+maui apple simulator privacy grant <UDID> photos          # all apps (no bundle id)
+maui devflow ui permission grant location --udid <UDID> --bundle-id com.company.appid
+```
+
+Raw `xcrun simctl` fallback (only if the `maui` CLI is unavailable):
 ```bash
 # Grant specific permission before the app requests it
 xcrun simctl privacy <UDID> grant location com.company.appid
-xcrun simctl privacy <UDID> grant camera com.company.appid
 xcrun simctl privacy <UDID> grant photos com.company.appid
 xcrun simctl privacy <UDID> grant contacts com.company.appid
 xcrun simctl privacy <UDID> grant microphone com.company.appid
@@ -246,7 +262,7 @@ apple simulator privacy grant <UDID> location com.company.appid
 
 Available services: `all`, `calendar`, `contacts`, `contacts-limited`, `location`, `location-always`, `photos`, `photos-add`, `media-library`, `microphone`, `motion`, `reminders`, `siri`.
 
-### Using MauiDevFlow.Driver for permissions
+### Using MAUI DevFlow Driver for permissions
 ```csharp
 var driver = new iOSSimulatorAppDriver();
 driver.DeviceUdid = "<UDID>";
@@ -306,18 +322,20 @@ Use these to test and validate dialog detection and dismissal workflows.
 
 ### Toggle dark mode
 ```bash
-# macOS (affects Mac Catalyst apps)
-osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
-osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
-
-# iOS Simulator
+# Preferred when available: use an in-app theme toggle so the host desktop is unaffected.
+#
+# iOS Simulator (safe: affects the simulator only)
 xcrun simctl ui <UDID> appearance dark
 xcrun simctl ui <UDID> appearance light
 ```
 
+For **Mac Catalyst**, changing system appearance affects the user's entire macOS desktop. Only do
+that with explicit user approval; otherwise prefer app-level theme controls and verify via
+`maui devflow ui property` / WebView inspection.
+
 ### Verify dark mode via inspection
-Use `maui-devflow` to verify colors without relying on screenshots:
+Use `maui devflow` to verify colors without relying on screenshots:
 ```bash
-maui-devflow MAUI property <elementId> BackgroundColor   # check MAUI element colors
-maui-devflow cdp Runtime evaluate "window.matchMedia('(prefers-color-scheme: dark)').matches"  # Blazor
+maui devflow ui property <elementId> BackgroundColor   # check MAUI element colors
+maui devflow webview Runtime evaluate "window.matchMedia('(prefers-color-scheme: dark)').matches"  # Blazor
 ```

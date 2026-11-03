@@ -16,7 +16,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.1.0" />
     <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.1.0" />
-    <PackageVersion Include="Redth.MauiDevFlow.Agent" Version="0.23.1" />
+    <PackageVersion Include="Microsoft.Maui.DevFlow.Agent" Version="0.1.0-preview.13.26526.5" />
     <PackageVersion Include="xunit.v3.mtp-v2" Version="3.2.2" />
     <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.51" />
     <PackageVersion Include="Microsoft.Maui.Essentials" Version="10.0.51" />
