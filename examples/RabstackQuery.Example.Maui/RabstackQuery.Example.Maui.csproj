@@ -28,6 +28,8 @@
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>
+		<!-- The installed iOS and Mac Catalyst packs target Xcode 27.1; development uses 27.2.
+		Restore validation when the workload supports the installed Xcode. -->
 		<ValidateXcodeVersion>false</ValidateXcodeVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
