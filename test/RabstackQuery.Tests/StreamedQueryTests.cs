@@ -2,12 +2,6 @@ using System.Runtime.CompilerServices;
 
 namespace RabstackQuery;
 
-/// <summary>
-/// Tests for <see cref="StreamedQuery"/>, ported from TanStack's
-/// <c>streamedQuery.test.tsx</c> (11 tests).
-/// Uses <see cref="SemaphoreSlim"/>-gated streams for deterministic timing
-/// instead of <c>Task.Delay</c> with hardcoded timeouts.
-/// </summary>
 public sealed class StreamedQueryTests
 {
     private static QueryClient CreateQueryClient()

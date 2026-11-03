@@ -2,15 +2,6 @@ using System.Collections.Concurrent;
 
 namespace RabstackQuery;
 
-/// <summary>
-/// Tests for <see cref="QueriesObserver{TData}"/>.
-///
-/// Mirrors the TanStack queriesObserver.test.tsx suite (12 tests).
-/// Tests that use synchronous query functions assert immediately (the fetch
-/// completes inline during Subscribe). Tests that use <see cref="TaskCompletionSource{T}"/>
-/// gates use <see cref="SemaphoreSlim"/> or <see cref="Task.WaitAsync(TimeSpan)"/>
-/// to wait for the expected state deterministically.
-/// </summary>
 public sealed class QueriesObserverTests
 {
     private static QueryClient CreateQueryClient()
