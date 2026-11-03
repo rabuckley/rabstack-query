@@ -45,16 +45,9 @@ public interface IInfiniteQueryResult<TData, TPageParam> : IQueryResult<Infinite
     /// to issue directional fetches — same lifecycle pattern as
     /// <see cref="IQueryResult{TData}.RefetchAsync"/> which also holds an observer reference.
     /// </summary>
-    Task FetchNextPageAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>Zero-argument overload for binary-stable interface evolution.</summary>
-    Task FetchNextPageAsync() => FetchNextPageAsync(default);
+    Task FetchNextPageAsync();
 
     /// <summary>
     /// Fetches the previous page.
     /// </summary>
-    Task FetchPreviousPageAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>Zero-argument overload for binary-stable interface evolution.</summary>
-    Task FetchPreviousPageAsync() => FetchPreviousPageAsync(default);
-}
+    Task FetchPreviousPageAsync();}

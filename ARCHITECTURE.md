@@ -162,6 +162,15 @@ request would not undo a write the server may already have applied, so neither a
 idle state would be accurate. A mutation function's own `OperationCanceledException`, such as an
 `HttpClient` timeout, is an ordinary failure.
 
+## Omitted caller cancellation tokens
+
+TanStack's `refetch`, `fetchQuery`, `invalidateQueries` and page fetches take no abort signal, so
+these APIs take no `CancellationToken`. A fetch belongs to the query and is shared by its observers,
+so one caller's token would cancel it for all of them, while a caller joining an in-flight fetch
+would have its token ignored. `QueryClient.CancelQueriesAsync` cancels a fetch. A caller that only
+wants to stop waiting can use `Task.WaitAsync(token)`, which leaves the fetch running.
+`QueryFunctionContext.CancellationToken` stays because it is TanStack's `signal`.
+
 ## Query key encoding
 
 `QueryKeyEncoder` uses `Utf8JsonWriter` to avoid reflection in trimmed and Native AOT apps.

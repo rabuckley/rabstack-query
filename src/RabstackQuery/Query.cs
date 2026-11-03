@@ -43,14 +43,14 @@ public abstract class Query : Removable
     /// <summary>
     /// Fetches fresh data for this query.
     /// </summary>
-    public abstract Task Fetch(CancellationToken cancellationToken = default);
+    public abstract Task Fetch();
 
     /// <summary>
     /// Fetches fresh data for this query with an explicit <paramref name="cancelRefetch"/> flag.
     /// When true, an in-flight fetch with existing data is cancelled and a new fetch starts.
     /// When false, the existing in-flight fetch is deduplicated.
     /// </summary>
-    internal abstract Task Fetch(bool cancelRefetch, CancellationToken cancellationToken = default);
+    internal abstract Task Fetch(bool cancelRefetch);
 
     /// <summary>Number of observers currently subscribed to this query.</summary>
     public abstract int ObserverCount { get; }
@@ -210,7 +210,6 @@ public sealed class Query<TData> : Query
 
     private static readonly CancelOptions PlainCancel = new();
     private static readonly CancelOptions SilentCancel = new() { Silent = true };
-    private static readonly CancelOptions RevertCancel = new() { Revert = true };
 
     private static void CancelOperation(FetchOperation operation, CancelOptions options)
     {
@@ -630,26 +629,21 @@ public sealed class Query<TData> : Query
         _queryFn = queryFn;
     }
 
-    public override Task Fetch(CancellationToken cancellationToken = default)
-        => FetchInternal(meta: null, cancelRefetch: false, cancellationToken);
+    public override Task Fetch()
+        => FetchInternal(meta: null, cancelRefetch: false);
 
-    /// <summary>
-    /// Fetches with an explicit <paramref name="cancelRefetch"/> flag. Used by
-    /// <see cref="QueryClient.RefetchQueriesAsync(QueryFilters?, RefetchOptions?, CancellationToken)"/>
-    /// to thread through the caller's <see cref="RefetchOptions.CancelRefetch"/> setting.
-    /// </summary>
-    internal override Task Fetch(bool cancelRefetch, CancellationToken cancellationToken = default)
-        => FetchInternal(meta: null, cancelRefetch, cancellationToken);
+    internal override Task Fetch(bool cancelRefetch)
+        => FetchInternal(meta: null, cancelRefetch);
 
     /// <summary>
     /// Fetches with directional metadata for infinite queries. The FetchMeta
     /// is written to State via Dispatch(FetchAction) so the query function can
     /// read State.FetchMeta.FetchMore.Direction at execution time.
     /// </summary>
-    internal Task Fetch(FetchMeta meta, CancellationToken cancellationToken = default)
-        => FetchInternal(meta, cancelRefetch: false, cancellationToken);
+    internal Task Fetch(FetchMeta meta)
+        => FetchInternal(meta, cancelRefetch: false);
 
-    private Task FetchInternal(FetchMeta? meta, bool cancelRefetch, CancellationToken cancellationToken)
+    private Task FetchInternal(FetchMeta? meta, bool cancelRefetch)
     {
         // Deduplication: if a fetch is already in-flight and the retryer hasn't
         // been rejected/cancelled, decide whether to cancel it (cancelRefetch=true)
@@ -706,13 +700,13 @@ public sealed class Query<TData> : Query
         }
 
         _logger.QueryFetchStarted(QueryHash);
-        var fetch = FetchCore(meta, cancellationToken);
+        var fetch = FetchCore(meta);
         _currentFetchTask = fetch;
         replacement?.TrySetResult(fetch);
         return fetch;
     }
 
-    private async Task FetchCore(FetchMeta? meta, CancellationToken cancellationToken)
+    private async Task FetchCore(FetchMeta? meta)
     {
         if (_queryFn is null)
         {
@@ -772,13 +766,6 @@ public sealed class Query<TData> : Query
         var operation = new FetchOperation { Retryer = retryer, PreFetchState = preFetchState };
         _activeFetch = operation;
 
-        // C# divergence: TanStack's fetch takes no token. A caller's cancel reverts, matching the
-        // default of cancelQueries, so the query does not stay Fetching with nothing running.
-        using var registration = cancellationToken.Register(() =>
-        {
-            if (_activeFetch == operation) Cancel(RevertCancel);
-        });
-
         var queryHashTag = QueryMetrics.QueryHashTag(QueryHash);
         _metrics?.QueryFetchTotal?.Add(1, queryHashTag);
 
@@ -809,7 +796,7 @@ public sealed class Query<TData> : Query
                 _logger.QueryFetchCancelled(QueryHash);
                 if (operation.Replacement is { } replacedBy)
                 {
-                    await (await replacedBy.Task).WaitAsync(cancellationToken);
+                    await await replacedBy.Task;
                 }
                 return;
             }
@@ -827,11 +814,9 @@ public sealed class Query<TData> : Query
             _metrics?.QueryFetchCancelledTotal?.Add(1, queryHashTag);
             _logger.QueryFetchCancelled(QueryHash);
 
-            if (cancellationToken.IsCancellationRequested) throw;
-
             if (operation.Replacement is { } replacedBy)
             {
-                await (await replacedBy.Task).WaitAsync(cancellationToken);
+                await await replacedBy.Task;
                 return;
             }
 

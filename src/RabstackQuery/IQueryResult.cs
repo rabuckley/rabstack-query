@@ -141,11 +141,7 @@ public interface IQueryResult<TData>
     /// </para>
     /// </summary>
     Task<IQueryResult<TData>> RefetchAsync(
-        RefetchOptions? options = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>Zero-argument overload for binary-stable interface evolution.</summary>
-    Task<IQueryResult<TData>> RefetchAsync() => RefetchAsync(null, default);
+        RefetchOptions? options = null);
 
     /// <summary>
     /// The overall query status: <see cref="QueryStatus.Pending"/>,

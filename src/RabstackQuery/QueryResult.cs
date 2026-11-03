@@ -122,8 +122,7 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
 
     /// <inheritdoc />
     public Task<IQueryResult<TData>> RefetchAsync(
-        RefetchOptions? options = null,
-        CancellationToken cancellationToken = default)
+        RefetchOptions? options = null)
     {
         if (_refetch is null)
         {
@@ -132,7 +131,7 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
                 "This result was created without a refetch delegate.");
         }
 
-        return _refetch(options, cancellationToken);
+        return _refetch(options);
     }
 
     public QueryStatus Status => _state.Status;

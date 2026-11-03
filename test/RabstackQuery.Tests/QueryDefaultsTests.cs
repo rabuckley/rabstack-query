@@ -357,7 +357,7 @@ public sealed class QueryDefaultsTests : IDisposable
             QueryFn = _ => ++attempts == 1
                 ? throw new InvalidOperationException("first attempt fails")
                 : Task.FromResult("todos"),
-        }, TestContext.Current.CancellationToken);
+        });
 
         // Assert
         Assert.Equal("todos", data);
@@ -377,7 +377,7 @@ public sealed class QueryDefaultsTests : IDisposable
                 attempts++;
                 throw new InvalidOperationException("fails");
             },
-        }, TestContext.Current.CancellationToken);
+        });
 
         await Assert.ThrowsAsync<InvalidOperationException>(Act);
         Assert.Equal(1, attempts);
@@ -402,7 +402,7 @@ public sealed class QueryDefaultsTests : IDisposable
                 fetchCount++;
                 return Task.FromResult("fetched");
             },
-        }, TestContext.Current.CancellationToken);
+        });
 
         Assert.Equal("cached", data);
         Assert.Equal(0, fetchCount);
@@ -424,7 +424,7 @@ public sealed class QueryDefaultsTests : IDisposable
             QueryKey = ["todos"],
             QueryFn = _ => Task.FromResult("fetched"),
             StaleTime = TimeSpan.Zero,
-        }, TestContext.Current.CancellationToken);
+        });
 
         // Assert
         Assert.Equal("fetched", data);
@@ -442,7 +442,7 @@ public sealed class QueryDefaultsTests : IDisposable
         {
             QueryKey = ["todos"],
             QueryFn = _ => Task.FromResult("fetched"),
-        }, TestContext.Current.CancellationToken);
+        });
 
         Assert.Equal("cached", data);
     }
@@ -462,7 +462,7 @@ public sealed class QueryDefaultsTests : IDisposable
             QueryFn = _ => ++attempts == 1
                 ? throw new InvalidOperationException("first attempt fails")
                 : Task.FromResult("page"),
-        }, TestContext.Current.CancellationToken);
+        });
 
         Assert.Equal(["page"], data.Pages);
         Assert.Equal(2, attempts);

@@ -189,8 +189,7 @@ public sealed class QueryClient : IDisposable
     /// Errors propagate to the caller.
     /// </remarks>
     public async Task<TData> FetchQueryAsync<TData>(
-        FetchQueryOptions<TData> options,
-        CancellationToken cancellationToken = default)
+        FetchQueryOptions<TData> options)
     {
         ThrowIfDisposed();
         var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
@@ -221,7 +220,7 @@ public sealed class QueryClient : IDisposable
         }
 
         Metrics.CacheMissTotal?.Add(1);
-        await query.Fetch(cancellationToken);
+        await query.Fetch();
 
         Debug.Assert(query.State is not null);
         return query.State.Data!;
@@ -232,8 +231,7 @@ public sealed class QueryClient : IDisposable
     /// Useful for warming the cache in the background.
     /// </summary>
     public async Task PrefetchQueryAsync<TData>(
-        FetchQueryOptions<TData> options,
-        CancellationToken cancellationToken = default)
+        FetchQueryOptions<TData> options)
     {
         ThrowIfDisposed();
         var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
@@ -241,7 +239,7 @@ public sealed class QueryClient : IDisposable
 
         try
         {
-            await FetchQueryAsync(options, cancellationToken);
+            await FetchQueryAsync(options);
         }
         catch (Exception ex)
         {
@@ -255,8 +253,7 @@ public sealed class QueryClient : IDisposable
     /// <see cref="FetchQueryAsync{TData}"/> to fetch and cache the data.
     /// </summary>
     public async Task<TData> EnsureQueryDataAsync<TData>(
-        FetchQueryOptions<TData> options,
-        CancellationToken cancellationToken = default)
+        FetchQueryOptions<TData> options)
     {
         ThrowIfDisposed();
         var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
@@ -282,7 +279,7 @@ public sealed class QueryClient : IDisposable
             if (options.RevalidateIfStale)
             {
                 // Fire-and-forget background refetch — caller gets InitialData immediately.
-                _ = FetchQueryAsync(options, cancellationToken).ContinueWith(
+                _ = FetchQueryAsync(options).ContinueWith(
                     static t => { /* swallow — background revalidation is best-effort */ },
                     TaskScheduler.Default);
             }
@@ -295,7 +292,7 @@ public sealed class QueryClient : IDisposable
         if (options.RevalidateIfStale
             && query?.State is { Status: QueryStatus.Succeeded } staleState)
         {
-            _ = FetchQueryAsync(options, cancellationToken).ContinueWith(
+            _ = FetchQueryAsync(options).ContinueWith(
                 static t => { /* swallow — background revalidation is best-effort */ },
                 TaskScheduler.Default);
 
@@ -303,7 +300,7 @@ public sealed class QueryClient : IDisposable
         }
 
         // Cache miss is recorded inside FetchQueryAsync when it proceeds to fetch.
-        return await FetchQueryAsync(options, cancellationToken);
+        return await FetchQueryAsync(options);
     }
 
     // ── Imperative infinite query fetch methods ─────────────────────────
@@ -319,8 +316,7 @@ public sealed class QueryClient : IDisposable
     /// Errors propagate to the caller.
     /// </remarks>
     public async Task<InfiniteData<TData, TPageParam>> FetchInfiniteQueryAsync<TData, TPageParam>(
-        FetchInfiniteQueryOptions<TData, TPageParam> options,
-        CancellationToken cancellationToken = default)
+        FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
         ThrowIfDisposed();
         var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
@@ -361,7 +357,7 @@ public sealed class QueryClient : IDisposable
         }
 
         Metrics.CacheMissTotal?.Add(1);
-        await query.Fetch(cancellationToken);
+        await query.Fetch();
 
         Debug.Assert(query.State is not null);
         return query.State.Data!;
@@ -372,8 +368,7 @@ public sealed class QueryClient : IDisposable
     /// exceptions. Useful for warming the cache in the background.
     /// </summary>
     public async Task PrefetchInfiniteQueryAsync<TData, TPageParam>(
-        FetchInfiniteQueryOptions<TData, TPageParam> options,
-        CancellationToken cancellationToken = default)
+        FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
         ThrowIfDisposed();
         var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
@@ -381,7 +376,7 @@ public sealed class QueryClient : IDisposable
 
         try
         {
-            await FetchInfiniteQueryAsync(options, cancellationToken);
+            await FetchInfiniteQueryAsync(options);
         }
         catch (Exception ex)
         {
@@ -396,8 +391,7 @@ public sealed class QueryClient : IDisposable
     /// and cache the data.
     /// </summary>
     public async Task<InfiniteData<TData, TPageParam>> EnsureInfiniteQueryDataAsync<TData, TPageParam>(
-        FetchInfiniteQueryOptions<TData, TPageParam> options,
-        CancellationToken cancellationToken = default)
+        FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
         ThrowIfDisposed();
         var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
@@ -423,7 +417,7 @@ public sealed class QueryClient : IDisposable
             if (options.RevalidateIfStale)
             {
                 // Fire-and-forget background refetch — caller gets InitialData immediately.
-                _ = FetchInfiniteQueryAsync(options, cancellationToken).ContinueWith(
+                _ = FetchInfiniteQueryAsync(options).ContinueWith(
                     static t => { /* swallow — background revalidation is best-effort */ },
                     TaskScheduler.Default);
             }
@@ -436,7 +430,7 @@ public sealed class QueryClient : IDisposable
         if (options.RevalidateIfStale
             && query?.State is { Status: QueryStatus.Succeeded } staleState)
         {
-            _ = FetchInfiniteQueryAsync(options, cancellationToken).ContinueWith(
+            _ = FetchInfiniteQueryAsync(options).ContinueWith(
                 static t => { /* swallow — background revalidation is best-effort */ },
                 TaskScheduler.Default);
 
@@ -444,7 +438,7 @@ public sealed class QueryClient : IDisposable
         }
 
         // Cache miss is recorded inside FetchInfiniteQueryAsync when it proceeds to fetch.
-        return await FetchInfiniteQueryAsync(options, cancellationToken);
+        return await FetchInfiniteQueryAsync(options);
     }
 
     private bool IsDataStale(long dataUpdatedAt, TimeSpan staleTime, bool isInvalidated = false)
@@ -697,8 +691,7 @@ public sealed class QueryClient : IDisposable
     /// Matches TanStack's async <c>invalidateQueries</c> semantics.
     /// </summary>
     public async Task InvalidateQueriesAsync(
-        InvalidateQueryFilters? filters = null,
-        CancellationToken cancellationToken = default)
+        InvalidateQueryFilters? filters = null)
     {
         ThrowIfDisposed();
         _logger.InvalidateQueries();
@@ -739,34 +732,33 @@ public sealed class QueryClient : IDisposable
                     Stale = filters?.Stale,
                     FetchStatus = filters?.FetchStatus,
                     Predicate = filters?.Predicate
-                },
-                cancellationToken);
+                });
         });
 
         await refetchTask;
     }
 
     /// <summary>Convenience overload that does a prefix match on the key.</summary>
-    public Task InvalidateQueriesAsync(QueryKey queryKey, CancellationToken cancellationToken = default)
+    public Task InvalidateQueriesAsync(QueryKey queryKey)
     {
         ThrowIfDisposed();
-        return InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = queryKey }, cancellationToken);
+        return InvalidateQueriesAsync(new InvalidateQueryFilters { QueryKey = queryKey });
     }
 
     /// <summary>
     /// Refetches all queries.
     /// </summary>
-    public Task RefetchQueriesAsync(CancellationToken cancellationToken = default)
-        => RefetchQueriesAsync(filters: null, cancellationToken);
+    public Task RefetchQueriesAsync()
+        => RefetchQueriesAsync(filters: null);
 
     /// <summary>
     /// Refetches all queries matching the given filters.
     /// This immediately triggers a fetch regardless of stale status.
     /// </summary>
-    public Task RefetchQueriesAsync(QueryFilters? filters, CancellationToken cancellationToken = default)
+    public Task RefetchQueriesAsync(QueryFilters? filters)
     {
         ThrowIfDisposed();
-        return RefetchQueriesAsync(filters, options: null, cancellationToken);
+        return RefetchQueriesAsync(filters, options: null);
     }
 
     /// <summary>
@@ -774,7 +766,7 @@ public sealed class QueryClient : IDisposable
     /// <see cref="RefetchOptions"/> for <c>CancelRefetch</c> and <c>ThrowOnError</c>.
     /// Mirrors TanStack <c>queryClient.ts:319–338</c>.
     /// </summary>
-    public async Task RefetchQueriesAsync(QueryFilters? filters, RefetchOptions? options, CancellationToken cancellationToken = default)
+    public async Task RefetchQueriesAsync(QueryFilters? filters, RefetchOptions? options)
     {
         ThrowIfDisposed();
         _logger.RefetchQueries();
@@ -786,7 +778,7 @@ public sealed class QueryClient : IDisposable
             .Where(q => !q.IsDisabled() && !q.IsStatic())
             .Select(q =>
             {
-                var fetchTask = q.Fetch(cancelRefetch, cancellationToken);
+                var fetchTask = q.Fetch(cancelRefetch);
 
                 // TanStack queryClient.ts:332–334 — resolve immediately for paused
                 // queries. Their retryer blocks on a TCS until the network is
@@ -818,10 +810,10 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>Backward-compatible overload that does a prefix match on the key.</summary>
-    public async Task RefetchQueriesAsync(QueryKey queryKey, CancellationToken cancellationToken = default)
+    public async Task RefetchQueriesAsync(QueryKey queryKey)
     {
         ThrowIfDisposed();
-        await RefetchQueriesAsync(new QueryFilters { QueryKey = queryKey }, cancellationToken);
+        await RefetchQueriesAsync(new QueryFilters { QueryKey = queryKey });
     }
 
     /// <summary>
@@ -1158,29 +1150,29 @@ public sealed class QueryClient : IDisposable
     /// <summary>
     /// Fetches a query imperatively using the key and function from <paramref name="options"/>.
     /// </summary>
-    public Task<TData> FetchQueryAsync<TData>(QueryOptions<TData> options, CancellationToken cancellationToken = default)
+    public Task<TData> FetchQueryAsync<TData>(QueryOptions<TData> options)
     {
         ThrowIfDisposed();
-        return FetchQueryAsync(options.ToFetchQueryOptions(), cancellationToken);
+        return FetchQueryAsync(options.ToFetchQueryOptions());
     }
 
     /// <summary>
     /// Prefetches a query using the key and function from <paramref name="options"/>.
     /// Errors are swallowed — useful for warming the cache in the background.
     /// </summary>
-    public Task PrefetchQueryAsync<TData>(QueryOptions<TData> options, CancellationToken cancellationToken = default)
+    public Task PrefetchQueryAsync<TData>(QueryOptions<TData> options)
     {
         ThrowIfDisposed();
-        return PrefetchQueryAsync(options.ToFetchQueryOptions(), cancellationToken);
+        return PrefetchQueryAsync(options.ToFetchQueryOptions());
     }
 
     /// <summary>
     /// Returns cached data if fresh, otherwise fetches using <paramref name="options"/>.
     /// </summary>
-    public Task<TData> EnsureQueryDataAsync<TData>(QueryOptions<TData> options, CancellationToken cancellationToken = default)
+    public Task<TData> EnsureQueryDataAsync<TData>(QueryOptions<TData> options)
     {
         ThrowIfDisposed();
-        return EnsureQueryDataAsync(options.ToFetchQueryOptions(), cancellationToken);
+        return EnsureQueryDataAsync(options.ToFetchQueryOptions());
     }
 
     /// <summary>

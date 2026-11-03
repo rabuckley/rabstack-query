@@ -244,7 +244,6 @@ public sealed class InfiniteQueryBehaviorTests
         // The gate is only armed after initial setup completes so the initial
         // fetch and FetchNextPageAsync proceed without blocking.
         var client = CreateQueryClient();
-        var cts = new CancellationTokenSource();
         var secondPageStarted = new TaskCompletionSource<bool>();
         var blockDuringRefetch = false;
 
@@ -285,19 +284,16 @@ public sealed class InfiniteQueryBehaviorTests
         // Arm the blocking gate for the refetch phase
         blockDuringRefetch = true;
 
-        // Act — trigger a refetch with cancellation token, then cancel mid-refetch
-        var refetchResult = observer.CurrentResult;
-        var refetchTask = refetchResult.RefetchAsync(cancellationToken: cts.Token);
+        var pagesBeforeRefetch = observer.CurrentResult.Data?.Pages;
+        var refetchTask = observer.CurrentResult.RefetchAsync();
 
         // Wait for second page fetch to start, then cancel
         await secondPageStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await cts.CancelAsync();
+        await client.CancelQueriesAsync(["cancel-refetch"]);
 
-        // Assert — refetch should throw a cancellation exception.
-        // TaskCanceledException (from TCS.TrySetCanceled) is a subclass of
-        // OperationCanceledException, so use IsAssignableFrom for robustness.
-        var ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refetchTask);
-        Assert.IsAssignableFrom<OperationCanceledException>(ex);
+        var result = await refetchTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(pagesBeforeRefetch, result.Data?.Pages);
+        Assert.False(result.IsError);
     }
 
     [Fact]

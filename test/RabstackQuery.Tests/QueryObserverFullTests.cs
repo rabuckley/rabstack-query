@@ -2130,8 +2130,7 @@ public sealed class QueryObserverFullTests
         // avoid deadlocking: the in-flight fetch awaits `tcs.Task`, and a refetch
         // would deduplicate to the same task, blocking InvalidateQueriesAsync forever.
         await client.InvalidateQueriesAsync(
-            new InvalidateQueryFilters { QueryKey = ["placeholder-memo"], RefetchType = InvalidateRefetchType.None },
-            TestContext.Current.CancellationToken);
+            new InvalidateQueryFilters { QueryKey = ["placeholder-memo"], RefetchType = InvalidateRefetchType.None });
         await Task.Delay(50, TestContext.Current.CancellationToken);
 
         // Assert — Select should not have been called again for the memoized placeholder
@@ -3081,37 +3080,6 @@ public sealed class QueryObserverFullTests
         // Assert
         Assert.True(result.IsError);
         Assert.Equal("suppressed too", result.Error.Message);
-    }
-
-    /// <summary>
-    /// Deliberate C# divergence: TanStack's <c>refetch</c> takes no token, so it has no equivalent
-    /// of this case. Cancelling your own token follows the .NET contract and throws.
-    /// </summary>
-    [Fact(Timeout = 10_000)]
-    public async Task RefetchAsync_Should_Throw_When_Callers_Token_Is_Cancelled()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var cts = new CancellationTokenSource();
-
-        var observer = new QueryObserver<string, string>(client,
-            new QueryObserverOptions<string, string>
-            {
-                QueryKey = ["cancel-propagate"],
-                QueryFn = async ctx =>
-                {
-                    await Task.Delay(Timeout.Infinite, ctx.CancellationToken);
-                    return "unreachable";
-                },
-                Enabled = false
-            });
-
-        // Act — cancel while fetching, with default ThrowOnError = false
-        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
-        var act = () => observer.RefetchAsync(cancellationToken: cts.Token);
-
-        // Assert
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
     }
 
     /// <summary>

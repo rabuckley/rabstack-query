@@ -337,59 +337,6 @@ public sealed class QueryTests
 
     #region Cancellation
 
-    [Fact]
-    public async Task CancellationToken_Should_Cancel_InFlight_Fetch()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var query = BuildQuery<string>(client, ["todos"], retry: 0);
-        var cts = new CancellationTokenSource();
-
-        query.SetQueryFn(async ctx =>
-        {
-            await Task.Delay(5000, ctx.CancellationToken); // Long-running task
-            return "should not reach here";
-        });
-
-        // Act — cancel after a short delay
-        cts.CancelAfter(50);
-
-        // Assert — Task.Delay throws TaskCanceledException (a subclass of OperationCanceledException)
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => query.Fetch(cts.Token));
-    }
-
-    [Fact]
-    public async Task Cancelled_Query_Can_Be_Refetched()
-    {
-        // Arrange
-        var client = CreateQueryClient();
-        var query = BuildQuery<string>(client, ["todos"], retry: 0);
-        var fetchCount = 0;
-
-        query.SetQueryFn(async ctx =>
-        {
-            fetchCount++;
-            if (fetchCount == 1)
-            {
-                await Task.Delay(5000, ctx.CancellationToken);
-                return "should not reach";
-            }
-            return "refetch-success";
-        });
-
-        // Cancel the first fetch
-        var cts = new CancellationTokenSource();
-        cts.CancelAfter(50);
-        try { await query.Fetch(cts.Token); } catch (OperationCanceledException) { }
-
-        // Act — refetch without cancellation
-        await query.Fetch();
-
-        // Assert
-        Assert.Equal("refetch-success", query.State!.Data);
-        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
-    }
-
     #endregion
 
     #region Garbage Collection

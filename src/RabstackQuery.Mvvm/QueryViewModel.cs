@@ -207,8 +207,6 @@ public partial class QueryViewModel<TData, TQueryData> : ObservableObject, ISubs
     [RelayCommand]
     private async Task RefetchAsync()
     {
-        // RefetchAsync suppresses failures and outside cancellation, matching TanStack's
-        // `promise.catch(noop)`. Nothing may escape: bound commands rethrow on the UI context.
         IsManualRefreshing = true;
         try
         {

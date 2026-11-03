@@ -40,18 +40,12 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     }
 
     /// <summary>
-    /// Fetches the next page by issuing a directional fetch via
-    /// <see cref="Query{TData}.Fetch(FetchMeta, CancellationToken)"/>.
+    /// Asynchronously fetches the next page.
     /// </summary>
     /// <remarks>
-    /// If a non-directional fetch (invalidation, window focus) is already in-flight,
-    /// Query.Fetch deduplicates and returns the existing task. The directional FetchMeta
-    /// is dropped — the in-flight fetch keeps its original (null) FetchMeta. This is
-    /// correct: direction is read from query state at result-wrap time, so after the
-    /// non-directional fetch completes, IsFetchingNextPage will be false. Matches
-    /// TanStack's behavior.
+    /// If a refetch is already in progress, waits for it without fetching another page.
     /// </remarks>
-    public async Task FetchNextPageAsync(CancellationToken cancellationToken = default)
+    public async Task FetchNextPageAsync()
     {
         var query = _inner.CurrentQuery;
         if (query is not null)
@@ -59,11 +53,8 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
             try
             {
                 await query.Fetch(
-                    new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Forward } },
-                    cancellationToken);
+                    new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Forward } });
             }
-            // See QueryObserver.ExecuteFetch: only the caller's own token throws.
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch
             {
                 // Errors are captured in query state via ErrorAction dispatch.
@@ -73,14 +64,12 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     }
 
     /// <summary>
-    /// Fetches the previous page by issuing a directional fetch via
-    /// <see cref="Query{TData}.Fetch(FetchMeta, CancellationToken)"/>.
+    /// Asynchronously fetches the previous page.
     /// </summary>
     /// <remarks>
-    /// See <see cref="FetchNextPageAsync"/> remarks on dedup behavior when a
-    /// non-directional fetch is already in-flight.
+    /// If a refetch is already in progress, waits for it without fetching another page.
     /// </remarks>
-    public async Task FetchPreviousPageAsync(CancellationToken cancellationToken = default)
+    public async Task FetchPreviousPageAsync()
     {
         var query = _inner.CurrentQuery;
         if (query is not null)
@@ -88,11 +77,8 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
             try
             {
                 await query.Fetch(
-                    new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Backward } },
-                    cancellationToken);
+                    new FetchMeta { FetchMore = new FetchMore { Direction = FetchDirection.Backward } });
             }
-            // See QueryObserver.ExecuteFetch: only the caller's own token throws.
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch
             {
                 // Errors are captured in query state via ErrorAction dispatch.

@@ -22,8 +22,7 @@ public class FetchInfiniteQueryTests
                 GetNextPageParam = ctx => ctx.AllPages.Count < 3
                     ? PageParamResult<int>.Some(ctx.PageParam + 1)
                     : PageParamResult<int>.None,
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert
         Assert.Single(result.Pages);
@@ -53,10 +52,10 @@ public class FetchInfiniteQueryTests
         };
 
         // First call populates cache
-        await client.FetchInfiniteQueryAsync(options, TestContext.Current.CancellationToken);
+        await client.FetchInfiniteQueryAsync(options);
 
         // Act — second call with same staleTime should skip fetch
-        var result = await client.FetchInfiniteQueryAsync(options, TestContext.Current.CancellationToken);
+        var result = await client.FetchInfiniteQueryAsync(options);
 
         // Assert — should return cached data, fetch called only once
         Assert.Equal("page-0", result.Pages[0]);
@@ -84,10 +83,10 @@ public class FetchInfiniteQueryTests
         };
 
         // First call populates cache
-        await client.FetchInfiniteQueryAsync(options, TestContext.Current.CancellationToken);
+        await client.FetchInfiniteQueryAsync(options);
 
         // Act — second call with staleTime=0 should refetch
-        var result = await client.FetchInfiniteQueryAsync(options, TestContext.Current.CancellationToken);
+        var result = await client.FetchInfiniteQueryAsync(options);
 
         // Assert — should have fetched twice
         Assert.Equal("fetch-2", result.Pages[0]);
@@ -107,8 +106,7 @@ public class FetchInfiniteQueryTests
                     InitialPageParam = 0,
                     QueryFn = _ => throw new InvalidOperationException("boom"),
                     GetNextPageParam = _ => PageParamResult<int>.None,
-                },
-                TestContext.Current.CancellationToken));
+                }));
 
         Assert.Null(exception);
     }
@@ -124,8 +122,7 @@ public class FetchInfiniteQueryTests
                 InitialPageParam = 0,
                 QueryFn = async ctx => "prefetched",
                 GetNextPageParam = _ => PageParamResult<int>.None,
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert — data should be in cache
         var data = client.GetQueryData<InfiniteData<string, int>>(["items"]);
@@ -160,8 +157,7 @@ public class FetchInfiniteQueryTests
                     return "fetched";
                 },
                 GetNextPageParam = _ => PageParamResult<int>.None,
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert — should return seeded data without fetching
         Assert.Equal("seeded", result.Pages[0]);
@@ -179,8 +175,7 @@ public class FetchInfiniteQueryTests
                 InitialPageParam = 0,
                 QueryFn = async _ => "fetched",
                 GetNextPageParam = _ => PageParamResult<int>.None,
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         Assert.Equal("fetched", result.Pages[0]);
     }
@@ -209,8 +204,7 @@ public class FetchInfiniteQueryTests
                     return "fetched";
                 },
                 GetNextPageParam = _ => PageParamResult<int>.None,
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert — should return initial data, not fetch
         Assert.Equal("seeded-from-initial", result.Pages[0]);
@@ -251,8 +245,7 @@ public class FetchInfiniteQueryTests
                     return "fresh-data";
                 },
                 GetNextPageParam = _ => PageParamResult<int>.None,
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert — should return stale data immediately
         Assert.Equal("old-data", result.Pages[0]);

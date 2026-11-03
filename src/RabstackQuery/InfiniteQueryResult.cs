@@ -58,11 +58,11 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
     public bool IsFetchPreviousPageError =>
         _inner.IsError && _lastFetchDirection is FetchDirection.Backward;
 
-    public Task FetchNextPageAsync(CancellationToken cancellationToken = default)
-        => _observer.FetchNextPageAsync(cancellationToken);
+    public Task FetchNextPageAsync()
+        => _observer.FetchNextPageAsync();
 
-    public Task FetchPreviousPageAsync(CancellationToken cancellationToken = default)
-        => _observer.FetchPreviousPageAsync(cancellationToken);
+    public Task FetchPreviousPageAsync()
+        => _observer.FetchPreviousPageAsync();
 
     // ── Overridden base properties to exclude page-specific fetches ─────
     // Mirrors infiniteQueryObserver.ts:177–181 which overrides isRefetching
@@ -105,7 +105,6 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
     public FetchStatus FetchStatus => _inner.FetchStatus;
 
     public Task<IQueryResult<InfiniteData<TData, TPageParam>>> RefetchAsync(
-        RefetchOptions? options = null,
-        CancellationToken cancellationToken = default)
-        => _inner.RefetchAsync(options, cancellationToken);
+        RefetchOptions? options = null)
+        => _inner.RefetchAsync(options);
 }

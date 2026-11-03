@@ -95,12 +95,6 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     /// </summary>
     public QueryObserverOptions<TData, TQueryData> Options => _options;
 
-    /// <summary>
-    /// The underlying query this observer is attached to. Used by
-    /// <see cref="InfiniteQueryObserver{TData,TPageParam}"/> to call
-    /// <see cref="Query{TData}.Fetch(FetchMeta, CancellationToken)"/>
-    /// for directional page fetches.
-    /// </summary>
     internal Query<TQueryData>? CurrentQuery => _currentQuery;
 
     public void SetOptions(QueryObserverOptions<TData, TQueryData> options)
@@ -476,37 +470,21 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             initialErrorUpdateCount: _currentQueryInitialState?.ErrorUpdateCount ?? 0);
     }
 
-    /// <summary>
-    /// Internal fetch that suppresses failures and outside cancellation, matching
-    /// TanStack's <c>#executeFetch</c> which does <c>promise.catch(noop)</c>.
-    /// Errors are already captured in the query state via <c>ErrorAction</c>
-    /// dispatch, so suppression is safe.
-    /// </summary>
-    private async Task ExecuteFetch(bool cancelRefetch = false, CancellationToken cancellationToken = default)
+    private async Task ExecuteFetch(bool cancelRefetch = false)
     {
         if (_currentQuery is null) return;
 
         try
         {
-            await _currentQuery.Fetch(cancelRefetch, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // C# divergence: TanStack's refetch takes no token. Cancelling your own token
-            // follows the .NET contract and throws; anyone else's cancel is suppressed below.
-            throw;
+            await _currentQuery.Fetch(cancelRefetch);
         }
         catch
         {
-            // Errors are already captured in the query state via ErrorAction
-            // dispatch. Suppress here, matching TanStack's `promise.catch(noop)`
-            // in `#executeFetch`, which also swallows CancelledError.
         }
     }
 
     public async Task<IQueryResult<TData>> RefetchAsync(
-        RefetchOptions? options = null,
-        CancellationToken cancellationToken = default)
+        RefetchOptions? options = null)
     {
         // Thread CancelRefetch through to the query's FetchInternal.
         // Defaults to true when called by user code (matching TanStack's
@@ -517,11 +495,11 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         {
             if (options?.ThrowOnError is true)
             {
-                await _currentQuery.Fetch(cancelRefetch, cancellationToken);
+                await _currentQuery.Fetch(cancelRefetch);
             }
             else
             {
-                await ExecuteFetch(cancelRefetch, cancellationToken);
+                await ExecuteFetch(cancelRefetch);
             }
         }
 

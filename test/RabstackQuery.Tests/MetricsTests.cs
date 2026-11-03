@@ -57,8 +57,7 @@ public sealed class MetricsTests
         await client.FetchQueryAsync(new FetchQueryOptions<string>
             {
                 QueryKey = ["test"], QueryFn = async _ => "result"
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert
         var fetches = fetchTotal.GetMeasurementSnapshot();
@@ -103,8 +102,7 @@ public sealed class MetricsTests
             client.FetchQueryAsync(new FetchQueryOptions<string>
                 {
                     QueryKey = ["fail"], QueryFn = _ => throw new InvalidOperationException("boom")
-                },
-                TestContext.Current.CancellationToken));
+                }));
 
         // Assert
         Assert.Single(fetchTotal.GetMeasurementSnapshot());
@@ -133,21 +131,22 @@ public sealed class MetricsTests
             QueryMetrics.MeterName,
             "rabstackquery.query.fetch_duration");
 
-        using var cts = new CancellationTokenSource();
+        var fetchStarted = new TaskCompletionSource();
 
         // Act — cancel while the query function is waiting
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            client.FetchQueryAsync(new FetchQueryOptions<string>
-                {
-                    QueryKey = ["cancel"],
-                    QueryFn = async ctx =>
-                    {
-                        cts.Cancel();
-                        ctx.CancellationToken.ThrowIfCancellationRequested();
-                        return "never";
-                    }
-                },
-                cts.Token));
+        var fetch = client.FetchQueryAsync(new FetchQueryOptions<string>
+        {
+            QueryKey = ["cancel"],
+            QueryFn = async ctx =>
+            {
+                fetchStarted.TrySetResult();
+                await new TaskCompletionSource().Task.WaitAsync(ctx.CancellationToken);
+                return "never";
+            }
+        });
+        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await client.CancelQueriesAsync(["cancel"]);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
 
         // Assert — cancelled count recorded, but no duration
         Assert.Single(fetchCancelled.GetMeasurementSnapshot());
@@ -186,8 +185,8 @@ public sealed class MetricsTests
         query.SetQueryFn(_ => tcs.Task);
 
         // Act — first fetch starts the in-flight task, second is deduplicated
-        var fetch1 = query.Fetch(TestContext.Current.CancellationToken);
-        var fetch2 = query.Fetch(TestContext.Current.CancellationToken);
+        var fetch1 = query.Fetch();
+        var fetch2 = query.Fetch();
         tcs.SetResult("done");
         await fetch1;
         await fetch2;
@@ -219,11 +218,11 @@ public sealed class MetricsTests
         };
 
         // First fetch populates the cache
-        await client.FetchQueryAsync(options, TestContext.Current.CancellationToken);
+        await client.FetchQueryAsync(options);
         Assert.Empty(cacheHit.GetMeasurementSnapshot());
 
         // Act — second fetch should be a cache hit
-        await client.FetchQueryAsync(options, TestContext.Current.CancellationToken);
+        await client.FetchQueryAsync(options);
 
         // Assert
         Assert.Single(cacheHit.GetMeasurementSnapshot());
@@ -244,8 +243,7 @@ public sealed class MetricsTests
         await client.FetchQueryAsync(new FetchQueryOptions<string>
             {
                 QueryKey = ["miss-test"], QueryFn = async _ => "data"
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Assert
         Assert.Single(cacheMiss.GetMeasurementSnapshot());
@@ -485,7 +483,7 @@ public sealed class MetricsTests
         });
 
         // Act
-        await query.Fetch(TestContext.Current.CancellationToken);
+        await query.Fetch();
 
         // Assert — 2 retry attempts (the initial attempt is not a retry)
         var retries = retryTotal.GetMeasurementSnapshot();
@@ -552,11 +550,10 @@ public sealed class MetricsTests
         await client.FetchQueryAsync(new FetchQueryOptions<string>
             {
                 QueryKey = ["invalidate-test"], QueryFn = async _ => "data"
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         // Act
-        await client.InvalidateQueriesAsync(["invalidate-test"], TestContext.Current.CancellationToken);
+        await client.InvalidateQueriesAsync(["invalidate-test"]);
 
         // Assert
         Assert.Single(invalidationTotal.GetMeasurementSnapshot());
@@ -646,8 +643,7 @@ public sealed class MetricsTests
         await client.FetchQueryAsync(new FetchQueryOptions<string>
             {
                 QueryKey = ["no-metrics"], QueryFn = async _ => "data"
-            },
-            TestContext.Current.CancellationToken);
+            });
 
         var observer = new QueryObserver<string, string>(
             client,
@@ -659,7 +655,7 @@ public sealed class MetricsTests
         var sub = observer.Subscribe(_ => { });
         sub.Dispose();
 
-        await client.InvalidateQueriesAsync(["no-metrics"], TestContext.Current.CancellationToken);
+        await client.InvalidateQueriesAsync(["no-metrics"]);
 
         var mutationOptions = new MutationOptions<string, Exception, string, object?>
         {
@@ -694,11 +690,11 @@ public sealed class MetricsTests
         };
 
         // Populate the cache
-        await client.FetchQueryAsync(options, TestContext.Current.CancellationToken);
+        await client.FetchQueryAsync(options);
         Assert.Empty(cacheHit.GetMeasurementSnapshot());
 
         // Act — EnsureQueryDataAsync should hit the cache
-        await client.EnsureQueryDataAsync(options, TestContext.Current.CancellationToken);
+        await client.EnsureQueryDataAsync(options);
 
         // Assert
         Assert.Single(cacheHit.GetMeasurementSnapshot());
