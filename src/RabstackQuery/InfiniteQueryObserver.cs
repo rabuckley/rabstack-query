@@ -95,28 +95,18 @@ public sealed class InfiniteQueryObserver<TData, TPageParam>
     private IInfiniteQueryResult<TData, TPageParam> WrapResult(
         IQueryResult<InfiniteData<TData, TPageParam>> innerResult)
     {
-        var data = innerResult.Data;
-        InfiniteData<TData, TPageParam>? transformedData = null;
-
-        // Apply the Select transform if provided. HasNextPage/HasPreviousPage
-        // are computed on the raw (untransformed) data, matching TanStack's
-        // behavior where page param functions always see the original data.
-        if (_options.Select is not null && data is not null)
-        {
-            transformedData = _options.Select(data);
-        }
-
-        var hasNextPage = ComputeHasNextPage(data);
-        var hasPreviousPage = ComputeHasPreviousPage(data);
+        var state = _inner.CurrentQuery?.State;
+        var hasNextPage = ComputeHasNextPage(state?.Data);
+        var hasPreviousPage = ComputeHasPreviousPage(state?.Data);
 
         // Read direction from query state rather than observer-level shadow state.
         // During a non-directional refetch (invalidation, window focus, interval),
         // FetchMeta is null so direction is null — correctly producing
         // IsFetchingNextPage=false, IsFetchingPreviousPage=false, IsRefetching=true.
-        var direction = _inner.CurrentQuery?.State?.FetchMeta?.FetchMore?.Direction;
+        var direction = state?.FetchMeta?.FetchMore?.Direction;
 
         return new InfiniteQueryResult<TData, TPageParam>(
-            innerResult, this, transformedData, hasNextPage, hasPreviousPage, direction);
+            innerResult, this, hasNextPage, hasPreviousPage, direction);
     }
 
     private bool ComputeHasNextPage(InfiniteData<TData, TPageParam>? data)

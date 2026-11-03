@@ -11,7 +11,6 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
 {
     private readonly IQueryResult<InfiniteData<TData, TPageParam>> _inner;
     private readonly InfiniteQueryObserver<TData, TPageParam> _observer;
-    private readonly InfiniteData<TData, TPageParam>? _transformedData;
     private readonly bool _hasNextPage;
     private readonly bool _hasPreviousPage;
     private readonly FetchDirection? _lastFetchDirection;
@@ -19,14 +18,12 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
     internal InfiniteQueryResult(
         IQueryResult<InfiniteData<TData, TPageParam>> inner,
         InfiniteQueryObserver<TData, TPageParam> observer,
-        InfiniteData<TData, TPageParam>? transformedData,
         bool hasNextPage,
         bool hasPreviousPage,
         FetchDirection? lastFetchDirection)
     {
         _inner = inner;
         _observer = observer;
-        _transformedData = transformedData;
         _hasNextPage = hasNextPage;
         _hasPreviousPage = hasPreviousPage;
         _lastFetchDirection = lastFetchDirection;
@@ -77,12 +74,11 @@ internal sealed class InfiniteQueryResult<TData, TPageParam> : IInfiniteQueryRes
         && _inner.Status is not QueryStatus.Pending;
 
     public bool IsRefetchError =>
-        _inner.IsError && !IsFetchNextPageError && !IsFetchPreviousPageError
-        && _inner.Data is not null;
+        _inner.IsRefetchError && !IsFetchNextPageError && !IsFetchPreviousPageError;
 
     // ── Delegated base properties ───────────────────────────────────────
 
-    public InfiniteData<TData, TPageParam>? Data => _transformedData ?? _inner.Data;
+    public InfiniteData<TData, TPageParam>? Data => _inner.Data;
     public DateTimeOffset DataUpdatedAt => _inner.DataUpdatedAt;
     public Exception? Error => _inner.Error;
     public DateTimeOffset ErrorUpdatedAt => _inner.ErrorUpdatedAt;

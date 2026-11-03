@@ -47,6 +47,10 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
     /// <see cref="QueryObserverOptions{TData,TQueryData}.Select"/> which changes the
     /// data type, this preserves the <c>InfiniteData</c> wrapper.
     /// </summary>
+    /// <remarks>
+    /// An exception thrown by this delegate is reported on this observer's result, as
+    /// described for <see cref="QueryObserverOptions{TData,TQueryData}.Select"/>.
+    /// </remarks>
     public Func<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>>? Select { get; init; }
 
     // ── Standard observer options (composed, not duplicated) ────────────
@@ -98,6 +102,7 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
         {
             QueryKey = QueryKey,
             QueryFn = queryFn,
+            Select = Select,
             Enabled = Enabled,
             StaleTime = StaleTime,
             GcTime = GcTime,

@@ -26,6 +26,12 @@ public record QueryObserverOptions<TData, TQueryData>
     /// <summary>
     /// An optional selector function to transform or derive data from the query result.
     /// </summary>
+    /// <remarks>
+    /// An exception thrown by this delegate does not propagate and does not change the query
+    /// or other observers. This observer's result reports <see cref="QueryStatus.Errored"/>
+    /// with the exception as <see cref="IQueryResult{TData}.Error"/> and the last successfully
+    /// selected data as <see cref="IQueryResult{TData}.Data"/>.
+    /// </remarks>
     public Func<TQueryData, TData>? Select { get; init; }
 
     /// <summary>

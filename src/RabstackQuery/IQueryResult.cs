@@ -91,7 +91,8 @@ public interface IQueryResult<TData>
     public bool IsPending { get; }
 
     /// <summary>
-    /// <see langword="true"/> if the query failed while fetching for the first time.
+    /// <see langword="true"/> if the result is in error and has no data: the first fetch failed, or
+    /// <c>Select</c> threw before it had produced any data.
     /// </summary>
     public bool IsLoadingError { get; }
 
@@ -107,12 +108,13 @@ public interface IQueryResult<TData>
     public bool IsPlaceholderData { get; }
 
     /// <summary>
-    /// <see langword="true"/> if the query failed during a background refetch (data was already cached).
+    /// <see langword="true"/> if the result is in error and still has data: a refetch failed, or
+    /// <c>Select</c> threw and the result keeps the last selected data.
     /// </summary>
     public bool IsRefetchError { get; }
 
     /// <summary>
-    /// <see langword="true"/> if a background refetch is in progress while cached data exists.
+    /// <see langword="true"/> if a fetch is in progress and the status is not <see cref="QueryStatus.Pending"/>.
     /// </summary>
     public bool IsRefetching { get; }
 

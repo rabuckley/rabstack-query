@@ -57,11 +57,18 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
     // state during UpdateResult.
     private MemoSnapshot _memo = new();
 
-    private sealed class MemoSnapshot
+    private sealed record MemoSnapshot
     {
         public QueryObserverOptions<TData, TQueryData>? Options { get; init; }
         public QueryState<TQueryData>? State { get; init; }
         public Query<TQueryData>? LastQueryWithDefinedData { get; init; }
+
+        public Func<TQueryData, TData>? SelectFn { get; init; }
+        public TData? SelectResult { get; init; }
+        public Exception? SelectError { get; init; }
+
+        // Unlike TanStack's undefined, default(TData) cannot mark a missing value-type result.
+        public bool HasSelectResult { get; init; }
     }
 
     // Snapshot of the query's update counts at the time this observer attached,
@@ -245,6 +252,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         var prevResult = _currentResult;
         var memo = _memo;
         var prevOptions = memo.Options;
+        var queryHasData = HasData(state);
 
         // Placeholder data activation: the query must be pending with no data,
         // and a PlaceholderData delegate must be configured.
@@ -269,12 +277,7 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
                 && ReferenceEquals(placeholderDataFn, prevOptions.PlaceholderData))
             {
                 // Reuse previous result wholesale — data and Select output are unchanged
-                _memo = new MemoSnapshot
-                {
-                    Options = _options,
-                    State = state,
-                    LastQueryWithDefinedData = memo.LastQueryWithDefinedData,
-                };
+                _memo = memo with { Options = _options, State = state };
                 return;
             }
 
@@ -297,29 +300,58 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             }
         }
 
+        var hasInputData = queryHasData || isPlaceholderData;
+        var selectFn = memo.SelectFn;
+        var selectResult = memo.SelectResult;
+        var selectError = memo.SelectError;
+        var hasSelectResult = memo.HasSelectResult;
+
         // Apply Select transform. The placeholder memoization path above returns
         // early, so if we reach here we always need to consider Select.
         TData? transformedData = default;
-        if (_options.Select is not null && data is not null)
+        if (_options.Select is { } select && hasInputData && data is not null)
         {
-            // Memoize: skip Select when the raw query data reference hasn't changed
-            // and the Select function is the same. This avoids redundant selector
-            // invocations during state transitions that don't affect data (e.g.,
-            // FetchAction dispatch preserves existing data while only changing
-            // FetchStatus). Mirrors TanStack's selectResult memoization.
-            if (!isPlaceholderData
-                && memo.State is not null
-                && ReferenceEquals(data, memo.State.Data)
-                && prevOptions?.Select is not null
-                && ReferenceEquals(_options.Select, prevOptions.Select)
-                && _currentResult is not null)
+            if (prevResult is not null
+                && memo.State is { } prevState
+                && HasData(prevState)
+                && IsSameData(data, prevState.Data)
+                && ReferenceEquals(select, memo.SelectFn))
             {
-                transformedData = _currentResult.Data;
+                transformedData = selectResult;
             }
             else
             {
-                transformedData = _options.Select(data);
-                // TanStack queryObserver.ts:537 — structural sharing on Select output
+                try
+                {
+                    selectFn = select;
+                    transformedData = select(data);
+                    if (prevResult is { Data: not null } && transformedData is not null)
+                    {
+                        transformedData = ApplyStructuralSharing(
+                            prevResult.Data, transformedData, _options.StructuralSharing);
+                    }
+
+                    selectResult = transformedData;
+                    hasSelectResult = transformedData is not null;
+                    selectError = null;
+                }
+                catch (Exception ex)
+                {
+                    selectError = ex;
+                }
+            }
+        }
+        else
+        {
+            // TanStack's createResult keeps the select error when only the selector is removed.
+            if (!hasInputData)
+            {
+                selectError = null;
+            }
+
+            if (typeof(TData) == typeof(TQueryData))
+            {
+                transformedData = (TData?)(object?)data;
                 if (_currentResult is { Data: not null } && transformedData is not null)
                 {
                     transformedData = ApplyStructuralSharing(
@@ -327,15 +359,19 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
                 }
             }
         }
-        else if (typeof(TData) == typeof(TQueryData))
+
+        var error = state.Error;
+        var errorUpdatedAt = state.ErrorUpdatedAt;
+        var hasData = hasInputData && transformedData is not null;
+
+        if (selectError is not null)
         {
-            transformedData = (TData?)(object?)data;
-            // Structural sharing on raw data when no Select is configured
-            if (_currentResult is { Data: not null } && transformedData is not null)
-            {
-                transformedData = ApplyStructuralSharing(
-                    _currentResult.Data, transformedData, _options.StructuralSharing);
-            }
+            error = selectError;
+            errorUpdatedAt = _client.TimeProvider.GetUtcNowMs();
+            status = QueryStatus.Errored;
+            transformedData = selectResult;
+            isPlaceholderData = false;
+            hasData = hasSelectResult;
         }
 
         // Memoization: if the computed result is structurally identical to the
@@ -344,51 +380,56 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         // ReferenceEquals to skip spurious notifications when SetQueries is called
         // with the same query list). Mirrors TanStack's shallowEqualObjects check
         // in QueriesObserver.setQueries.
-        if (IsResultUnchanged(memo, state, status, transformedData, isPlaceholderData))
+        if (!IsResultUnchanged(memo, state, status, error, errorUpdatedAt, transformedData, isPlaceholderData))
         {
-            _memo = new MemoSnapshot
+            var transformedState = new QueryState<TData>
             {
-                Options = _options,
-                State = state,
-                LastQueryWithDefinedData = (!isPlaceholderData && state.Data is not null)
-                    ? _currentQuery
-                    : memo.LastQueryWithDefinedData,
+                Data = transformedData,
+                DataUpdateCount = state.DataUpdateCount,
+                DataUpdatedAt = state.DataUpdatedAt,
+                Error = error,
+                ErrorUpdateCount = state.ErrorUpdateCount,
+                ErrorUpdatedAt = errorUpdatedAt,
+                FetchFailureCount = state.FetchFailureCount,
+                FetchFailureReason = state.FetchFailureReason,
+                FetchMeta = state.FetchMeta,
+                IsInvalidated = state.IsInvalidated,
+                Status = status,
+                FetchStatus = state.FetchStatus
             };
-            return;
+
+            _currentResult = new QueryResult<TData>(
+                transformedState, ResolveEnabled(), ResolveStaleTime(), _client.TimeProvider, isPlaceholderData,
+                refetch: RefetchAsync,
+                initialDataUpdateCount: _currentQueryInitialState?.DataUpdateCount ?? 0,
+                initialErrorUpdateCount: _currentQueryInitialState?.ErrorUpdateCount ?? 0,
+                hasData: hasData);
         }
-
-        var transformedState = new QueryState<TData>
-        {
-            Data = transformedData,
-            DataUpdateCount = state.DataUpdateCount,
-            DataUpdatedAt = state.DataUpdatedAt,
-            Error = state.Error,
-            ErrorUpdateCount = state.ErrorUpdateCount,
-            ErrorUpdatedAt = state.ErrorUpdatedAt,
-            FetchFailureCount = state.FetchFailureCount,
-            FetchFailureReason = state.FetchFailureReason,
-            FetchMeta = state.FetchMeta,
-            IsInvalidated = state.IsInvalidated,
-            Status = status,
-            FetchStatus = state.FetchStatus
-        };
-
-        _currentResult = new QueryResult<TData>(
-            transformedState, ResolveEnabled(), ResolveStaleTime(), _client.TimeProvider, isPlaceholderData,
-            refetch: RefetchAsync,
-            initialDataUpdateCount: _currentQueryInitialState?.DataUpdateCount ?? 0,
-            initialErrorUpdateCount: _currentQueryInitialState?.ErrorUpdateCount ?? 0);
 
         // Update memoization bookkeeping atomically
         _memo = new MemoSnapshot
         {
             Options = _options,
             State = state,
-            LastQueryWithDefinedData = (!isPlaceholderData && state.Data is not null)
-                ? _currentQuery
-                : memo.LastQueryWithDefinedData,
+            LastQueryWithDefinedData = queryHasData ? _currentQuery : memo.LastQueryWithDefinedData,
+            SelectFn = selectFn,
+            SelectResult = selectResult,
+            SelectError = selectError,
+            HasSelectResult = hasSelectResult,
         };
     }
+
+    // Unlike TanStack's undefined, default(TQueryData) cannot mark missing value-type data.
+    // Succeeded also admits initial data with InitialDataUpdatedAt = 0.
+    private static bool HasData(QueryState<TQueryData> state)
+        => state.Data is not null
+            && (state.Status is QueryStatus.Succeeded || state.DataUpdatedAt > 0);
+
+    // TanStack's === compares numbers by value. ReferenceEquals boxes C# value types separately.
+    private static bool IsSameData(TQueryData? left, TQueryData? right)
+        => typeof(TQueryData).IsValueType
+            ? EqualityComparer<TQueryData?>.Default.Equals(left, right)
+            : ReferenceEquals(left, right);
 
     /// <summary>
     /// Memoization gate: returns <see langword="true"/> when the computed result
@@ -401,6 +442,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
         MemoSnapshot memo,
         QueryState<TQueryData> state,
         QueryStatus status,
+        Exception? error,
+        long errorUpdatedAt,
         TData? transformedData,
         bool isPlaceholderData)
     {
@@ -423,7 +466,8 @@ public class QueryObserver<TData, TQueryData> : Subscribable<QueryObserverListen
             && _currentResult.IsEnabled == ResolveEnabled()
             && prevIsInvalidated == state.IsInvalidated
             && EqualityComparer<TData?>.Default.Equals(transformedData, _currentResult.Data)
-            && ReferenceEquals(state.Error, _currentResult.Error)
+            && ReferenceEquals(error, _currentResult.Error)
+            && _currentResult.ErrorUpdatedAt == DateTimeOffset.FromUnixTimeMilliseconds(errorUpdatedAt)
             && _currentResult.DataUpdatedAt == DateTimeOffset.FromUnixTimeMilliseconds(state.DataUpdatedAt)
             && _currentResult.FailureCount == state.FetchFailureCount
             && _currentResult.IsPlaceholderData == isPlaceholderData

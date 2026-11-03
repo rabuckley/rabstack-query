@@ -13,6 +13,7 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
     private readonly TimeSpan _staleTime;
     private readonly TimeProvider _timeProvider;
     private readonly bool _isPlaceholderData;
+    private readonly bool _hasData;
     private readonly RefetchDelegate<TData>? _refetch;
 
     // Snapshot of the query's update counts at observer attach time, used to
@@ -28,13 +29,15 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
         bool isPlaceholderData = false,
         RefetchDelegate<TData>? refetch = null,
         int initialDataUpdateCount = 0,
-        int initialErrorUpdateCount = 0)
+        int initialErrorUpdateCount = 0,
+        bool hasData = false)
     {
         _state = state;
         _isEnabled = isEnabled;
         _staleTime = staleTime;
         _timeProvider = timeProvider;
         _isPlaceholderData = isPlaceholderData;
+        _hasData = hasData;
         _refetch = refetch;
         _initialDataUpdateCount = initialDataUpdateCount;
         _initialErrorUpdateCount = initialErrorUpdateCount;
@@ -75,15 +78,15 @@ public sealed class QueryResult<TData> : IQueryResult<TData>
 
     public bool IsPending => _state.Status == QueryStatus.Pending;
 
-    public bool IsLoadingError => _state.Status == QueryStatus.Errored && _state.DataUpdateCount == 0;
+    public bool IsLoadingError => IsError && !_hasData;
 
     public bool IsPaused => _state.FetchStatus == FetchStatus.Paused;
 
     public bool IsPlaceholderData => _isPlaceholderData;
 
-    public bool IsRefetchError => _state.Status == QueryStatus.Errored && _state.DataUpdateCount > 0;
+    public bool IsRefetchError => IsError && _hasData;
 
-    public bool IsRefetching => _state.FetchStatus == FetchStatus.Fetching && _state.DataUpdateCount > 0;
+    public bool IsRefetching => IsFetching && !IsPending;
 
     /// <summary>
     /// Whether the data is stale according to the configured <c>StaleTime</c>.
