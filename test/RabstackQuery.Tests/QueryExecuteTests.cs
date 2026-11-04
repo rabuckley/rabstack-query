@@ -588,6 +588,104 @@ public sealed class QueryExecuteTests
 
     #endregion
 
+    #region Staleness that upstream's disabled tests also cover
+
+    // queryClient.test.tsx 'should fetch instead of returning initialData when disabled'.
+    [Fact]
+    public async Task QueryAsync_StaleInitialData_FetchesAndReturnsFetchedData()
+    {
+        // Act
+        var result = await _client.QueryAsync(new QueryExecuteOptions<string>
+        {
+            QueryKey = Key,
+            QueryFn = Returning("fetched-data"),
+            InitialData = "initial-data",
+        });
+
+        // Assert
+        Assert.Equal("fetched-data", result);
+        Assert.Equal(1, _fetchCount);
+    }
+
+    // queryClient.test.tsx 'should fetch when disabled and apply select'.
+    [Fact]
+    public async Task QueryAsync_SelectWithStaleCachedData_SelectsFromFetchedData()
+    {
+        // Arrange
+        _client.SetQueryData(Key, "cached-data");
+
+        // Act
+        var result = await _client.QueryAsync(
+            new QueryExecuteOptions<string>
+            {
+                QueryKey = Key,
+                QueryFn = Returning("fetched-data"),
+                StaleTime = TimeSpan.Zero,
+            },
+            data => $"{data}-selected");
+
+        // Assert
+        Assert.Equal("fetched-data-selected", result);
+        Assert.Equal(1, _fetchCount);
+    }
+
+    // queryClient.test.tsx 'should fetch when disabled and apply select'.
+    [Fact]
+    public async Task InfiniteQueryAsync_SelectWithStaleCachedData_SelectsFromFetchedData()
+    {
+        // Arrange
+        _client.SetQueryData(Key, CachedPage());
+
+        // Act
+        var result = await _client.InfiniteQueryAsync(
+            new InfiniteQueryExecuteOptions<string, int>
+            {
+                QueryKey = Key,
+                QueryFn = PageFn,
+                InitialPageParam = 0,
+            },
+            data => data.Pages.Select(page => $"{page}-selected").ToList());
+
+        // Assert
+        Assert.Equal(["page-0-selected"], result);
+        Assert.Equal(1, _fetchCount);
+    }
+
+    // query.ts Query#fetch; queryClient.ts QueryClient#query.
+    [Fact]
+    public async Task QueryAsync_DisabledObserverOnSameKey_FetchesWithItsOwnQueryFn()
+    {
+        // Arrange
+        var observerFetches = 0;
+        var observer = new QueryObserver<string, string>(
+            _client,
+            new QueryObserverOptions<string, string>
+            {
+                QueryKey = Key,
+                QueryFn = _ =>
+                {
+                    observerFetches++;
+                    return Task.FromResult("observer-data");
+                },
+                Enabled = false,
+            });
+        using var subscription = observer.Subscribe(_ => { });
+
+        // Act
+        var result = await _client.QueryAsync(new QueryExecuteOptions<string>
+        {
+            QueryKey = Key,
+            QueryFn = Returning("imperative-data"),
+        });
+
+        // Assert
+        Assert.Equal("imperative-data", result);
+        Assert.Equal(1, _fetchCount);
+        Assert.Equal(0, observerFetches);
+    }
+
+    #endregion
+
     #region Behaviour specific to the C# port
 
     // query.ts Query#isStaleByTime.
