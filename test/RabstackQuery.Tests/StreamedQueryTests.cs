@@ -4,6 +4,37 @@ namespace RabstackQuery;
 
 public sealed class StreamedQueryTests
 {
+    // query.ts Query#fetch.
+    [Fact]
+    public async Task Create_Meta_ProvidedToStreamFunction()
+    {
+        // Arrange
+        var client = new QueryClient(new QueryCache());
+        var meta = new Meta();
+        Meta? seen = null;
+
+        static async IAsyncEnumerable<int> SingleChunk()
+        {
+            await Task.CompletedTask;
+            yield return 1;
+        }
+
+        // Act
+        await client.QueryAsync(new QueryExecuteOptions<IReadOnlyList<int>>
+        {
+            QueryKey = ["streamed-meta"],
+            QueryFn = StreamedQuery.Create(ctx =>
+            {
+                seen = ctx.Meta;
+                return SingleChunk();
+            }),
+            Meta = meta,
+        });
+
+        // Assert
+        Assert.Same(meta, seen);
+    }
+
     private static QueryClient CreateQueryClient()
     {
         var queryCache = new QueryCache();

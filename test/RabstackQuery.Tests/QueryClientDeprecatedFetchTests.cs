@@ -395,6 +395,29 @@ public sealed class QueryClientDeprecatedFetchTests
         Assert.Equal([0, 1, 1, 2], [first, second, third, fourth]);
     }
 
+    // Ports: queryClient.test.tsx > queryClient > fetchQuery > should allow new meta
+    [Fact]
+    public async Task FetchQueryAsync_NewMetaOnRefetch_ProvidedToQueryFn()
+    {
+        // Arrange
+        FetchQueryOptions<Meta?> WithMeta(Meta meta) => new()
+        {
+            QueryKey = Key,
+            QueryFn = ctx => Task.FromResult(ctx.Meta),
+            Meta = meta,
+        };
+        var firstMeta = new Meta(new Dictionary<string, object?> { ["foo"] = true });
+        var secondMeta = new Meta(new Dictionary<string, object?> { ["foo"] = false });
+
+        // Act
+        var first = await _client.FetchQueryAsync(WithMeta(firstMeta));
+        var second = await _client.FetchQueryAsync(WithMeta(secondMeta));
+
+        // Assert
+        Assert.Same(firstMeta, first);
+        Assert.Same(secondMeta, second);
+    }
+
     // queryClient.ts fetchQuery; query.ts Query#fetch.
     [Fact]
     public async Task FetchQueryAsync_CacheHit_KeepsExistingQueryFn()

@@ -716,7 +716,7 @@ public sealed class Query<TData> : Query
         {
             Fn = ct =>
             {
-                var ctx = new QueryFunctionContext(ct, () => _abortSignalConsumed = true, _client, QueryKey!);
+                var ctx = new QueryFunctionContext(ct, () => _abortSignalConsumed = true, _client, QueryKey!, Meta);
                 return StopWaitingOnCancel(queryFn(ctx), ct);
             },
             MaxRetries = (options.Retry ?? OptionsDefaulting.FallbackQueryRetry) is > 0 and var r ? r + 1 : 1,

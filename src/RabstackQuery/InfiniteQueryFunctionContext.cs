@@ -20,8 +20,10 @@ public sealed class InfiniteQueryFunctionContext<TPageParam>
         TPageParam pageParam,
         FetchDirection direction,
         CancellationToken cancellationToken,
-        Action? onSignalConsumed)
+        Action? onSignalConsumed,
+        Meta? meta)
     {
+        Meta = meta;
         PageParam = pageParam;
         Direction = direction;
         _cancellationToken = cancellationToken;
@@ -33,6 +35,9 @@ public sealed class InfiniteQueryFunctionContext<TPageParam>
 
     /// <summary>Whether this is a forward or backward page fetch.</summary>
     public FetchDirection Direction { get; }
+
+    /// <inheritdoc cref="QueryFunctionContext.Meta"/>
+    public Meta? Meta { get; }
 
     /// <summary>
     /// Cancellation token for the fetch operation. Accessing this property

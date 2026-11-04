@@ -200,11 +200,6 @@
     "reason": "Exercises the JavaScript promise .catch(noop) idiom rather than library behaviour."
   },
   {
-    "status": "todo",
-    "key": "queryClient.test.tsx > queryClient > query > should allow new meta",
-    "reason": "QueryFunctionContext has no Meta property, so a query function cannot read the meta TanStack passes it."
-  },
-  {
     "status": "omitted",
     "key": "queryClient.test.tsx > queryClient > query > should fetch when disabled",
     "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
@@ -273,10 +268,5 @@
     "status": "omitted",
     "key": "queryClient.test.tsx > queryClient > prefetchQuery > should not type-error with strict query key",
     "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
-  },
-  {
-    "status": "todo",
-    "key": "queryClient.test.tsx > queryClient > fetchQuery > should allow new meta",
-    "reason": "QueryFunctionContext has no Meta property, so a query function cannot read the meta TanStack passes it."
   }
 ]

@@ -88,6 +88,9 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
     /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.QueryKeyHasher"/>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
+    /// <inheritdoc cref="QueryObserverOptions{TData,TQueryData}.Meta"/>
+    public Meta? Meta { get; init; }
+
 
     /// <summary>
     /// Builds the inner <see cref="QueryObserverOptions{TData,TQueryData}"/> used by
@@ -115,6 +118,7 @@ public sealed class InfiniteQueryObserverOptions<TData, TPageParam>
             RefetchIntervalInBackground = RefetchIntervalInBackground,
             NetworkMode = NetworkMode,
             QueryKeyHasher = QueryKeyHasher,
+            Meta = Meta,
         };
     }
 }

@@ -444,6 +444,124 @@ public sealed class QueryExecuteTests
 
     #endregion
 
+    #region meta
+
+    // Ports: query.test.tsx > query > should provide meta object inside query function
+    [Fact]
+    public async Task QueryAsync_Meta_ProvidedToQueryFn()
+    {
+        // Arrange
+        var meta = new Meta(new Dictionary<string, object?> { ["it"] = "works" });
+
+        // Act
+        var result = await _client.QueryAsync(new QueryExecuteOptions<Meta?>
+        {
+            QueryKey = Key,
+            QueryFn = ctx => Task.FromResult(ctx.Meta),
+            Meta = meta,
+        });
+
+        // Assert
+        Assert.Same(meta, result);
+    }
+
+    // Ports: queryClient.test.tsx > queryClient > query > should allow new meta
+    [Fact]
+    public async Task QueryAsync_NewMetaOnRefetch_ProvidedToQueryFn()
+    {
+        // Arrange
+        QueryExecuteOptions<Meta?> WithMeta(Meta meta) => new()
+        {
+            QueryKey = Key,
+            QueryFn = ctx => Task.FromResult(ctx.Meta),
+            Meta = meta,
+        };
+        var firstMeta = new Meta(new Dictionary<string, object?> { ["foo"] = true });
+        var secondMeta = new Meta(new Dictionary<string, object?> { ["foo"] = false });
+
+        // Act
+        var first = await _client.QueryAsync(WithMeta(firstMeta));
+        var second = await _client.QueryAsync(WithMeta(secondMeta));
+
+        // Assert
+        Assert.Same(firstMeta, first);
+        Assert.Same(secondMeta, second);
+    }
+
+    [Fact]
+    public async Task QueryAsync_NoMeta_ProvidesNull()
+    {
+        // Act
+        var result = await _client.QueryAsync(new QueryExecuteOptions<Meta?>
+        {
+            QueryKey = Key,
+            QueryFn = ctx => Task.FromResult(ctx.Meta),
+        });
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    // infiniteQueryBehavior.ts infiniteQueryBehavior.
+    [Fact]
+    public async Task InfiniteQueryAsync_Meta_ProvidedToEveryPage()
+    {
+        // Arrange
+        var meta = new Meta();
+        var seen = new List<Meta?>();
+
+        // Act
+        await _client.InfiniteQueryAsync(new InfiniteQueryExecuteOptions<int, int>
+        {
+            QueryKey = Key,
+            QueryFn = ctx =>
+            {
+                seen.Add(ctx.Meta);
+                return Task.FromResult(ctx.PageParam);
+            },
+            InitialPageParam = 0,
+            GetNextPageParam = ctx => PageParamResult<int>.Some(ctx.PageParam + 1),
+            Pages = 2,
+            Meta = meta,
+        });
+
+        // Assert
+        Assert.Equal(2, seen.Count);
+        Assert.All(seen, actual => Assert.Same(meta, actual));
+    }
+
+    // Ports: infiniteQueryObserver.test.tsx > InfiniteQueryObserver > should pass the meta option to the queryFn
+    [Fact]
+    public async Task InfiniteQueryObserver_Meta_ProvidedToQueryFn()
+    {
+        // Arrange
+        var meta = new Meta(new Dictionary<string, object?> { ["it"] = "works" });
+        var received = new TaskCompletionSource<Meta?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observer = new InfiniteQueryObserver<int, int>(
+            _client,
+            new InfiniteQueryObserverOptions<int, int>
+            {
+                QueryKey = Key,
+                QueryFn = ctx =>
+                {
+                    received.TrySetResult(ctx.Meta);
+                    return Task.FromResult(1);
+                },
+                InitialPageParam = 1,
+                GetNextPageParam = _ => PageParamResult<int>.Some(2),
+                Meta = meta,
+            });
+
+        // Act
+        using var subscription = observer.Subscribe(_ => { });
+        var actual = await received.Task;
+
+        // Assert
+        Assert.Same(meta, actual);
+    }
+
+    #endregion
+
     #region query used for prefetching
 
     // Ports: queryClient.test.tsx > queryClient > query used for prefetching > should be garbage collected after gcTime if unused

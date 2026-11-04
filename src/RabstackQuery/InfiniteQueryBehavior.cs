@@ -25,6 +25,7 @@ internal static class InfiniteQueryBehavior
             // so the user's query function sets the abort-signal-consumed flag).
             var ct = ctx.RawCancellationToken;
             var onSignalConsumed = ctx.OnSignalConsumed;
+            var meta = ctx.Meta;
 
             var fetchMore = query.State?.FetchMeta?.FetchMore;
             var oldData = query.State?.Data;
@@ -36,14 +37,14 @@ internal static class InfiniteQueryBehavior
             {
                 return fetchMore.Direction switch
                 {
-                    FetchDirection.Forward => await FetchNextPage(options, oldPages, oldPageParams, ct, onSignalConsumed),
-                    FetchDirection.Backward => await FetchPreviousPage(options, oldPages, oldPageParams, ct, onSignalConsumed),
+                    FetchDirection.Forward => await FetchNextPage(options, oldPages, oldPageParams, ct, onSignalConsumed, meta),
+                    FetchDirection.Backward => await FetchPreviousPage(options, oldPages, oldPageParams, ct, onSignalConsumed, meta),
                     _ => throw new InvalidOperationException($"Unknown fetch direction: {fetchMore.Direction}")
                 };
             }
 
             // ── Full refetch of all existing pages (or initial fetch) ───
-            return await RefetchAllPages(options, oldPages, oldPageParams, pages, ct, onSignalConsumed);
+            return await RefetchAllPages(options, oldPages, oldPageParams, pages, ct, onSignalConsumed, meta);
         };
     }
 
@@ -52,7 +53,8 @@ internal static class InfiniteQueryBehavior
         IReadOnlyList<TData> oldPages,
         IReadOnlyList<TPageParam> oldPageParams,
         CancellationToken ct,
-        Action? onSignalConsumed)
+        Action? onSignalConsumed,
+        Meta? meta)
     {
         var lastPage = oldPages[^1];
         var lastPageParam = oldPageParams[^1];
@@ -77,7 +79,8 @@ internal static class InfiniteQueryBehavior
             nextPageParam.Value,
             FetchDirection.Forward,
             ct,
-            onSignalConsumed));
+            onSignalConsumed,
+            meta));
 
         return new InfiniteData<TData, TPageParam>
         {
@@ -91,7 +94,8 @@ internal static class InfiniteQueryBehavior
         IReadOnlyList<TData> oldPages,
         IReadOnlyList<TPageParam> oldPageParams,
         CancellationToken ct,
-        Action? onSignalConsumed)
+        Action? onSignalConsumed,
+        Meta? meta)
     {
         if (options.GetPreviousPageParam is null)
         {
@@ -121,7 +125,8 @@ internal static class InfiniteQueryBehavior
             prevPageParam.Value,
             FetchDirection.Backward,
             ct,
-            onSignalConsumed));
+            onSignalConsumed,
+            meta));
 
         return new InfiniteData<TData, TPageParam>
         {
@@ -136,7 +141,8 @@ internal static class InfiniteQueryBehavior
         IReadOnlyList<TPageParam> oldPageParams,
         int? requestedPages,
         CancellationToken ct,
-        Action? onSignalConsumed)
+        Action? onSignalConsumed,
+        Meta? meta)
     {
         var pagesToFetch = Math.Max(requestedPages ?? oldPages.Count, 1);
 
@@ -150,7 +156,8 @@ internal static class InfiniteQueryBehavior
             firstPageParam,
             FetchDirection.Forward,
             ct,
-            onSignalConsumed));
+            onSignalConsumed,
+            meta));
 
         var pages = AddToEnd<TData>([], firstPage, options.MaxPages);
         var pageParams = AddToEnd<TPageParam>([], firstPageParam, options.MaxPages);
@@ -178,7 +185,8 @@ internal static class InfiniteQueryBehavior
                 nextPageParam.Value,
                 FetchDirection.Forward,
                 ct,
-                onSignalConsumed));
+                onSignalConsumed,
+                meta));
 
             pages = AddToEnd(pages, page, options.MaxPages);
             pageParams = AddToEnd(pageParams, nextPageParam.Value, options.MaxPages);

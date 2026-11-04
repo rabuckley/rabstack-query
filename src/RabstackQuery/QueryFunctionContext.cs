@@ -23,11 +23,13 @@ public sealed class QueryFunctionContext
         CancellationToken cancellationToken,
         Action onSignalConsumed,
         QueryClient client,
-        QueryKey queryKey)
+        QueryKey queryKey,
+        Meta? meta)
         : this(cancellationToken, onSignalConsumed)
     {
         Client = client;
         QueryKey = queryKey;
+        Meta = meta;
     }
 
     /// <summary>
@@ -43,6 +45,12 @@ public sealed class QueryFunctionContext
     /// to look up the query in the cache.
     /// </summary>
     internal QueryKey? QueryKey { get; }
+
+    /// <summary>
+    /// Gets the metadata of the query being fetched.
+    /// </summary>
+    /// <value>The metadata, or <see langword="null"/> if the query has none.</value>
+    public Meta? Meta { get; }
 
     /// <summary>
     /// Cancellation token for the fetch operation. Accessing this property

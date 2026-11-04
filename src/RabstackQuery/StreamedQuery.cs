@@ -132,7 +132,8 @@ public static class StreamedQuery
                     context.RawCancellationToken.Register(() => cancelled = true);
                 },
                 client,
-                queryKey);
+                queryKey,
+                context.Meta);
 
             var isReplaceRefetch = isRefetch && refetchMode is StreamRefetchMode.Replace;
 
