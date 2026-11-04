@@ -84,14 +84,6 @@ internal static partial class Log
 
     // ── QueryClient: Debug (20xx) ────────────────────────────────────────
 
-    [LoggerMessage(Level = LogLevel.Debug, EventId = 2001,
-        Message = "EnsureQueryData cache hit for key {QueryHash}")]
-    public static partial void EnsureQueryDataCacheHit(this ILogger logger, string queryHash);
-
-    [LoggerMessage(Level = LogLevel.Debug, EventId = 2002,
-        Message = "FetchQuery cache hit for key {QueryHash}")]
-    public static partial void FetchQueryCacheHit(this ILogger logger, string queryHash);
-
     [LoggerMessage(Level = LogLevel.Debug, EventId = 2003,
         Message = "Focus changed, isFocused: {IsFocused}")]
     public static partial void FocusChanged(this ILogger logger, bool isFocused);
@@ -99,14 +91,6 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Debug, EventId = 2004,
         Message = "Online changed, isOnline: {IsOnline}")]
     public static partial void OnlineChanged(this ILogger logger, bool isOnline);
-
-    [LoggerMessage(Level = LogLevel.Debug, EventId = 2005,
-        Message = "FetchInfiniteQuery cache hit for key {QueryHash}")]
-    public static partial void FetchInfiniteQueryCacheHit(this ILogger logger, string queryHash);
-
-    [LoggerMessage(Level = LogLevel.Debug, EventId = 2006,
-        Message = "EnsureInfiniteQueryData cache hit for key {QueryHash}")]
-    public static partial void EnsureInfiniteQueryDataCacheHit(this ILogger logger, string queryHash);
 
     [LoggerMessage(Level = LogLevel.Debug, EventId = 2007,
         Message = "Query cache hit for key {QueryHash}")]

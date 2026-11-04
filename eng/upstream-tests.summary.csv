@@ -19,7 +19,7 @@ onlineManager.test.tsx,11,0,0,0,11
 queriesObserver.test.tsx,23,0,0,0,23
 query.test.tsx,55,0,0,0,55
 queryCache.test.tsx,16,0,0,0,16
-queryClient.test.tsx,160,32,15,1,112
+queryClient.test.tsx,160,53,19,2,86
 queryObserver.test.tsx,76,0,0,0,76
 queryOptions.test.tsx,1,0,0,0,1
 removable.test.tsx,12,0,0,0,12

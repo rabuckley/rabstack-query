@@ -181,7 +181,7 @@ public class FetchQueryTests
     }
 
     [Fact]
-    public async Task EnsureQueryDataAsync_StaleCache_Fetches()
+    public async Task EnsureQueryDataAsync_StaleCache_ReturnsCachedDataWithoutFetching()
     {
         // Arrange
         var client = CreateQueryClient();
@@ -189,7 +189,7 @@ public class FetchQueryTests
 
         var fetchCount = 0;
 
-        // Act — staleTime=0 means always stale
+        // Act
         var result = await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
             {
                 QueryKey = ["todos"],
@@ -202,8 +202,8 @@ public class FetchQueryTests
             });
 
         // Assert
-        Assert.Equal("fresh", result);
-        Assert.Equal(1, fetchCount);
+        Assert.Equal("old", result);
+        Assert.Equal(0, fetchCount);
     }
 
     [Fact]
@@ -253,8 +253,9 @@ public class FetchQueryTests
     }
 
     [Fact]
-    public async Task EnsureQueryDataAsync_InitialData_Should_Keep_Counts_Of_Query_Without_Data()
+    public async Task EnsureQueryDataAsync_InitialData_Should_Seed_Existing_Query_Without_Data_Then_Fetch()
     {
+        // Arrange
         var client = CreateQueryClient();
         var query = client.QueryCache.GetOrCreate<string, string>(client, new QueryConfiguration<string>
         {
@@ -265,18 +266,17 @@ public class FetchQueryTests
         query.SetQueryFn(_ => throw new InvalidOperationException("boom"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => query.Fetch());
 
-        await client.EnsureQueryDataAsync(new FetchQueryOptions<string>
+        // Act
+        Task Act() => client.EnsureQueryDataAsync(new FetchQueryOptions<string>
         {
             QueryKey = ["failed-first"],
             InitialData = "seeded",
-            QueryFn = _ => Task.FromResult("fetched"),
+            QueryFn = _ => Task.FromException<string>(new InvalidDataException()),
         });
 
+        // Assert
+        await Assert.ThrowsAsync<InvalidDataException>(Act);
         Assert.Equal("seeded", query.State!.Data);
-        Assert.Equal(QueryStatus.Succeeded, query.State.Status);
-        Assert.Null(query.State.Error);
-        Assert.Equal(0, query.State.DataUpdateCount);
-        Assert.Equal(1, query.State.ErrorUpdateCount);
     }
 
     [Fact]

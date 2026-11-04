@@ -180,13 +180,11 @@ public sealed class QueryClient : IDisposable
     // ── Imperative fetch methods ──────────────────────────────────────
 
     /// <summary>
-    /// Asynchronously fetches a query. If the query exists in the cache and is
-    /// not stale, returns the cached data without fetching. Otherwise fetches
-    /// fresh data. Does not create a persistent observer subscription.
+    /// Asynchronously returns the cached data of a query, fetching it if it is missing or stale.
     /// </summary>
     /// <remarks>
     /// Options left <see langword="null"/> inherit from the key-prefix and client-wide
-    /// <see cref="QueryDefaults"/>. When no layer sets <c>Retry</c>, it is 0 (no retries).
+    /// <see cref="QueryDefaults"/>. When no layer sets <see cref="FetchQueryOptions{TData}.Retry"/>, it is 0.
     /// Errors propagate to the caller.
     /// </remarks>
     [Obsolete("Use QueryAsync instead. This method will be removed in the next major version.")]
@@ -194,39 +192,9 @@ public sealed class QueryClient : IDisposable
         FetchQueryOptions<TData> options)
     {
         ThrowIfDisposed();
-        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
-        var queryHash = hasher.HashQueryKey(options.QueryKey);
+        var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
         _logger.FetchQuery(queryHash);
-
-        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
-        var queryOptions = new QueryConfiguration<TData>
-        {
-            QueryKey = options.QueryKey,
-            QueryKeyHasher = hasher,
-            Meta = options.Meta,
-        };
-        settings.CopyTo(queryOptions);
-
-        var query = _queryCache.GetOrCreate<TData, TData>(this, queryOptions);
-        query.SetQueryFn(options.QueryFn);
-
-        // If the cache has fresh data, return it directly.
-        // The ! operator is justified: Data is logically present when status is
-        // Succeeded, but TData is unconstrained so the compiler can't narrow TData?.
-        if (query.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, settings.StaleTime, state.IsInvalidated))
-        {
-            _logger.FetchQueryCacheHit(queryHash);
-            Metrics.CacheHitTotal?.Add(1);
-            return state.Data!;
-        }
-
-        Metrics.CacheMissTotal?.Add(1);
-
-        await query.Fetch(queryOptions, meta: null, cancelRefetch: false);
-
-        Debug.Assert(query.State is not null);
-        return query.State.Data!;
+        return await ExecuteQueryAsync(options.ToQueryExecuteOptions(), queryHash);
     }
 
     /// <summary>
@@ -253,87 +221,67 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Returns cached data if it exists and is fresh. Otherwise delegates to
-    /// <see cref="FetchQueryAsync{TData}"/> to fetch and cache the data.
+    /// Asynchronously returns the cached data of a query even if it is stale, fetching it only if
+    /// there is none. With <see cref="FetchQueryOptions{TData}.RevalidateIfStale"/>, stale data is
+    /// also refetched in the background.
     /// </summary>
     [Obsolete("Use QueryAsync with StaleTime = Timeout.InfiniteTimeSpan instead. This method will be removed in the next major version.")]
     public async Task<TData> EnsureQueryDataAsync<TData>(
         FetchQueryOptions<TData> options)
     {
         ThrowIfDisposed();
-        var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
+        var executeOptions = options.ToQueryExecuteOptions();
+        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
+        var queryHash = hasher.HashQueryKey(options.QueryKey);
         _logger.EnsureQueryData(queryHash);
 
-        var query = _queryCache.Get<TData>(queryHash);
-        var staleTime = ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults()).StaleTime;
+        var (configuration, staleTime) = CreateConfiguration(executeOptions, hasher);
 
-        if (query?.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, staleTime, state.IsInvalidated))
-        {
-            _logger.EnsureQueryDataCacheHit(queryHash);
-            Metrics.CacheHitTotal?.Add(1);
-            return state.Data!;
-        }
-
-        // If InitialData is provided and there's no cached data, seed the cache
-        // and return it immediately — optionally triggering a background refetch.
-        if (options.InitialData is not null && query?.State?.Status is not QueryStatus.Succeeded)
-        {
-            SeedInitialData(query, options.QueryKey, queryHash, options.InitialData);
-
-            if (options.RevalidateIfStale)
-            {
-                // Fire-and-forget background refetch — caller gets InitialData immediately.
-                _ = FetchQueryAsync(options).ContinueWith(
-                    static t => { /* swallow — background revalidation is best-effort */ },
-                    TaskScheduler.Default);
-            }
-
-            return options.InitialData;
-        }
-
-        // If there IS cached data but it's stale and RevalidateIfStale is set,
-        // return the stale data immediately and kick off a background refetch.
-        if (options.RevalidateIfStale
-            && query?.State is { Status: QueryStatus.Succeeded } staleState)
-        {
-            _ = FetchQueryAsync(options).ContinueWith(
-                static t => { /* swallow — background revalidation is best-effort */ },
-                TaskScheduler.Default);
-
-            return staleState.Data!;
-        }
-
-        // Cache miss is recorded inside FetchQueryAsync when it proceeds to fetch.
-        return await FetchQueryAsync(options);
+        return await EnsureDataAsync(
+            configuration,
+            queryHash,
+            staleTime,
+            options.StaleTimeFn,
+            options.RevalidateIfStale,
+            () => FetchQueryAsync(options),
+            () => PrefetchQueryAsync(options));
     }
 
-    private void SeedInitialData<TData>(Query<TData>? query, QueryKey queryKey, string queryHash, TData data)
+    private async Task<TData> EnsureDataAsync<TData>(
+        QueryConfiguration<TData> configuration,
+        string queryHash,
+        TimeSpan staleTime,
+        Func<Query<TData>, TimeSpan>? staleTimeFn,
+        bool revalidateIfStale,
+        Func<Task<TData>> fetch,
+        Func<Task> prefetch)
     {
-        if (query is not null)
+        var query = _queryCache.GetOrCreate<TData, TData>(this, configuration);
+
+        if (query.State is not { HasData: true } state)
         {
-            query.SeedInitialData(data, TimeProvider.GetUtcNowMs());
-            return;
+            return await fetch();
         }
 
-        _queryCache.GetOrCreate<TData, TData>(this, new QueryConfiguration<TData>
+        if (revalidateIfStale && IsStaleByTime(state, staleTimeFn?.Invoke(query) ?? staleTime))
         {
-            QueryKey = queryKey,
-            QueryHash = queryHash,
-            InitialData = data,
-        });
+            _ = prefetch();
+        }
+
+        _logger.ExecuteQueryCacheHit(queryHash);
+        Metrics.CacheHitTotal?.Add(1);
+        return state.Data!;
     }
 
     // ── Imperative infinite query fetch methods ─────────────────────────
 
     /// <summary>
-    /// Asynchronously fetches an infinite query. If the query exists in the cache
-    /// and is not stale, returns the cached data without fetching. Otherwise
-    /// fetches the first page. Does not create a persistent observer subscription.
+    /// Asynchronously returns the cached pages of an infinite query, fetching them if they are
+    /// missing or stale.
     /// </summary>
     /// <remarks>
     /// Options left <see langword="null"/> inherit from the key-prefix and client-wide
-    /// <see cref="QueryDefaults"/>. When no layer sets <c>Retry</c>, it is 0 (no retries).
+    /// <see cref="QueryDefaults"/>. When no layer sets <see cref="FetchInfiniteQueryOptions{TData,TPageParam}.Retry"/>, it is 0.
     /// Errors propagate to the caller.
     /// </remarks>
     [Obsolete("Use InfiniteQueryAsync instead. This method will be removed in the next major version.")]
@@ -341,49 +289,9 @@ public sealed class QueryClient : IDisposable
         FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
         ThrowIfDisposed();
-        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
-        var queryHash = hasher.HashQueryKey(options.QueryKey);
+        var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
         _logger.FetchInfiniteQuery(queryHash);
-
-        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
-        var queryOptions = new QueryConfiguration<InfiniteData<TData, TPageParam>>
-        {
-            QueryKey = options.QueryKey,
-            QueryKeyHasher = hasher,
-        };
-        settings.CopyTo(queryOptions);
-
-        var query = _queryCache.GetOrCreate<InfiniteData<TData, TPageParam>, InfiniteData<TData, TPageParam>>(this, queryOptions);
-
-        // Build the InfiniteQueryObserverOptions that CreateFetchFn needs to wire
-        // up page-fetching logic (QueryFn, InitialPageParam, GetNextPageParam, etc.).
-        var observerOptions = new InfiniteQueryObserverOptions<TData, TPageParam>
-        {
-            QueryKey = options.QueryKey,
-            QueryFn = options.QueryFn,
-            InitialPageParam = options.InitialPageParam,
-            GetNextPageParam = options.GetNextPageParam,
-            GetPreviousPageParam = options.GetPreviousPageParam,
-            MaxPages = options.MaxPages,
-        };
-
-        query.SetQueryFn(InfiniteQueryBehavior.CreateFetchFn(observerOptions, query));
-
-        // If the cache has fresh data, return it directly.
-        if (query.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, settings.StaleTime, state.IsInvalidated))
-        {
-            _logger.FetchInfiniteQueryCacheHit(queryHash);
-            Metrics.CacheHitTotal?.Add(1);
-            return state.Data!;
-        }
-
-        Metrics.CacheMissTotal?.Add(1);
-
-        await query.Fetch(queryOptions, meta: null, cancelRefetch: false);
-
-        Debug.Assert(query.State is not null);
-        return query.State.Data!;
+        return await ExecuteInfiniteQueryAsync(options.ToInfiniteQueryExecuteOptions(), queryHash);
     }
 
     /// <summary>
@@ -410,60 +318,30 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Returns cached infinite query data if it exists and is fresh. Otherwise
-    /// delegates to <see cref="FetchInfiniteQueryAsync{TData,TPageParam}"/> to fetch
-    /// and cache the data.
+    /// Asynchronously returns the cached pages of an infinite query even if they are stale, fetching
+    /// them only if there are none. With
+    /// <see cref="FetchInfiniteQueryOptions{TData,TPageParam}.RevalidateIfStale"/>, stale pages are
+    /// also refetched in the background.
     /// </summary>
     [Obsolete("Use InfiniteQueryAsync with StaleTime = Timeout.InfiniteTimeSpan instead. This method will be removed in the next major version.")]
     public async Task<InfiniteData<TData, TPageParam>> EnsureInfiniteQueryDataAsync<TData, TPageParam>(
         FetchInfiniteQueryOptions<TData, TPageParam> options)
     {
         ThrowIfDisposed();
-        var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
+        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
+        var queryHash = hasher.HashQueryKey(options.QueryKey);
         _logger.EnsureInfiniteQueryData(queryHash);
 
-        var query = _queryCache.Get<InfiniteData<TData, TPageParam>>(queryHash);
-        var staleTime = ResolveQuerySettings(options.QueryKey, options.ToQueryDefaults()).StaleTime;
+        var (configuration, staleTime) = CreateConfiguration(options.ToInfiniteQueryExecuteOptions(), hasher);
 
-        if (query?.State is { Status: QueryStatus.Succeeded } state
-            && !IsDataStale(state.DataUpdatedAt, staleTime, state.IsInvalidated))
-        {
-            _logger.EnsureInfiniteQueryDataCacheHit(queryHash);
-            Metrics.CacheHitTotal?.Add(1);
-            return state.Data!;
-        }
-
-        // If InitialData is provided and there's no cached data, seed the cache
-        // and return it immediately — optionally triggering a background refetch.
-        if (options.InitialData is not null && query?.State?.Status is not QueryStatus.Succeeded)
-        {
-            SeedInitialData(query, options.QueryKey, queryHash, options.InitialData);
-
-            if (options.RevalidateIfStale)
-            {
-                // Fire-and-forget background refetch — caller gets InitialData immediately.
-                _ = FetchInfiniteQueryAsync(options).ContinueWith(
-                    static t => { /* swallow — background revalidation is best-effort */ },
-                    TaskScheduler.Default);
-            }
-
-            return options.InitialData;
-        }
-
-        // If there IS cached data but it's stale and RevalidateIfStale is set,
-        // return the stale data immediately and kick off a background refetch.
-        if (options.RevalidateIfStale
-            && query?.State is { Status: QueryStatus.Succeeded } staleState)
-        {
-            _ = FetchInfiniteQueryAsync(options).ContinueWith(
-                static t => { /* swallow — background revalidation is best-effort */ },
-                TaskScheduler.Default);
-
-            return staleState.Data!;
-        }
-
-        // Cache miss is recorded inside FetchInfiniteQueryAsync when it proceeds to fetch.
-        return await FetchInfiniteQueryAsync(options);
+        return await EnsureDataAsync(
+            configuration,
+            queryHash,
+            staleTime,
+            options.StaleTimeFn,
+            options.RevalidateIfStale,
+            () => FetchInfiniteQueryAsync(options),
+            () => PrefetchInfiniteQueryAsync(options));
     }
 
     private bool IsDataStale(long dataUpdatedAt, TimeSpan staleTime, bool isInvalidated = false)
@@ -497,31 +375,10 @@ public sealed class QueryClient : IDisposable
         ArgumentNullException.ThrowIfNull(options);
         ThrowIfDisposed();
 
-        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
-        var queryHash = hasher.HashQueryKey(options.QueryKey);
+        var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
         _logger.ExecuteQuery(queryHash);
 
-        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
-        var configuration = new QueryConfiguration<TData>
-        {
-            QueryKey = options.QueryKey,
-            QueryKeyHasher = hasher,
-            InitialDataUpdatedAt = options.InitialDataUpdatedAt,
-            Meta = options.Meta,
-        };
-        if (options.HasInitialData)
-        {
-            configuration.InitialData = options.InitialData;
-        }
-
-        settings.CopyTo(configuration);
-
-        return await ExecuteQueryAsync(
-            configuration,
-            queryHash,
-            settings.StaleTime,
-            options.StaleTimeFn,
-            _ => SkipToken.IsSkipToken(options.QueryFn) ? MissingQueryFn<TData>(queryHash) : options.QueryFn);
+        return await ExecuteQueryAsync(options, queryHash);
     }
 
     /// <summary>
@@ -599,54 +456,10 @@ public sealed class QueryClient : IDisposable
         ArgumentNullException.ThrowIfNull(options);
         ThrowIfDisposed();
 
-        // InfiniteQueryPages in types.ts enforces this pairing at compile time. A nullable property can't.
-        if (options.Pages is not null && options.GetNextPageParam is null)
-        {
-            throw new ArgumentException("GetNextPageParam is required when Pages is set.", nameof(options));
-        }
-
-        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
-        var queryHash = hasher.HashQueryKey(options.QueryKey);
+        var queryHash = (options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance).HashQueryKey(options.QueryKey);
         _logger.ExecuteInfiniteQuery(queryHash);
 
-        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
-        var configuration = new QueryConfiguration<InfiniteData<TData, TPageParam>>
-        {
-            QueryKey = options.QueryKey,
-            QueryKeyHasher = hasher,
-            InitialDataUpdatedAt = options.InitialDataUpdatedAt,
-            Meta = options.Meta,
-        };
-        if (options.InitialData is not null)
-        {
-            configuration.InitialData = options.InitialData;
-        }
-
-        settings.CopyTo(configuration);
-
-        return await ExecuteQueryAsync(
-            configuration,
-            queryHash,
-            settings.StaleTime,
-            options.StaleTimeFn,
-            query =>
-            {
-                if (SkipToken.IsSkipToken(options.QueryFn))
-                {
-                    return MissingQueryFn<InfiniteData<TData, TPageParam>>(queryHash);
-                }
-
-                var behaviorOptions = new InfiniteQueryObserverOptions<TData, TPageParam>
-                {
-                    QueryKey = options.QueryKey,
-                    QueryFn = options.QueryFn,
-                    InitialPageParam = options.InitialPageParam,
-                    GetNextPageParam = options.GetNextPageParam ?? (static _ => PageParamResult<TPageParam>.None),
-                    MaxPages = options.MaxPages,
-                };
-
-                return InfiniteQueryBehavior.CreateFetchFn(behaviorOptions, query, options.Pages);
-            });
+        return await ExecuteInfiniteQueryAsync(options, queryHash);
     }
 
     /// <summary>
@@ -677,10 +490,101 @@ public sealed class QueryClient : IDisposable
         return select(await InfiniteQueryAsync(options));
     }
 
-    // Mirrors queryClient.ts QueryClient#query, which infiniteQuery also calls. Unlike the fetch
-    // methods above, the query function is set only when a fetch is needed, as Query#fetch does,
-    // so a call served from the cache can't replace the function an observer's refetch uses.
-    private async Task<TData> ExecuteQueryAsync<TData>(
+    private Task<TData> ExecuteQueryAsync<TData>(QueryExecuteOptions<TData> options, string queryHash)
+    {
+        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
+        var (configuration, staleTime) = CreateConfiguration(options, hasher);
+
+        return FetchIfStaleAsync(
+            configuration,
+            queryHash,
+            staleTime,
+            options.StaleTimeFn,
+            _ => SkipToken.IsSkipToken(options.QueryFn) ? MissingQueryFn<TData>(queryHash) : options.QueryFn);
+    }
+
+    private Task<InfiniteData<TData, TPageParam>> ExecuteInfiniteQueryAsync<TData, TPageParam>(
+        InfiniteQueryExecuteOptions<TData, TPageParam> options,
+        string queryHash)
+    {
+        // InfiniteQueryPages in types.ts enforces this pairing at compile time. A nullable property can't.
+        if (options.Pages is not null && options.GetNextPageParam is null)
+        {
+            throw new ArgumentException("GetNextPageParam is required when Pages is set.", nameof(options));
+        }
+
+        var hasher = options.QueryKeyHasher ?? DefaultQueryKeyHasher.Instance;
+        var (configuration, staleTime) = CreateConfiguration(options, hasher);
+
+        return FetchIfStaleAsync(
+            configuration,
+            queryHash,
+            staleTime,
+            options.StaleTimeFn,
+            query =>
+            {
+                if (SkipToken.IsSkipToken(options.QueryFn))
+                {
+                    return MissingQueryFn<InfiniteData<TData, TPageParam>>(queryHash);
+                }
+
+                var behaviorOptions = new InfiniteQueryObserverOptions<TData, TPageParam>
+                {
+                    QueryKey = options.QueryKey,
+                    QueryFn = options.QueryFn,
+                    InitialPageParam = options.InitialPageParam,
+                    GetNextPageParam = options.GetNextPageParam ?? (static _ => PageParamResult<TPageParam>.None),
+                    MaxPages = options.MaxPages,
+                };
+
+                return InfiniteQueryBehavior.CreateFetchFn(behaviorOptions, query, options.Pages);
+            });
+    }
+
+    private (QueryConfiguration<TData> Configuration, TimeSpan StaleTime) CreateConfiguration<TData>(
+        QueryExecuteOptions<TData> options,
+        IQueryKeyHasher hasher)
+    {
+        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
+        var configuration = new QueryConfiguration<TData>
+        {
+            QueryKey = options.QueryKey,
+            QueryKeyHasher = hasher,
+            InitialDataUpdatedAt = options.InitialDataUpdatedAt,
+            Meta = options.Meta,
+        };
+        if (options.HasInitialData)
+        {
+            configuration.InitialData = options.InitialData;
+        }
+
+        settings.CopyTo(configuration);
+        return (configuration, settings.StaleTime);
+    }
+
+    private (QueryConfiguration<InfiniteData<TData, TPageParam>> Configuration, TimeSpan StaleTime)
+        CreateConfiguration<TData, TPageParam>(
+            InfiniteQueryExecuteOptions<TData, TPageParam> options,
+            IQueryKeyHasher hasher)
+    {
+        var settings = ResolveFetchSettings(options.QueryKey, options.ToQueryDefaults());
+        var configuration = new QueryConfiguration<InfiniteData<TData, TPageParam>>
+        {
+            QueryKey = options.QueryKey,
+            QueryKeyHasher = hasher,
+            InitialDataUpdatedAt = options.InitialDataUpdatedAt,
+            Meta = options.Meta,
+        };
+        if (options.InitialData is not null)
+        {
+            configuration.InitialData = options.InitialData;
+        }
+
+        settings.CopyTo(configuration);
+        return (configuration, settings.StaleTime);
+    }
+
+    private async Task<TData> FetchIfStaleAsync<TData>(
         QueryConfiguration<TData> configuration,
         string queryHash,
         TimeSpan staleTime,
@@ -690,11 +594,7 @@ public sealed class QueryClient : IDisposable
         var query = _queryCache.GetOrCreate<TData, TData>(this, configuration);
         var resolvedStaleTime = staleTimeFn?.Invoke(query) ?? staleTime;
 
-        // query.ts Query#isStaleByTime treats missing data as stale whatever the stale time. A
-        // failed refetch leaves Status Errored but keeps its data and non-zero DataUpdatedAt.
-        if (query.State is { } state
-            && (state.Status is QueryStatus.Succeeded || state.DataUpdatedAt > 0)
-            && !IsDataStale(state.DataUpdatedAt, resolvedStaleTime, state.IsInvalidated))
+        if (query.State is { } state && !IsStaleByTime(state, resolvedStaleTime))
         {
             _logger.ExecuteQueryCacheHit(queryHash);
             Metrics.CacheHitTotal?.Add(1);
@@ -709,6 +609,9 @@ public sealed class QueryClient : IDisposable
         Debug.Assert(query.State is not null);
         return query.State.Data!;
     }
+
+    private bool IsStaleByTime<TData>(QueryState<TData> state, TimeSpan staleTime)
+        => !state.HasData || IsDataStale(state.DataUpdatedAt, staleTime, state.IsInvalidated);
 
     // Throw inside the fetch so query state and cache callbacks receive the failure,
     // as in utils.ts ensureQueryFn.
@@ -1405,7 +1308,7 @@ public sealed class QueryClient : IDisposable
     }
 
     /// <summary>
-    /// Returns cached data if fresh, otherwise fetches using <paramref name="options"/>.
+    /// Returns cached data even if stale, fetching using <paramref name="options"/> only if there is none.
     /// </summary>
     [Obsolete("Use QueryAsync with StaleTime = Timeout.InfiniteTimeSpan instead. This method will be removed in the next major version.")]
     public Task<TData> EnsureQueryDataAsync<TData>(QueryOptions<TData> options)

@@ -21,18 +21,11 @@ public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
     /// <summary>The page param used to fetch the first page.</summary>
     public required TPageParam InitialPageParam { get; init; }
 
-    /// <summary>
-    /// Determines the page param for the next page. Return
-    /// <see cref="PageParamResult{T}.None"/> to indicate no more pages.
-    /// </summary>
-    public required Func<PageParamContext<TData, TPageParam>, PageParamResult<TPageParam>> GetNextPageParam { get; init; }
+    /// <inheritdoc cref="InfiniteQueryExecuteOptions{TData,TPageParam}.GetNextPageParam"/>
+    public Func<PageParamContext<TData, TPageParam>, PageParamResult<TPageParam>>? GetNextPageParam { get; init; }
 
-    /// <summary>
-    /// Determines the page param for the previous page. Return
-    /// <see cref="PageParamResult{T}.None"/> to indicate no more pages.
-    /// When <c>null</c>, backward fetching is not supported.
-    /// </summary>
-    public Func<PageParamContext<TData, TPageParam>, PageParamResult<TPageParam>>? GetPreviousPageParam { get; init; }
+    /// <inheritdoc cref="InfiniteQueryExecuteOptions{TData,TPageParam}.Pages"/>
+    public int? Pages { get; init; }
 
     /// <summary>
     /// Maximum number of pages to keep in the cache. When exceeded, pages are
@@ -44,11 +37,23 @@ public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
     /// <inheritdoc cref="FetchQueryOptions{TData}.StaleTime"/>
     public TimeSpan? StaleTime { get; init; }
 
+    /// <inheritdoc cref="InfiniteQueryExecuteOptions{TData,TPageParam}.StaleTimeFn"/>
+    public Func<Query<InfiniteData<TData, TPageParam>>, TimeSpan>? StaleTimeFn { get; init; }
+
     /// <inheritdoc cref="FetchQueryOptions{TData}.GcTime"/>
     public TimeSpan? GcTime { get; init; }
 
     /// <inheritdoc cref="FetchQueryOptions{TData}.Retry"/>
     public int? Retry { get; init; }
+
+    /// <inheritdoc cref="FetchQueryOptions{TData}.RetryDelay"/>
+    public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
+
+    /// <inheritdoc cref="QueryConfiguration{TData}.NetworkMode"/>
+    public NetworkMode? NetworkMode { get; init; }
+
+    /// <inheritdoc cref="QueryConfiguration{TData}.Meta"/>
+    public Meta? Meta { get; init; }
 
     /// <summary>
     /// Custom query key hasher for cache identity. When <c>null</c> (default),
@@ -57,11 +62,12 @@ public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
     /// <summary>
-    /// Initial data to use if the cache is empty. When set,
-    /// <see cref="QueryClient.EnsureInfiniteQueryDataAsync{TData,TPageParam}"/> returns
-    /// this data immediately without fetching, and seeds the cache for future callers.
+    /// Gets or initializes the data that seeds a query with no data. Seeded data counts as cached.
     /// </summary>
     public InfiniteData<TData, TPageParam>? InitialData { get; init; }
+
+    /// <inheritdoc cref="FetchQueryOptions{TData}.InitialDataUpdatedAt"/>
+    public long? InitialDataUpdatedAt { get; init; }
 
     /// <summary>
     /// When true, <see cref="QueryClient.EnsureInfiniteQueryDataAsync{TData,TPageParam}"/>
@@ -70,10 +76,23 @@ public sealed class FetchInfiniteQueryOptions<TData, TPageParam>
     /// </summary>
     public bool RevalidateIfStale { get; init; }
 
-    internal QueryDefaults ToQueryDefaults() => new()
+    internal InfiniteQueryExecuteOptions<TData, TPageParam> ToInfiniteQueryExecuteOptions() => new()
     {
+        QueryKey = QueryKey,
+        QueryFn = QueryFn,
+        InitialPageParam = InitialPageParam,
+        GetNextPageParam = GetNextPageParam,
+        Pages = Pages,
+        MaxPages = MaxPages,
         StaleTime = StaleTime,
+        StaleTimeFn = StaleTimeFn,
         GcTime = GcTime,
         Retry = Retry,
+        RetryDelay = RetryDelay,
+        NetworkMode = NetworkMode,
+        Meta = Meta,
+        QueryKeyHasher = QueryKeyHasher,
+        InitialData = InitialData,
+        InitialDataUpdatedAt = InitialDataUpdatedAt,
     };
 }

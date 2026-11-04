@@ -253,5 +253,30 @@
     "status": "omitted",
     "key": "queryClient.test.tsx > queryClient > infiniteQuery > should fetch when disabled and apply select",
     "reason": "C# imperative options have no Enabled property, so the case cannot be expressed."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > fetchQuery > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > fetchInfiniteQuery > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > prefetchInfiniteQuery > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "omitted",
+    "key": "queryClient.test.tsx > queryClient > prefetchQuery > should not type-error with strict query key",
+    "reason": "Exercises TypeScript generics; C# query keys are not typed by shape."
+  },
+  {
+    "status": "todo",
+    "key": "queryClient.test.tsx > queryClient > fetchQuery > should allow new meta",
+    "reason": "QueryFunctionContext has no Meta property, so a query function cannot read the meta TanStack passes it."
   }
 ]

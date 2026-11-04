@@ -8,6 +8,8 @@ namespace RabstackQuery;
 [Obsolete("Use QueryExecuteOptions<TData> with QueryAsync instead. This type will be removed in the next major version.")]
 public sealed class FetchQueryOptions<TData>
 {
+    private readonly TData? _initialData;
+
     /// <summary>Query key to fetch.</summary>
     public required QueryKey QueryKey { get; init; }
 
@@ -21,6 +23,12 @@ public sealed class FetchQueryOptions<TData>
     /// <see cref="TimeSpan.Zero"/> (always stale).
     /// </summary>
     public TimeSpan? StaleTime { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a function that computes the stale duration from the cached query.
+    /// When set, it takes precedence over <see cref="StaleTime"/>.
+    /// </summary>
+    public Func<Query<TData>, TimeSpan>? StaleTimeFn { get; init; }
 
     /// <summary>
     /// Garbage collection duration. <see langword="null"/> inherits from the key-prefix and
@@ -53,11 +61,29 @@ public sealed class FetchQueryOptions<TData>
     public IQueryKeyHasher? QueryKeyHasher { get; init; }
 
     /// <summary>
-    /// Initial data to use if the cache is empty. When set,
-    /// <see cref="QueryClient.EnsureQueryDataAsync{TData}"/> returns this data
-    /// immediately without fetching, and seeds the cache for future callers.
+    /// Gets or initializes the data that seeds a query with no data.
     /// </summary>
-    public TData? InitialData { get; init; }
+    /// <remarks>
+    /// Assigning this property, even to <see langword="default"/>, seeds the query. Seeded data
+    /// counts as cached.
+    /// </remarks>
+    public TData? InitialData
+    {
+        get => _initialData;
+        init
+        {
+            _initialData = value;
+            HasInitialData = true;
+        }
+    }
+
+    internal bool HasInitialData { get; private init; }
+
+    /// <summary>
+    /// Gets or initializes when <see cref="InitialData"/> was last updated, in Unix milliseconds.
+    /// </summary>
+    /// <value><see langword="null"/> uses the current time.</value>
+    public long? InitialDataUpdatedAt { get; init; }
 
     /// <summary>
     /// When true, <see cref="QueryClient.EnsureQueryDataAsync{TData}"/> triggers
@@ -75,6 +101,26 @@ public sealed class FetchQueryOptions<TData>
         RetryDelay = RetryDelay,
         NetworkMode = NetworkMode,
     };
+
+    internal QueryExecuteOptions<TData> ToQueryExecuteOptions()
+    {
+        var options = new QueryExecuteOptions<TData>
+        {
+            QueryKey = QueryKey,
+            QueryFn = QueryFn,
+            StaleTime = StaleTime,
+            StaleTimeFn = StaleTimeFn,
+            GcTime = GcTime,
+            Retry = Retry,
+            RetryDelay = RetryDelay,
+            NetworkMode = NetworkMode,
+            Meta = Meta,
+            QueryKeyHasher = QueryKeyHasher,
+            InitialDataUpdatedAt = InitialDataUpdatedAt,
+        };
+
+        return HasInitialData ? options with { InitialData = InitialData } : options;
+    }
 }
 
 /// <summary>

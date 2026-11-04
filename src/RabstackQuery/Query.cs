@@ -584,8 +584,25 @@ public sealed class Query<TData> : Query
             next.InitialData = current.InitialData;
         }
 
+        var seedState = State is { HasData: false } ? GetDefaultState(options) : null;
+        if (seedState is { Status: QueryStatus.Succeeded })
+        {
+            next.InitialDataFactory = options.InitialDataFactory;
+            next.InitialDataUpdatedAt = options.InitialDataUpdatedAt;
+            next.InitialDataUpdatedAtFactory = options.InitialDataUpdatedAtFactory;
+            if (options.HasInitialData)
+            {
+                next.InitialData = options.InitialData;
+            }
+        }
+
         Options = next;
         UpdateGcTime(next.GcTime);
+
+        if (seedState is { Status: QueryStatus.Succeeded, Data: var seedData })
+        {
+            SeedInitialData(seedData!, seedState.DataUpdatedAt);
+        }
     }
 
     internal void SetState(QueryState<TData> state, SetStateOptions? options = null)

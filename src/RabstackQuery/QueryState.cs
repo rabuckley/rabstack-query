@@ -29,4 +29,8 @@ public sealed record QueryState<TData>
     public QueryStatus Status { get; init; }
 
     public FetchStatus FetchStatus { get; init; }
+
+    // A failed refetch leaves Status Errored but keeps its data and non-zero DataUpdatedAt.
+    // Initial data can have a zero DataUpdatedAt but always starts Succeeded.
+    internal bool HasData => Status is QueryStatus.Succeeded || DataUpdatedAt > 0;
 }
